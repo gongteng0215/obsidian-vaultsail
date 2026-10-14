@@ -1,8 +1,31 @@
 import { TFile, type App, requestUrl } from 'obsidian';
-import { checkSize, hash, included, jsonBytes, parseJson, relativePath, uuid, validId, VaultSailError } from '../core/safety';
+import { checkSize, conflictCopyPath, hash, included, jsonBytes, parseJson, relativePath, uuid, validId, VaultSailError } from '../core/safety';
 import type { CredentialStore } from '../auth/auth-manager';
 import type { HttpTransport } from '../providers/http';
 import { newState, validateState, type LocalFiles, type StateStore, type SyncState } from '../sync/engine';
+import type { RevisionCache } from '../sync/remote-vault';
+
+export class ObsidianRevisionCache implements RevisionCache {
+  private app: App; private path: string;
+  constructor(app: App, deviceId: string, contextId: string) {
+    if (!validId(deviceId) || !/^[a-f0-9]{64}$/.test(contextId)) throw new VaultSailError('state', '缓存范围标识无效。');
+    this.app = app; this.path = '.vaultsail-state/' + deviceId + '/sessions/' + contextId + '.revisions.json';
+  }
+  async load(): Promise<unknown> {
+    const stat = await this.app.vault.adapter.stat(this.path);
+    if (!stat) return undefined;
+    if (stat.type !== 'file' || stat.size > 16 * 1024 * 1024) return undefined;
+    return parseJson(await this.app.vault.adapter.readBinary(this.path));
+  }
+  async save(value: unknown): Promise<void> {
+    const data = jsonBytes(value); if (data.byteLength > 16 * 1024 * 1024) return;
+    await mkdirs(this.app, this.path.slice(0, this.path.lastIndexOf('/')));
+    const temporary = this.path + '.' + uuid() + '.next';
+    await this.app.vault.adapter.writeBinary(temporary, data);
+    if (await this.app.vault.adapter.exists(this.path)) await this.app.vault.adapter.remove(this.path);
+    await this.app.vault.adapter.rename(temporary, this.path);
+  }
+}
 
 export const obsidianTransport: HttpTransport = async input => {
   const response = await requestUrl({ ...input, throw: false });
@@ -59,6 +82,21 @@ export class ObsidianLocalFiles implements LocalFiles {
     }
     await this.app.vault.adapter.writeBinary(path, data);
     if (hash(await this.app.vault.adapter.readBinary(path)) !== hash(data)) throw new VaultSailError('integrity', '暂存校验失败。');
+  }
+  async readConflictCopy(path: string, versionKey: string): Promise<ArrayBuffer | null> {
+    this.userPath(path); const target = conflictCopyPath(path, versionKey); const stat = await this.app.vault.adapter.stat(target);
+    if (!stat) return null;
+    if (stat.type !== 'file') throw new VaultSailError('collision', '冲突副本位置已被目录占用。');
+    checkSize(stat.size); return this.app.vault.adapter.readBinary(target);
+  }
+  async writeConflictCopy(path: string, versionKey: string, data: ArrayBuffer): Promise<void> {
+    this.userPath(path); checkSize(data.byteLength); const target = conflictCopyPath(path, versionKey);
+    const old = await this.readConflictCopy(path, versionKey);
+    if (old) { if (hash(old) !== hash(data)) throw new VaultSailError('integrity', '已有冲突副本被编辑，已保留它并停止覆盖。'); return; }
+    await mkdirs(this.app, target.slice(0, target.lastIndexOf('/')));
+    await this.app.vault.createBinary(target, data);
+    const actual = await this.readConflictCopy(path, versionKey);
+    if (!actual || hash(actual) !== hash(data)) throw new VaultSailError('integrity', '冲突副本校验失败，原笔记未被替换。');
   }
   async staged(id: string): Promise<ArrayBuffer | null> {
     if (!validId(id)) throw new VaultSailError('state', '暂存标识无效。');

@@ -68,7 +68,7 @@ export class PlanModal extends Modal {
   onOpen(): void {
     this.titleEl.setText('VaultSail · 传输预览');
     const changed = this.plan.rows.filter(row => row.action !== 'noop');
-    this.contentEl.createEl('p', { text: `${this.plan.rows.length} 个文件，${changed.length} 项变化。冲突项不会自动执行。` });
+    this.contentEl.createEl('p', { text: `${this.plan.rows.length} 个文件，${changed.length} 项变化。冲突会自动保留双方副本；下面的内容选择是可选的统一版本操作。` });
     const status = this.contentEl.createEl('p', { cls: 'vaultsail-progress-text' }); status.setAttribute('role', 'status');
     const meter = this.contentEl.createEl('progress', { cls: 'vaultsail-progress-meter' }); meter.max = Math.max(1, this.plan.rows.length); meter.value = 0;
     meter.setAttribute('aria-label', '文件处理进度');
@@ -84,14 +84,14 @@ export class PlanModal extends Modal {
         let choice = Object.keys(choices)[0];
         if (choice) new Setting(item).setDesc('执行前保存所有竞争版本的恢复副本；处理后需要重新预览。')
           .addDropdown(dropdown => dropdown.addOptions(choices).onChange(value => { choice = value; }))
-          .addButton(button => button.setButtonText('处理冲突').onClick(() => new ConfirmModal(this.app, '确认处理冲突', row.path + '：保留所有版本副本后应用所选内容。', async () => { await this.resolve(row, choice); this.close(); }).open()));
+          .addButton(button => button.setButtonText('可选：统一为所选版本').onClick(() => new ConfirmModal(this.app, '确认统一内容版本', row.path + '：保留所有版本副本后应用所选内容。', async () => { await this.resolve(row, choice); this.close(); }).open()));
       }
     }
     new Setting(this.contentEl).addButton(button => button.setButtonText('关闭').onClick(() => this.close()))
       .addButton(button => button.setButtonText('暂停任务').onClick(() => { this.pause(); status.setText('暂停请求已提交，等待当前请求结束。'); }))
-      .addButton(button => button.setButtonText('执行预览中的非冲突操作').setCta().onClick(async () => {
+      .addButton(button => button.setButtonText('执行清单（冲突自动保留双方）').setCta().onClick(async () => {
         button.setDisabled(true); executing = true;
-        try { await this.execute((done, total) => { if (!this.subscribe) status.setText(`已处理 ${done}/${total}`); }); status.setText(status.textContent + '\n执行完成；冲突和跳过项保留。请重新预览。'); }
+        try { await this.execute((done, total) => { if (!this.subscribe) status.setText(`已处理 ${done}/${total}`); }); status.setText(status.textContent + '\n执行完成；冲突副本可在 VaultSail-conflicts 查看。'); }
         catch (e) { status.setText(status.textContent + '\n' + safeMessage(e)); }
         finally { executing = false; button.setDisabled(false); }
       }));

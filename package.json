@@ -1,6 +1,6 @@
 {
   "name": "obsidian-vaultsail",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "private": true,
   "description": "VaultSail: an extensible, safety-first multi-cloud sync plugin for Obsidian",
   "license": "MIT",

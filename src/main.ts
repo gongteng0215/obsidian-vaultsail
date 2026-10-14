@@ -4,7 +4,7 @@ import { DEFAULT_SETTINGS, migrateSettings, type VaultSailSettings } from './con
 import { AuthManager, type DeviceSession } from './auth/auth-manager';
 import { appRoot, bytes, hash, MAX_FILE_SIZE, safeMessage, uuid, VaultSailError } from './core/safety';
 import { BaiduProvider } from './providers/baidu-provider';
-import { ObsidianCredentials, ObsidianLocalFiles, ObsidianStateStore, deviceIdentity, obsidianTransport } from './platform/obsidian-adapters';
+import { ObsidianCredentials, ObsidianLocalFiles, ObsidianRevisionCache, ObsidianStateStore, deviceIdentity, obsidianTransport } from './platform/obsidian-adapters';
 import { buildHeads, RemoteVaultStore } from './sync/remote-vault';
 import { SyncEngine, type SyncPlan } from './sync/engine';
 import { CloudVaultSetupModal, PlanModal } from './ui/modals';
@@ -53,7 +53,8 @@ export default class VaultSailPlugin extends Plugin {
     for (const mode of ['upload', 'download', 'sync'] as const) this.addCommand({ id: 'preview-' + mode,
       name: mode === 'upload' ? '预览上传' : mode === 'download' ? '预览下载' : '预览双向同步（实验）', callback: () => { void this.run('正在扫描…', () => this.preview(mode)); } });
     this.addCommand({ id: 'recover-transfer', name: '恢复未完成传输', callback: () => { void this.run('正在恢复…', async () => { const engine = await this.getEngine(); await engine.recover(); }); } });
-    this.addRibbonIcon('cloud', 'VaultSail：预览上传', () => { void this.run('正在扫描…', () => this.preview('upload')); });
+    this.addCommand({ id: 'start-sync', name: '开始双向同步（预览版）', callback: () => { void this.run('正在同步…', () => this.startSync()); } });
+    this.addRibbonIcon('cloud', 'VaultSail：开始同步', () => { void this.run('正在同步…', () => this.startSync()); });
     this.registerDomEvent(document, 'visibilitychange', () => {
       if (document.hidden) this.pause();
       else if (!this.busy) void this.auditLocalRecovery();
@@ -190,22 +191,34 @@ export default class VaultSailPlugin extends Plugin {
     if (!validation?.passed) throw new VaultSailError('permission', '请先运行本设备的文件往返测试，确认上传下载权限。');
     if (this.engine) return this.engine;
     const context = hash(bytes(b.appKey + '|' + b.root + '|' + accountHash + '|' + b.vaultId));
-    this.engine = new SyncEngine(new RemoteVaultStore(provider), this.local, new ObsidianStateStore(this.app, this.deviceId, b.vaultId, context), b.vaultId, this.app.vault.configDir, event => this.publishProgress(event));
+    this.engine = new SyncEngine(new RemoteVaultStore(provider, new ObsidianRevisionCache(this.app, this.deviceId, context)), this.local,
+      new ObsidianStateStore(this.app, this.deviceId, b.vaultId, context), b.vaultId, this.app.vault.configDir, event => this.publishProgress(event));
     return this.engine;
   }
   async preview(mode: SyncPlan['mode']): Promise<void> {
-    if (mode === 'sync' && !this.settings.experimentalSync) throw new VaultSailError('configuration', '双向同步处于实验阶段，请先开启实验功能。');
     const engine = await this.getEngine(); const plan = await engine.preview(mode, this.settings.deletionEnabled);
     new PlanModal(this.app, plan, async progress => { if (this.busy) throw new VaultSailError('busy', '当前有其他操作。'); this.busy = true;
       try {
-        if (plan.mode === 'sync' && !this.settings.experimentalSync) throw new VaultSailError('configuration', '实验性同步已关闭，请重新预览。');
         if (!this.settings.deletionEnabled && plan.rows.some(row => row.action === 'delete-local' || row.action === 'delete-remote')) throw new VaultSailError('configuration', '删除传播已关闭，请重新预览。');
-        await engine.execute(plan, progress);
+        await engine.execute(plan, progress, true);
         const key = this.successKey(); if (key && this.progress) this.app.saveLocalStorage(key, { completedAt: Date.now(), mode: plan.mode,
           files: this.progress.doneFiles, bytes: this.progress.doneBytes, elapsedMs: this.progress.updatedAt - this.progress.startedAt });
       } finally { this.busy = false; this.refreshUI(); } },
       async (row, choice) => { if (this.busy) throw new VaultSailError('busy', '当前有其他操作。'); this.busy = true;
         try { await engine.resolve(row.path, choice, row); } finally { this.busy = false; this.refreshUI(); } }, () => engine.pause(), listener => this.subscribeProgress(listener)).open();
+  }
+  async startSync(): Promise<void> {
+    const startedAt = Date.now(); const engine = await this.getEngine(); let conflicts = 0; let incoming = 0; let files = 0; let contentBytes = 0;
+    // One extra pass catches concurrent publications without an unbounded background loop.
+    for (let pass = 0; pass < 2; pass++) {
+      const result = await engine.sync(this.settings.deletionEnabled); conflicts += result.preservedConflicts; incoming = result.incomingChanges;
+      files += this.progress?.doneFiles ?? 0; contentBytes += this.progress?.doneBytes ?? 0;
+      if (!incoming) break;
+    }
+    if (this.progress) this.publishProgress({ ...this.progress, startedAt, doneFiles: files, totalFiles: files, doneBytes: contentBytes, totalBytes: contentBytes, updatedAt: Date.now() });
+    const key = this.successKey(); if (key) this.app.saveLocalStorage(key, { completedAt: Date.now(), mode: 'sync', files, bytes: contentBytes, elapsedMs: Date.now() - startedAt });
+    const message = `同步完成${conflicts ? `；${conflicts} 项冲突已自动保留双方，副本在 VaultSail-conflicts` : ''}${incoming ? '；期间又有新版本，下一次同步会继续处理' : ''}。`;
+    this.statusText = message; new Notice(message, 9000);
   }
   cloudLocation(): string {
     const id = this.settings.binding?.vaultId ?? this.settings.remoteVaultId;
@@ -222,7 +235,9 @@ export default class VaultSailPlugin extends Plugin {
       ? { completedAt: value.completedAt, files: value.files, bytes: value.bytes, elapsedMs: value.elapsedMs } : undefined;
   }
   async showCloudFiles(): Promise<void> {
-    const { provider, binding } = await this.boundProvider(); const store = new RemoteVaultStore(provider);
+    const { provider, binding } = await this.boundProvider();
+    const context = hash(bytes(binding.appKey + '|' + binding.root + '|' + binding.accountHash + '|' + binding.vaultId));
+    const store = new RemoteVaultStore(provider, new ObsidianRevisionCache(this.app, this.deviceId, context));
     const heads = buildHeads(await store.revisions(binding.vaultId)); const modal = new Modal(this.app); modal.titleEl.setText('云端文件与版本');
     modal.contentEl.createEl('p', { text: this.cloudLocation() });
     if (!heads.size) modal.contentEl.createEl('p', { text: '当前云端库还没有笔记版本。创建库不会自动上传笔记，请预览上传后执行。' });

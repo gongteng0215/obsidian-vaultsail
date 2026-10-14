@@ -3,6 +3,7 @@ import { listAll } from '../providers/provider-utils.ts';
 import type { CloudStorageProvider } from '../providers/cloud-storage-provider';
 
 export interface RemoteVault { schemaVersion: 1; vaultId: string; displayName: string; createdAt: number; }
+export interface RevisionCache { load(): Promise<unknown>; save(value: unknown): Promise<void>; }
 export interface Revision {
   schemaVersion: 1; vaultId: string; opId: string; deviceId: string; fileId: string;
   path: string; parents: string[]; kind: 'update' | 'delete'; hash?: string; size: number; createdAt: number;
@@ -22,7 +23,9 @@ export function validateRevision(value: unknown, vaultId: string): Revision {
   if (!included(op.path)) throw new VaultSailError('path', '远端记录试图写入排除目录。');
   if (op.kind === 'update' && (typeof op.hash !== 'string' || !/^[a-f0-9]{64}$/.test(op.hash))) throw new VaultSailError('schema', '内容记录缺少 SHA-256。');
   if (op.kind === 'delete' && (op.hash !== undefined || op.size !== 0)) throw new VaultSailError('schema', '删除记录格式不正确。');
-  return op as unknown as Revision;
+  return { schemaVersion: 1, vaultId, opId: op.opId as string, deviceId: op.deviceId as string, fileId: op.fileId as string,
+    path: op.path as string, parents: [...op.parents] as string[], kind: op.kind as Revision['kind'], size: op.size as number, createdAt: op.createdAt as number,
+    ...(op.kind === 'update' ? { hash: op.hash as string } : {}), ...(op.previousPath !== undefined ? { previousPath: op.previousPath as string } : {}) };
 }
 export function buildHeads(ops: Revision[]): Map<string, Revision[]> {
   const byId = new Map<string, Revision>(); const children = new Map<string, string[]>(); const indegrees = new Map<string, number>();
@@ -64,7 +67,33 @@ export class RemoteVaultStore {
   readonly provider: CloudStorageProvider;
   private cachedRevisions = new Map<string, { etag?: string; contentHash?: string; size: number; revision: Revision }>();
   private cachedVaults = new Map<string, { etag?: string; contentHash: string; size: number; vault: RemoteVault }>();
-  constructor(provider: CloudStorageProvider) { this.provider = provider; }
+  private diskLoaded = false; private disk?: RevisionCache;
+  constructor(provider: CloudStorageProvider, cache?: RevisionCache) { this.provider = provider; this.disk = cache; }
+  private async loadCache(id: string): Promise<void> {
+    if (this.diskLoaded) return; this.diskLoaded = true;
+    if (!this.disk) return;
+    try {
+      const value = record(await this.disk.load());
+      if (value.schemaVersion !== 1 || value.vaultId !== id || !Array.isArray(value.entries) || value.entries.length > 10000) return;
+      const loaded = new Map<string, { etag: string; size: number; revision: Revision }>();
+      for (const item of value.entries) {
+        const row = record(item); const revision = validateRevision(row.revision, id);
+        const path = this.base(id) + '/ops/' + revision.deviceId + '/' + revision.opId + '.json';
+        if (row.path !== path || typeof row.etag !== 'string' || !row.etag || !Number.isSafeInteger(row.size) || Number(row.size) < 0 || Number(row.size) > 1024 * 1024
+          || row.digest !== hash(jsonBytes(revision)) || loaded.has(path)) return;
+        loaded.set(path, { etag: row.etag, size: Number(row.size), revision });
+      }
+      for (const [path, cached] of loaded) if (!this.cachedRevisions.has(path)) this.cachedRevisions.set(path, cached);
+    } catch { /* Cache is advisory; corrupt/missing cache always falls back to verified remote reads. */ }
+  }
+  private async saveCache(id: string, active: Set<string>): Promise<void> {
+    if (!this.disk) return;
+    const entries = [...this.cachedRevisions].filter(([path, value]) => active.has(path) && value.etag).map(([path, value]) => {
+      const revision = validateRevision(value.revision, id);
+      return { path, etag: value.etag, size: value.size, revision, digest: hash(jsonBytes(revision)) };
+    });
+    try { await this.disk.save({ schemaVersion: 1, vaultId: id, entries }); } catch { /* Transfer safety does not depend on cache persistence. */ }
+  }
   base(id: string): string {
     if (!validId(id)) throw new VaultSailError('binding', '远端库 ID 未验证，请选择或创建云端库。');
     return 'vaultsail/vaults/' + id;
@@ -104,7 +133,7 @@ export class RemoteVaultStore {
     return result;
   }
   async revisions(id: string): Promise<Revision[]> {
-    await this.get(id); const base = this.base(id) + '/ops'; const result: Revision[] = [];
+    await this.loadCache(id); await this.get(id); const base = this.base(id) + '/ops'; const result: Revision[] = []; const active = new Set<string>();
     for (const device of await listAll(this.provider, base)) {
       const deviceId = device.path.split('/').at(-1)!;
       if (!device.isDirectory || !validId(deviceId)) throw new VaultSailError('schema', '操作目录含未知对象，停止扫描。');
@@ -117,10 +146,11 @@ export class RemoteVaultStore {
         const op = reusable ? cached.revision : validateRevision(parseJson(data!), id);
         if (op.deviceId !== deviceId || entry.path !== device.path + '/' + op.opId + '.json') throw new VaultSailError('schema', '操作文件与记录标识不一致。');
         this.cachedRevisions.set(entry.path, { etag: entry.etag, contentHash: data ? hash(data) : cached?.contentHash, size: entry.size, revision: op });
+        active.add(entry.path);
         result.push(op);
       }
     }
-    buildHeads(result); return result;
+    buildHeads(result); await this.saveCache(id, active); return result;
   }
   async blob(id: string, op: Revision, onVerify: () => void = () => {}): Promise<ArrayBuffer> {
     validateRevision(op, id);

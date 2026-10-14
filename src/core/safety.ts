@@ -49,6 +49,14 @@ export function assertNoCollisions(paths: string[]): void {
   }
 }
 export function hash(data: ArrayBuffer): string { return bytesToHex(sha256(new Uint8Array(data))); }
+export function conflictCopyPath(path: string, versionKey: string): string {
+  relativePath(path);
+  if (!/^[a-z0-9-]{1,80}$/.test(versionKey)) throw new VaultSailError('path', '冲突副本标识无效。');
+  const name = path.split('/').at(-1)!; const dot = name.lastIndexOf('.');
+  const extension = dot > 0 && name.length - dot <= 20 ? name.slice(dot) : '';
+  const stem = (extension ? name.slice(0, dot) : name).slice(0, 100).replace(/[. ]+$/, '') || '笔记';
+  return `VaultSail-conflicts/${hash(bytes(path)).slice(0, 16)}/${stem} (冲突-${versionKey})${extension}`;
+}
 export function bytes(text: string): ArrayBuffer { return new TextEncoder().encode(text).buffer as ArrayBuffer; }
 export function jsonBytes(value: unknown): ArrayBuffer { return bytes(JSON.stringify(value)); }
 export function parseJson(data: ArrayBuffer): unknown {

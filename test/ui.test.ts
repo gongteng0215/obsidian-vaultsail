@@ -165,12 +165,20 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   // Execute a real engine plan through its UI and check progress plus local success metadata.
   localMap.set('vaultsail-validation-' + hash(new TextEncoder().encode(plugin.settings.appKey + '|' + plugin.settings.appDirectory + '|' + plugin.settings.binding.accountHash).buffer), { passed: true });
   plugin.tabs[0].display(); await plugin.run('preview', () => plugin.preview('upload'));
-  setupButton('执行预览中的非冲突操作').click(); for (let i = 0; i < 1000 && plugin.busy; i++) await Promise.resolve();
+  setupButton('执行清单（冲突自动保留双方）').click(); for (let i = 0; i < 1000 && plugin.busy; i++) await Promise.resolve();
   assert.equal(plugin.busy, false); assert.equal(plugin.progress?.phase, 'completed'); assert.ok(plugin.lastSuccess());
   assert.equal(plugin.lastSuccess()!.bytes, files.get('note.md')!.byteLength);
   assert.ok(document.body.textContent!.includes('已校验内容')); assert.equal(plugin.diagnostics().includes('note.md'), false);
   await plugin.run('files', () => plugin.showCloudFiles()); assert.ok(document.body.textContent!.includes('note.md'));
   assert.ok(document.body.textContent!.includes('/blobs/' + hash(files.get('note.md')!)));
   assert.equal([...remoteObjects.keys()].some(p => p.includes('VaultSail-配置')), false, 'exported pairing files must never become remote notes');
+  const beforeSync = remoteObjects.size; files.set('note.md', new TextEncoder().encode('edited locally').buffer);
+  setupButton('开始同步').click(); for (let i = 0; i < 1000 && plugin.busy; i++) await Promise.resolve();
+  assert.equal(plugin.busy, false); assert.equal(plugin.progress?.phase, 'completed'); assert.ok(remoteObjects.size > beforeSync);
+  const afterSync = remoteObjects.size; setupButton('开始同步').click(); for (let i = 0; i < 1000 && plugin.busy; i++) await Promise.resolve();
+  assert.equal(remoteObjects.size, afterSync); assert.equal(plugin.settings.experimentalSync, false, 'normal sync must be available without the deletion experiment');
+  const originalNote = files.get('note.md')!;
+  await local.writeConflictCopy('note.md', 'local-test', originalNote); assert.equal(hash((await local.readConflictCopy('note.md', 'local-test'))!), hash(originalNote));
+  assert.equal([...remoteObjects.keys()].some(p => p.includes('VaultSail-conflicts')), false);
   plugin.onunload();
 });

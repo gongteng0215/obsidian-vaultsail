@@ -10,11 +10,14 @@ export interface LocalFiles {
   preserve(path: string, data: ArrayBuffer, id: string): Promise<string>;
   stage(id: string, data: ArrayBuffer): Promise<void>;
   staged(id: string): Promise<ArrayBuffer | null>;
+  readConflictCopy(path: string, versionKey: string): Promise<ArrayBuffer | null>;
+  writeConflictCopy(path: string, versionKey: string, data: ArrayBuffer): Promise<void>;
 }
 export interface Baseline { hash: string | null; heads: string[]; fileId: string; }
 export interface Journal {
   id: string; path: string; action: 'publish' | 'apply' | 'resolve'; stage: 'prepared' | 'published' | 'applied';
   revision: Revision; expectedLocal: string | null; dataHash?: string;
+  allowBranch?: true;
 }
 export interface SyncState {
   schemaVersion: 1; deviceId: string; bases: Record<string, Baseline>; journals: Journal[];
@@ -27,6 +30,8 @@ export interface PlanRow {
   renameFrom?: string;
 }
 export interface SyncPlan { vaultId: string; mode: 'upload' | 'download' | 'sync'; deletionEnabled: boolean; revisionIds: string[]; rows: PlanRow[]; }
+export interface SyncResult { incomingChanges: number; preservedConflicts: number; }
+type Snapshot = { ops: Revision[]; heads: Map<string, Revision[]>; local: Map<string, { hash: string; size: number }> };
 export function newState(deviceId = uuid()): SyncState { return { schemaVersion: 1, deviceId, bases: Object.create(null) as Record<string, Baseline>, journals: [], knownOps: [] }; }
 export function validateState(value: unknown, vaultId: string, deviceId: string): SyncState {
   const state = value as SyncState;
@@ -41,16 +46,20 @@ export function validateState(value: unknown, vaultId: string, deviceId: string)
     validateRevision(journal.revision, vaultId);
     if (!validId(journal.id) || journal.id !== journal.revision.opId || journal.path !== journal.revision.path || !['publish', 'apply', 'resolve'].includes(journal.action)
       || !['prepared', 'published', 'applied'].includes(journal.stage) || !(journal.expectedLocal === null || /^[a-f0-9]{64}$/.test(journal.expectedLocal))) throw new VaultSailError('state', '恢复日志格式不正确。');
+    if (journal.allowBranch !== undefined && (journal.allowBranch !== true || journal.action !== 'publish')) throw new VaultSailError('state', '恢复日志分支标识无效。');
   }
   return state;
 }
 const ids = (heads: Revision[]) => heads.map(head => head.opId).sort();
-const sameIds = (a: string[], b: string[]) => a.length === b.length && a.every((id, i) => id === [...b].sort()[i]);
+const sameIds = (a: string[], b: string[]) => {
+  if (a.length !== b.length) return false; const left = [...a].sort(); const right = [...b].sort(); return left.every((id, i) => id === right[i]);
+};
 export class SyncEngine {
   private remote: RemoteVaultStore; private local: LocalFiles; private store: StateStore; readonly vaultId: string;
   private stopped = false; private running = false; private configDir: string;
   private report: (progress: SyncProgress) => void;
   private progress!: SyncProgress;
+  private prepared?: { plan: SyncPlan; snapshot: Snapshot };
   constructor(remote: RemoteVaultStore, local: LocalFiles, store: StateStore, vaultId: string, configDir = '.obsidian', report: (progress: SyncProgress) => void = () => {}) {
     this.remote = remote; this.local = local; this.store = store; this.vaultId = vaultId; this.configDir = configDir;
     this.report = report;
@@ -74,7 +83,7 @@ export class SyncEngine {
   private async state(): Promise<SyncState> {
     const state = await this.store.load(); return validateState(state, this.vaultId, state.deviceId);
   }
-  private async scan(state: SyncState): Promise<{ ops: Revision[]; heads: Map<string, Revision[]>; local: Map<string, { hash: string; size: number }> }> {
+  private async scan(state: SyncState): Promise<Snapshot> {
     this.emit('scanning-remote', { path: undefined }); this.guard(); const ops = await this.remote.revisions(this.vaultId); this.guard();
     const found = new Set(ops.map(op => op.opId));
     if (state.knownOps.some(id => !found.has(id))) throw new VaultSailError('visibility', '之前确认的远端记录暂不可见，停止写入。');
@@ -96,22 +105,30 @@ export class SyncEngine {
     return this.exclusive(async () => {
       const state = await this.state(); if (state.journals.length) throw new VaultSailError('recovery', '有未完成操作，请先恢复任务。');
       const snapshot = await this.scan(state); const rows: PlanRow[] = [];
+      const operationIds = new Set(snapshot.ops.map(op => op.opId));
       const renames = new Map<string, string>();
       if (mode === 'sync') {
+        const removed = new Map<string, string[]>(); const additions = new Map<string, number>();
+        for (const [oldPath, base] of Object.entries(state.bases)) {
+          const heads = snapshot.heads.get(oldPath) ?? [];
+          if (base.hash && !snapshot.local.has(oldPath) && heads.length === 1 && heads[0].kind === 'update' && heads[0].hash === base.hash && sameIds(base.heads, ids(heads)))
+            removed.set(base.hash, [...(removed.get(base.hash) ?? []), oldPath]);
+        }
+        for (const [path, local] of snapshot.local) if (!snapshot.heads.has(path) && !state.bases[path]) additions.set(local.hash, (additions.get(local.hash) ?? 0) + 1);
         for (const [path, local] of snapshot.local) if (!snapshot.heads.has(path) && !state.bases[path]) {
-          const candidates = Object.entries(state.bases).filter(([oldPath, base]) => !snapshot.local.has(oldPath) && base.hash === local.hash
-            && snapshot.heads.get(oldPath)?.length === 1 && snapshot.heads.get(oldPath)?.[0].kind === 'update'
-            && snapshot.heads.get(oldPath)?.[0].hash === local.hash && sameIds(base.heads, ids(snapshot.heads.get(oldPath)!)));
-          const duplicates = [...snapshot.local].filter(([p, value]) => !snapshot.heads.has(p) && !state.bases[p] && value.hash === local.hash);
-          if (candidates.length === 1 && duplicates.length === 1) renames.set(path, candidates[0][0]);
+          const candidates = removed.get(local.hash) ?? [];
+          if (candidates.length === 1 && additions.get(local.hash) === 1) renames.set(path, candidates[0]);
         }
       }
+      const renamedSources = new Set(renames.values());
       for (const path of [...new Set([...snapshot.local.keys(), ...snapshot.heads.keys(), ...Object.keys(state.bases)])].sort()) {
         const renameFrom = renames.get(path);
         const local = snapshot.local.get(path); const heads = snapshot.heads.get(renameFrom ?? path) ?? []; const base = state.bases[path]; const head = heads[0];
+        if (base && !base.heads.every(id => operationIds.has(id))) throw new VaultSailError('state', '基线引用的远端版本缺失。');
+        if (base && !head) throw new VaultSailError('visibility', '基线文件的远端版本缺失。');
         let action: PlanRow['action'] = 'noop'; let reason = '双方内容一致';
         if (renameFrom) { action = 'upload'; reason = '识别到唯一的同内容重命名，保留文件身份'; }
-        else if ([...renames.values()].includes(path)) { action = 'skip'; reason = '源路径由重命名操作处理'; }
+        else if (renamedSources.has(path)) { action = 'skip'; reason = '源路径由重命名操作处理'; }
         else if (base && head && base.fileId !== head.fileId) { action = 'conflict'; reason = '同一路径的文件身份已变化，需手动确认'; }
         else if (heads.length > 1) { action = 'conflict'; reason = '云端有并发版本，需保留并处理所有分支'; }
         else if (local && head?.kind === 'update' && local.hash === head.hash) {
@@ -119,45 +136,70 @@ export class SyncEngine {
         }
         else if (mode === 'upload') {
           if (!local) { action = 'skip'; reason = '手动上传不传播删除'; }
+          else if (head && base && head.kind === 'update' && base.hash === head.hash && sameIds(base.heads, ids(heads))) { action = 'upload'; reason = '只有本地修改，云端仍是已验证的基线'; }
           else if (head) { action = 'conflict'; reason = '同名内容不同，需确认后保留恢复副本'; }
           else { action = 'upload'; reason = '上传本地新文件'; }
         } else if (mode === 'download') {
           if (head?.kind !== 'update') { action = 'skip'; reason = '手动下载不传播删除'; }
+          else if (local && base && local.hash === base.hash) { action = 'download'; reason = '只有云端修改，本地仍是已验证的基线'; }
           else if (local) { action = 'conflict'; reason = '同名内容不同，需确认后保留恢复副本'; }
           else { action = 'download'; reason = '下载远端新文件'; }
         } else {
-          if (base && !base.heads.every(id => snapshot.ops.some(op => op.opId === id))) throw new VaultSailError('state', '基线引用的远端版本缺失。');
-          if (base && !head) throw new VaultSailError('visibility', '基线文件的远端版本缺失。');
           const decision = reconcileFile({ path, base: base?.hash ? { hash: base.hash, size: 0 } : null,
             local: local ? { hash: local.hash, size: 0 } : null, remote: head?.kind === 'update' ? { hash: head.hash!, size: 0 } : null });
           action = decision.operation; reason = ({ upload: '本地修改，远端未变', download: '远端修改，本地未变', conflict: '双方均已修改', 'delete-local': '远端明确记录了删除', 'delete-remote': '本地删除，远端未变', noop: '双方内容一致' })[decision.operation];
           if ((action === 'delete-local' || action === 'delete-remote') && (!deletionEnabled || !base)) { action = 'skip'; reason = '删除传播关闭或缺少可信基线'; }
         }
-        rows.push({ path, action, reason, localHash: local?.hash ?? null, size: local?.size ?? head?.size ?? 0, heads, ...(renameFrom ? { renameFrom } : {}) });
+        rows.push({ path, action, reason, localHash: local?.hash ?? null, size: action === 'download' ? head?.size ?? 0 : local?.size ?? head?.size ?? 0, heads, ...(renameFrom ? { renameFrom } : {}) });
       }
       this.emit('preview-ready', { doneFiles: rows.length, totalFiles: rows.length, path: undefined });
-      return { vaultId: this.vaultId, mode, deletionEnabled, revisionIds: snapshot.ops.map(op => op.opId).sort(), rows };
+      const plan: SyncPlan = { vaultId: this.vaultId, mode, deletionEnabled, revisionIds: snapshot.ops.map(op => op.opId).sort(), rows };
+      this.prepared = { plan, snapshot }; return plan;
     }, 'preview-ready');
   }
-  async execute(plan: SyncPlan, onProgress: (done: number, total: number) => void = () => {}): Promise<void> {
+  async execute(plan: SyncPlan, onProgress: (done: number, total: number) => void = () => {}, autoConflicts = false): Promise<SyncResult> {
+    return this.executePlan(plan, onProgress, autoConflicts);
+  }
+  async sync(deletionEnabled = false): Promise<SyncResult> {
+    const plan = await this.preview('sync', deletionEnabled); const prepared = this.prepared;
+    if (!prepared || prepared.plan !== plan) throw new VaultSailError('changed', '同步依据已变化，请重试。');
+    this.prepared = undefined;
+    return this.executePlan(plan, () => {}, true, prepared.snapshot);
+  }
+  private async executePlan(plan: SyncPlan, onProgress: (done: number, total: number) => void, autoConflicts: boolean, prepared?: Snapshot): Promise<SyncResult> {
     return this.exclusive(async () => {
       if (plan.vaultId !== this.vaultId) throw new VaultSailError('binding', '预览属于其他云端库。');
       const state = await this.state(); if (state.journals.length) throw new VaultSailError('recovery', '请先恢复未完成任务。');
-      const snapshot = await this.scan(state);
+      const snapshot = prepared ?? await this.scan(state);
       if (!sameIds(plan.revisionIds, snapshot.ops.map(op => op.opId))) throw new VaultSailError('changed', '预览后云端已变化，请重新预览。');
       const actualPaths = new Set([...snapshot.local.keys(), ...snapshot.heads.keys(), ...Object.keys(state.bases)]);
+      if (prepared) {
+        const nowPaths = new Set((await this.local.paths()).filter(path => included(path, this.configDir)));
+        if (!sameIds([...nowPaths].sort(), [...snapshot.local.keys()].sort())) throw new VaultSailError('changed', '扫描后本地文件列表已变化，请重试。');
+      }
       if (actualPaths.size !== plan.rows.length || plan.rows.some(row => !actualPaths.has(row.path) || (snapshot.local.get(row.path)?.hash ?? null) !== row.localHash)) throw new VaultSailError('changed', '预览后本地已变化，请重新预览。');
-      let done = 0; let doneBytes = 0;
-      const totalBytes = plan.rows.reduce((sum, row) => sum + (row.action === 'upload' || row.action === 'download' ? row.size : 0), 0);
+      let done = 0; let doneBytes = 0; let preservedConflicts = 0;
+      const published = new Set<string>();
+      const startIds = new Set(plan.revisionIds);
+      const conflictBytes = (row: PlanRow) => row.heads.reduce((sum, head) => sum + (head.kind === 'update' ? head.size : 0), 0) + (row.localHash ? row.size : 0);
+      const totalBytes = plan.rows.reduce((sum, row) => sum + (row.action === 'upload' || row.action === 'download' ? row.size : row.action === 'conflict' && autoConflicts ? conflictBytes(row) : 0), 0);
       this.emit('checking', { path: undefined, doneFiles: 0, totalFiles: plan.rows.length, doneBytes: 0, totalBytes });
       for (const row of plan.rows) {
         this.emit('checking', { path: row.path });
         this.guard();
-        if (row.action === 'conflict' || row.action === 'skip') { onProgress(++done, plan.rows.length); this.emit('checking', { doneFiles: done }); continue; }
+        if (prepared) {
+          const current = await this.local.read(row.path);
+          if ((current === null ? null : hash(current)) !== row.localHash) throw new VaultSailError('changed', '扫描后本地内容已变化，修改已保留，请重试。');
+        }
+        if (row.action === 'conflict') {
+          if (autoConflicts) { const opId = await this.preserveConflict(row, state, plan.mode !== 'download'); if (opId) published.add(opId); preservedConflicts++; doneBytes += conflictBytes(row); }
+          onProgress(++done, plan.rows.length); this.emit('checking', { doneFiles: done, doneBytes }); continue;
+        }
+        if (row.action === 'skip') { onProgress(++done, plan.rows.length); this.emit('checking', { doneFiles: done }); continue; }
         if (row.action === 'noop') {
           const head = row.heads[0]; if (row.heads.length === 1) state.bases[row.path] = { hash: head.hash ?? null, heads: [head.opId], fileId: head.fileId };
         } else {
-          const currentHeads = buildHeads(await this.remote.revisions(this.vaultId)).get(row.renameFrom ?? row.path) ?? [];
+          const currentHeads = snapshot.heads.get(row.renameFrom ?? row.path) ?? [];
           if (!sameIds(ids(row.heads), ids(currentHeads))) throw new VaultSailError('changed', '执行期间远端目标已变化，请重新预览。');
           const localData = await this.local.read(row.path);
           if ((localData === null ? null : hash(localData)) !== row.localHash) throw new VaultSailError('changed', '执行期间本地目标已变化，请重新预览。');
@@ -172,6 +214,7 @@ export class SyncEngine {
             if (localData) { await this.local.stage(op.opId, localData); await this.local.preserve(row.path, localData, op.opId); }
             state.journals.push(journal); await this.store.save(state); this.guard();
             await this.remote.publish(this.vaultId, op, localData ?? undefined, phase => this.emit(phase)); journal.stage = 'published'; await this.store.save(state); this.guard();
+            published.add(op.opId);
             state.bases[row.path] = { hash: op.hash ?? null, heads: [op.opId], fileId: op.fileId };
             state.knownOps = [...new Set([...state.knownOps, op.opId])]; state.journals = []; await this.store.save(state);
           } else {
@@ -186,8 +229,66 @@ export class SyncEngine {
         if (row.action === 'upload' || row.action === 'download') doneBytes += row.size;
         onProgress(++done, plan.rows.length); this.emit('checking', { doneFiles: done, doneBytes });
       }
-      state.knownOps = [...new Set([...state.knownOps, ...snapshot.ops.map(op => op.opId)])]; await this.store.save(state);
+      // Immutable parent-linked publications preserve concurrent writers as branches.
+      // Verify the complete inventory at batch boundaries instead of for every file.
+      const finalOps = await this.remote.revisions(this.vaultId); const found = new Set(finalOps.map(op => op.opId));
+      if ([...state.knownOps, ...snapshot.ops.map(op => op.opId), ...published].some(id => !found.has(id))) throw new VaultSailError('visibility', '批次结束时已验证版本不可见，任务状态保留，请重试。');
+      state.knownOps = [...new Set([...state.knownOps, ...found])]; await this.store.save(state);
+      return { incomingChanges: finalOps.filter(op => !startIds.has(op.opId) && !published.has(op.opId)).length, preservedConflicts };
     });
+  }
+  private async ensureConflictCopy(path: string, key: string, expected: string, load: () => Promise<ArrayBuffer>): Promise<string> {
+    let existing = await this.local.readConflictCopy(path, key);
+    if (existing && hash(existing) !== expected) {
+      // A user may edit a visible copy. Keep that edit and store the original under another key.
+      key = 'preserved-' + hash(new TextEncoder().encode(key + '|' + expected).buffer as ArrayBuffer);
+      existing = await this.local.readConflictCopy(path, key);
+      if (existing && hash(existing) !== expected) { key = uuid(); existing = null; }
+    }
+    if (!existing) {
+      const data = await load(); if (hash(data) !== expected) throw new VaultSailError('integrity', '冲突版本校验失败。');
+      await this.local.writeConflictCopy(path, key, data);
+    }
+    return key;
+  }
+  private async preserveConflict(row: PlanRow, state: SyncState, publishLocal: boolean): Promise<string | undefined> {
+    const local = await this.local.read(row.path); const localHash = local === null ? null : hash(local);
+    if (localHash !== row.localHash) throw new VaultSailError('changed', '保留冲突前本地已变化，请重试。');
+    const copies = new Map<string, string>();
+    for (const head of row.heads) if (head.kind === 'update') {
+      const copyKey = head.deviceId.slice(0, 8) + '-' + head.opId;
+      copies.set(head.opId, await this.ensureConflictCopy(row.path, copyKey, head.hash!, () => this.remote.blob(this.vaultId, head, () => this.emit('verifying'))));
+      this.guard();
+    }
+    if (local && localHash) await this.ensureConflictCopy(row.path, 'local-' + state.deviceId.slice(0, 8) + '-' + localHash, localHash, async () => local);
+    const now = await this.local.read(row.path); if ((now === null ? null : hash(now)) !== localHash) throw new VaultSailError('changed', '保存冲突副本时笔记已变化，修改已保留。');
+    const base = state.bases[row.path];
+    const sameContent = row.heads.find(head => head.kind === 'update' && head.hash === localHash);
+    // An unchanged receiver need not create a new branch for its old baseline.
+    // Select a reproducible primary only after every competing version has a verified copy.
+    if (!sameContent && ((base && base.hash === localHash) || (!base && !local))) {
+      const chosen = row.heads.filter(head => head.kind === 'update').sort((a, b) => a.opId.localeCompare(b.opId))[0];
+      if (chosen) {
+        const data = await this.local.readConflictCopy(row.path, copies.get(chosen.opId)!);
+        if (!data || hash(data) !== chosen.hash) throw new VaultSailError('integrity', '待应用的冲突版本未校验。');
+        const journal: Journal = { id: chosen.opId, path: row.path, action: 'apply', stage: 'prepared', revision: chosen, expectedLocal: localHash };
+        state.journals.push(journal); await this.store.save(state); this.guard(); this.emit('applying');
+        await this.local.apply(row.path, data, localHash, chosen.opId); journal.stage = 'applied'; await this.store.save(state); this.guard();
+        state.bases[row.path] = { hash: chosen.hash!, heads: [chosen.opId], fileId: chosen.fileId }; state.journals = []; await this.store.save(state);
+      }
+      return undefined;
+    }
+    if (!local || !localHash) return undefined; // A deletion never wins over preserved content automatically.
+    if (sameContent) { state.bases[row.path] = { hash: localHash, heads: [sameContent.opId], fileId: sameContent.fileId }; await this.store.save(state); return undefined; }
+    if (!publishLocal) return undefined;
+    const op: Revision = { schemaVersion: 1, vaultId: this.vaultId, opId: uuid(), deviceId: state.deviceId, fileId: base?.fileId ?? row.heads[0]?.fileId ?? uuid(),
+      path: row.path, parents: base?.heads ?? [], kind: 'update', hash: localHash, size: local.byteLength, createdAt: Date.now() };
+    await this.local.stage(op.opId, local); await this.local.preserve(row.path, local, op.opId);
+    const journal: Journal = { id: op.opId, path: row.path, action: 'publish', stage: 'prepared', revision: op, expectedLocal: localHash, allowBranch: true };
+    state.journals.push(journal); await this.store.save(state); this.guard();
+    await this.remote.publish(this.vaultId, op, local, phase => this.emit(phase)); journal.stage = 'published'; await this.store.save(state); this.guard();
+    state.bases[row.path] = { hash: localHash, heads: [op.opId], fileId: op.fileId }; state.knownOps = [...new Set([...state.knownOps, op.opId])];
+    state.journals = []; await this.store.save(state); return op.opId;
   }
   async recover(): Promise<void> {
     return this.exclusive(async () => {
@@ -202,7 +303,8 @@ export class SyncEngine {
             const data = op.kind === 'update' ? await this.local.staged(op.opId) : null;
             if ((data ? hash(data) : null) !== (op.hash ?? null)) throw new VaultSailError('changed', '待发布内容已变化，恢复暂停；请保留恢复日志。');
             const heads = buildHeads(visible).get(op.previousPath ?? op.path) ?? [];
-            if (!sameIds(ids(heads), [...op.parents].sort())) throw new VaultSailError('changed', '待发布操作的远端依据已变化，恢复暂停。');
+            if (journal.allowBranch) buildHeads([...visible, op]);
+            else if (!sameIds(ids(heads), [...op.parents].sort())) throw new VaultSailError('changed', '待发布操作的远端依据已变化，恢复暂停。');
             await this.remote.publish(this.vaultId, op, data ?? undefined, phase => this.emit(phase));
           }
           state.knownOps = [...new Set([...state.knownOps, op.opId])];

@@ -153,13 +153,16 @@ export class VaultSailSettingTab extends PluginSettingTab {
     new Setting(vaultCard).setName('创建新云端库').setDesc('创建独立空间，随后由你预览并选择传输内容。')
       .addText(text => text.setValue(name).onChange(value => { name = value; }))
       .addButton(button => button.setButtonText('创建并绑定').setDisabled(p.busy).onClick(() => new ConfirmModal(this.app, '创建云端库', '将在获准应用目录下创建新库：' + name, () => p.run('创建云端库…', () => p.createVault(name))).open()));
-    new Setting(transferCard).setName('手动传输').setDesc('先预览再执行；冲突项保留双方内容。')
+    new Setting(transferCard).setName('双向同步（预览版）').setDesc('根据上次成功的基线自动判断上传与下载。双方改动自动保留原笔记和冲突副本；删除默认关闭。')
+      .addButton(button => button.setButtonText('开始同步').setCta().setDisabled(p.busy).onClick(() => { void p.run('正在同步…', () => p.startSync()); }))
+      .addButton(button => button.setButtonText('先看同步清单').setDisabled(p.busy).onClick(() => { void p.run('扫描双向变更…', () => p.preview('sync')); }));
+    new Setting(transferCard).setName('单向传输').setDesc('也可只上传或只下载；冲突会自动保存双方副本。')
       .addButton(button => button.setButtonText('预览上传').setDisabled(p.busy).onClick(() => { void p.run('扫描上传清单…', () => p.preview('upload')); }))
       .addButton(button => button.setButtonText('预览下载').setDisabled(p.busy).onClick(() => { void p.run('扫描下载清单…', () => p.preview('download')); }))
       .addButton(button => button.setButtonText('恢复未完成任务').setDisabled(p.busy).onClick(() => { void p.run('核验并恢复任务…', () => p.recover()); }));
     new Setting(recoveryCard).setName('旧任务遇到新的编辑').setDesc('保留内容与恢复点，结束旧任务，然后重新预览双方差异。')
       .addButton(button => button.setButtonText('结束旧任务并重新预览').setDisabled(p.busy).onClick(() => new ConfirmModal(this.app, '结束旧任务', '未完成操作停止重试，所有已保存内容保留。下一次预览会重新判断双方差异。', () => p.run('结束旧任务…', () => p.abandonPending())).open()));
-    new Setting(advancedCard).setName('实验性双向同步').setDesc('尚未通过真实双设备验收，仅用于测试库。')
+    new Setting(advancedCard).setName('实验性删除传播').setDesc('开启后才显示删除选项；真实双设备与 iPad 验收尚未完成。')
       .addToggle(toggle => toggle.setValue(p.settings.experimentalSync).setDisabled(p.busy).onChange(async value => {
         p.settings.experimentalSync = value; if (!value) p.settings.deletionEnabled = false; await p.saveSettings(); p.refreshUI();
       }));

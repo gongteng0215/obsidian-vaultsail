@@ -106,6 +106,20 @@ test('verified fingerprints are invalidated by fresh changed metadata or missing
   assert.equal(h.provider.verifiedContentHash(changed), undefined);
   await assert.rejects(h.provider.writeImmutable(path, bytes('A')), { code: 'integrity' });
 });
+test('persisted revision cache survives a provider restart but corrupt cache or changed remote metadata forces verified reads', async () => {
+  const h = harness(); let saved: unknown;
+  const disk = { load: async () => structuredClone(saved), save: async (value: unknown) => { saved = structuredClone(value); } };
+  const remote = new RemoteVaultStore(h.provider, disk); const vault = await remote.create('重启缓存'); const data = bytes('note');
+  const op: Revision = { schemaVersion: 1, vaultId: vault.vaultId, opId: uuid(), deviceId: uuid(), fileId: uuid(), path: 'note.md', parents: [], kind: 'update', hash: hash(data), size: data.byteLength, createdAt: 1 };
+  await remote.publish(vault.vaultId, op, data); await remote.revisions(vault.vaultId);
+  let opReads = 0;
+  const transport = async (input: HttpRequest) => { const url = new URL(input.url); if (url.pathname.startsWith('/file/') && decodeURIComponent(url.pathname).includes('/ops/')) opReads++; return h.transport(input); };
+  const fresh = () => new RemoteVaultStore(new BaiduProvider('/apps/中文应用', transport, { accessToken: async () => 'private-access' }), disk);
+  const restarted = fresh(); assert.equal((await restarted.revisions(vault.vaultId)).length, 1); assert.equal(opReads, 0);
+  (saved as { entries: { digest: string }[] }).entries[0].digest = 'broken'; await fresh().revisions(vault.vaultId); assert.equal(opReads, 1);
+  const path = '/apps/中文应用/' + remote.base(vault.vaultId) + '/ops/' + op.deviceId + '/' + op.opId + '.json';
+  h.files.set(path, bytes(JSON.stringify({ ...op, schemaVersion: 2 }))); await assert.rejects(restarted.revisions(vault.vaultId), { code: 'schema' }); assert.equal(opReads, 2);
+});
 test('vault and revision caches stop on same-size corruption, and uncoded fingerprints never hide changes', async () => {
   for (const omitFingerprint of [false, true]) {
     const h = harness(); const provider = new BaiduProvider('/apps/中文应用', async input => {
