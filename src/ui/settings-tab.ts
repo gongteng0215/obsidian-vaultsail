@@ -3,6 +3,7 @@ import type VaultSailPlugin from '../main';
 import { safeMessage } from '../core/safety';
 import { RemoteVaultStore } from '../sync/remote-vault';
 import { ConfirmModal } from './modals';
+import { DEFAULT_APP_DIRECTORY } from '../config';
 
 const AUTH_LABELS = { unconfigured: '应用未配置', disconnected: '未授权', pending: '等待授权', connected: '已授权', reauthorize: '需要重新授权' };
 export class VaultSailSettingTab extends PluginSettingTab {
@@ -75,7 +76,10 @@ export class VaultSailSettingTab extends PluginSettingTab {
       const field = new Setting(appCard).setName(name).setDesc(description);
       field
         .addText(text => text.setValue(draft).setPlaceholder(placeholder).setDisabled(p.busy).onChange(value => { draft = value.trim(); field.setDesc(draft === p.settings[key] ? description : '有修改尚未保存。'); }))
-        .addButton(button => button.setButtonText('保存').setDisabled(p.busy).onClick(() => { void p.run('保存配置…', async () => { if (draft !== p.settings[key]) await p.changeConfiguration({ [key]: draft }); }); }));
+        .addButton(button => button.setButtonText('保存').setDisabled(p.busy).onClick(() => { void p.run('保存配置…', async () => {
+          const value = key === 'appDirectory' ? draft || DEFAULT_APP_DIRECTORY : draft;
+          if (value !== p.settings[key]) await p.changeConfiguration({ [key]: value });
+        }); }));
     };
     saveField('AppKey', 'appKey', '粘贴应用 AppKey', p.settings.appKey ? '已保存。修改后需重新连接。' : '尚未保存。');
     let secret = ''; let secretInput: HTMLInputElement;
@@ -84,7 +88,7 @@ export class VaultSailSettingTab extends PluginSettingTab {
     secretField.addText(text => { secretInput = text.inputEl; text.inputEl.type = 'password'; text.inputEl.autocomplete = 'new-password';
       text.setPlaceholder(secretSaved ? '已保存 · 输入新值以更换' : '粘贴应用 SecretKey').setDisabled(p.busy).onChange(value => { secret = value; secretField.setDesc('密钥尚未保存，请点击保存密钥。'); }); })
       .addButton(button => button.setButtonText('保存密钥').setDisabled(p.busy).onClick(() => { const value = secret; secret = ''; secretInput.value = ''; void p.run('保存密钥…', () => p.saveAppSecret(value)); }));
-    saveField('获准应用目录', 'appDirectory', '/apps/你的实际应用名', '传输前填写，授权登录本身无需此项。');
+    saveField('应用目录', 'appDirectory', DEFAULT_APP_DIRECTORY, '默认 /apps/VaultSail。可修改为应用实际获准的目录；留空保存会恢复默认。');
     new Setting(authCard).setName('百度账号授权').setDesc(p.authPhase === 'idle' ? AUTH_LABELS[p.auth.status()] : p.statusText)
       .addButton(button => button.setButtonText(p.authPhase === 'requesting' ? '正在申请授权…' : p.authPhase === 'waiting' ? '等待浏览器授权…' : '连接百度网盘').setCta().setDisabled(p.busy || p.settings.providerId !== 'baidu').onClick(() => { void p.run('申请设备授权…', () => p.connect()); }))
       .addButton(button => button.setButtonText('取消授权').setDisabled(p.authPhase === 'idle').onClick(() => p.cancelAuthorization()))

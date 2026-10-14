@@ -179,7 +179,10 @@ export default class VaultSailPlugin extends Plugin {
   }
 
   async loadSettings(): Promise<void> {
-    this.settings = migrateSettings(await this.loadData());
+    const stored: unknown = await this.loadData();
+    this.settings = migrateSettings(stored);
+    const directory = stored && typeof stored === 'object' ? (stored as Record<string, unknown>).appDirectory : undefined;
+    if (typeof directory !== 'string' || !directory.trim()) await this.saveSettings();
   }
   async saveSettings(): Promise<void> { await this.saveData(this.settings); }
 }
