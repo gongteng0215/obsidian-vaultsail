@@ -60,7 +60,14 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
     mkdir: async () => {}, writeImmutable: async (key: string, data: ArrayBuffer) => { remoteObjects.set(key, data.slice(0)); },
     read: async (key: string) => { assert.ok(remoteObjects.has(key)); return remoteObjects.get(key)!.slice(0); },
     exists: async () => true,
-    list: async () => ({ complete: true, objects: [...remoteObjects.keys()].map(key => ({ path: key.slice(0, key.lastIndexOf('/')), isDirectory: true, size: 0 })) }),
+    list: async (dir: string) => {
+      const entries = new Map<string, { path: string; isDirectory: boolean; size: number }>();
+      for (const [key, data] of remoteObjects) if (key.startsWith(dir + '/')) {
+        const suffix = key.slice(dir.length + 1); const isDirectory = suffix.includes('/'); const path = dir + '/' + suffix.split('/')[0];
+        entries.set(path, { path, isDirectory, size: isDirectory ? 0 : data.byteLength });
+      }
+      return { complete: true, objects: [...entries.values()] };
+    },
   };
   plugin.provider = () => { providerCalls++; return fakeProvider; };
   const setupButton = (label: string) => [...document.querySelectorAll('button')].filter(button => button.textContent === label).at(-1)!;

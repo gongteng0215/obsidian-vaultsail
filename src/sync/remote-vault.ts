@@ -62,7 +62,8 @@ export function buildHeads(ops: Revision[]): Map<string, Revision[]> {
 }
 export class RemoteVaultStore {
   readonly provider: CloudStorageProvider;
-  private cachedRevisions = new Map<string, { etag?: string; size: number; revision: Revision }>();
+  private cachedRevisions = new Map<string, { etag?: string; contentHash?: string; size: number; revision: Revision }>();
+  private cachedVaults = new Map<string, { etag?: string; contentHash: string; size: number; vault: RemoteVault }>();
   constructor(provider: CloudStorageProvider) { this.provider = provider; }
   base(id: string): string {
     if (!validId(id)) throw new VaultSailError('binding', '远端库 ID 未验证，请选择或创建云端库。');
@@ -73,14 +74,25 @@ export class RemoteVaultStore {
     const vault: RemoteVault = { schemaVersion: 1, vaultId: uuid(), displayName: displayName.trim(), createdAt: Date.now() };
     const base = this.base(vault.vaultId);
     await this.provider.mkdir(base + '/blobs'); await this.provider.mkdir(base + '/ops');
-    await this.provider.writeImmutable(base + '/vault.json', jsonBytes(vault)); return vault;
+    const data = jsonBytes(vault); await this.provider.writeImmutable(base + '/vault.json', data);
+    this.cachedVaults.set(vault.vaultId, { contentHash: hash(data), size: data.byteLength, vault: { ...vault } }); return vault;
   }
   async get(id: string): Promise<RemoteVault> {
+    const path = this.base(id) + '/vault.json';
+    const entry = (await listAll(this.provider, this.base(id))).find(object => object.path === path);
+    if (!entry || entry.isDirectory) throw new VaultSailError('not-found', '云端库元数据不存在。');
+    const cached = this.cachedVaults.get(id);
+    if (cached && entry.size === cached.size && ((entry.etag !== undefined && cached.etag === entry.etag)
+      || this.provider.verifiedContentHash?.(entry) === cached.contentHash)) {
+      cached.etag = entry.etag; return { ...cached.vault };
+    }
     const data = await this.provider.read(this.base(id) + '/vault.json');
     if (data.byteLength > 1024 * 1024) throw new VaultSailError('schema', '库元数据超过安全上限。');
     const value = record(parseJson(data));
     if (value.schemaVersion !== 1 || value.vaultId !== id || typeof value.displayName !== 'string' || value.displayName.length > 120 || typeof value.createdAt !== 'number' || !Number.isFinite(value.createdAt)) throw new VaultSailError('schema', '远端库格式未知或标识不一致。');
-    return value as unknown as RemoteVault;
+    const vault = value as unknown as RemoteVault;
+    this.cachedVaults.set(id, { etag: entry.etag, contentHash: hash(data), size: data.byteLength, vault: { ...vault } });
+    return vault;
   }
   async listVaults(): Promise<RemoteVault[]> {
     if (!await this.provider.exists('vaultsail/vaults')) return [];
@@ -99,9 +111,12 @@ export class RemoteVaultStore {
       for (const entry of await listAll(this.provider, device.path)) {
         if (entry.isDirectory || entry.size > 1024 * 1024 || result.length >= 10000) throw new VaultSailError('schema', '操作记录异常或超过扫描上限。');
         const cached = this.cachedRevisions.get(entry.path);
-        const op = cached && cached.etag === entry.etag && cached.size === entry.size ? cached.revision : validateRevision(parseJson(await this.provider.read(entry.path)), id);
+        const reusable = cached && cached.size === entry.size && ((entry.etag !== undefined && cached.etag === entry.etag)
+          || (cached.contentHash !== undefined && this.provider.verifiedContentHash?.(entry) === cached.contentHash));
+        const data = reusable ? undefined : await this.provider.read(entry.path);
+        const op = reusable ? cached.revision : validateRevision(parseJson(data!), id);
         if (op.deviceId !== deviceId || entry.path !== device.path + '/' + op.opId + '.json') throw new VaultSailError('schema', '操作文件与记录标识不一致。');
-        this.cachedRevisions.set(entry.path, { etag: entry.etag, size: entry.size, revision: op });
+        this.cachedRevisions.set(entry.path, { etag: entry.etag, contentHash: data ? hash(data) : cached?.contentHash, size: entry.size, revision: op });
         result.push(op);
       }
     }
@@ -120,6 +135,8 @@ export class RemoteVaultStore {
       if (!data || data.byteLength !== op.size || hash(data) !== op.hash) throw new VaultSailError('integrity', '待上传内容与操作记录不一致。');
       await this.provider.writeImmutable(this.base(id) + '/blobs/' + op.hash, data);
     }
-    await this.provider.writeImmutable(this.base(id) + '/ops/' + op.deviceId + '/' + op.opId + '.json', jsonBytes(op));
+    const path = this.base(id) + '/ops/' + op.deviceId + '/' + op.opId + '.json'; const recordData = jsonBytes(op);
+    await this.provider.writeImmutable(path, recordData);
+    this.cachedRevisions.set(path, { contentHash: hash(recordData), size: recordData.byteLength, revision: { ...op, parents: [...op.parents] } });
   }
 }

@@ -32,4 +32,6 @@ export interface CloudStorageProvider {
   writeImmutable(path: string, data: ArrayBuffer): Promise<void>;
   mkdir(directory: string): Promise<void>;
   exists(path: string): Promise<boolean>;
+  /** SHA-256 from a completed readback, only when this freshly listed object has the same server fingerprint. */
+  verifiedContentHash?(object: RemoteObject): string | undefined;
 }

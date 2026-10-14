@@ -14,12 +14,24 @@ export class BaiduProvider implements CloudStorageProvider {
   readonly capabilities = { canList: true, canRead: true, canWrite: true, canDelete: false, supportsConditionalWrites: false };
   private transport: HttpTransport; private auth: TokenSource; private active: () => boolean;
   private objects = new Map<string, RemoteObject>();
+  private verified = new Map<string, { fingerprint: string; hash: string }>();
   constructor(root: string, transport: HttpTransport, auth: TokenSource, active = () => true) {
     this.root = appRoot(root); this.transport = transport; this.auth = auth; this.active = active;
   }
   isConfigured(): boolean { return this.active(); }
   private guard(): void { if (!this.active()) throw new VaultSailError('cancelled', '任务已暂停，或账号及目录配置已更改。'); }
   private absolute(path: string): string { return path ? this.root + '/' + relativePath(path) : this.root; }
+  private etag(value: Record<string, unknown>, size: number): string | undefined {
+    if (typeof value.md5 !== 'string' || !/^[a-fA-F0-9]{32}$/.test(value.md5)) return undefined;
+    return `${value.md5.toLowerCase()}:${String(value.server_mtime ?? value.mtime ?? '')}:${size}`;
+  }
+  private fingerprint(object: RemoteObject): string | undefined {
+    return object.id && object.etag ? `${object.id}:${object.etag}:${object.size}` : undefined;
+  }
+  verifiedContentHash(object: RemoteObject): string | undefined {
+    const fingerprint = this.fingerprint(object); const verified = this.verified.get(object.path);
+    return fingerprint && verified?.fingerprint === fingerprint ? verified.hash : undefined;
+  }
   private async api(endpoint: string, params: Record<string, string>, form?: Record<string, string>, body?: ArrayBuffer, contentType?: string): Promise<Record<string, unknown>> {
     const sliceUpload = endpoint === 'https://d.pcs.baidu.com/rest/2.0/pcs/superfile2' && params.method === 'upload';
     const stage = sliceUpload ? '上传文件分片' : params.method === 'uinfo' ? '读取百度账号' : params.method === 'list' ? '读取云端目录'
@@ -74,18 +86,22 @@ export class BaiduProvider implements CloudStorageProvider {
       const id = typeof entry.fs_id === 'string' && /^\d+$/.test(entry.fs_id) ? entry.fs_id : typeof entry.fs_id === 'number' && Number.isSafeInteger(entry.fs_id) ? String(entry.fs_id) : undefined;
       if (entry.isdir === 0 && !id) throw new VaultSailError('response', '文件标识缺失或精度不足。');
       const object = { path, size: entry.size, isDirectory: entry.isdir === 1, id,
-        etag: `${String(entry.md5 ?? '')}:${String(entry.server_mtime ?? '')}:${entry.size}` };
-      if (!object.isDirectory) this.objects.set(path, object);
+        etag: this.etag(entry, entry.size) };
+      this.objects.set(path, object);
       return object;
     });
     return { objects, complete: objects.length < 100, ...(objects.length === 100 ? { nextCursor: String(offset + 100) } : {}) };
   }
   async listAll(directory: string): Promise<RemoteObject[]> { return listAll(this, directory); }
-  private async find(path: string): Promise<RemoteObject | undefined> {
+  private async find(path: string, fresh = false): Promise<RemoteObject | undefined> {
     relativePath(path); const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
-    const cached = this.objects.get(path); if (cached) return cached;
-    try { return (await this.listAll(parent)).find(file => file.path === path); }
-    catch (error) { if (error instanceof VaultSailError && error.code === 'not-found') return undefined; throw error; }
+    const cached = this.objects.get(path); if (cached && !fresh) return cached;
+    try {
+      const found = (await this.listAll(parent)).find(file => file.path === path);
+      if (!found) { this.objects.delete(path); this.verified.delete(path); }
+      return found;
+    }
+    catch (error) { if (error instanceof VaultSailError && error.code === 'not-found') { this.objects.delete(path); this.verified.delete(path); return undefined; } throw error; }
   }
   async exists(path: string): Promise<boolean> { return Boolean(await this.find(path)); }
   async mkdir(directory: string): Promise<void> {
@@ -95,10 +111,11 @@ export class BaiduProvider implements CloudStorageProvider {
       if (existing) { if (!existing.isDirectory) throw new VaultSailError('collision', '远端目录位置已被文件占用。'); continue; }
       await this.retry(async () => {
         try { const result = await this.api(XPAN + 'file', { method: 'create' }, { path: this.absolute(path), isdir: '1', rtype: '0' });
-          if (result.path !== this.absolute(path) || result.isdir !== 1) throw new VaultSailError('response', '目录创建结果不符合请求。'); }
+          if (result.path !== this.absolute(path) || result.isdir !== 1) throw new VaultSailError('response', '目录创建结果不符合请求。');
+          this.objects.set(path, { path, size: 0, isDirectory: true }); }
         catch (error) {
           if (error instanceof VaultSailError && (error.retryable || error.code === 'exists')) {
-            const found = await this.find(path); if (found?.isDirectory) return;
+            const found = await this.find(path, true); if (found?.isDirectory) return;
           }
           throw error;
         }
@@ -126,15 +143,19 @@ export class BaiduProvider implements CloudStorageProvider {
   }
   async writeImmutable(path: string, data: ArrayBuffer): Promise<void> {
     relativePath(path); checkSize(data.byteLength); this.guard(); const expected = hash(data);
-    const verify = async (): Promise<boolean> => {
-      if (!await this.exists(path)) return false;
+    const verify = async (fresh = false): Promise<boolean> => {
+      if (!await this.find(path, fresh)) return false;
       if (hash(await this.read(path)) !== expected) throw new VaultSailError('integrity', '不可变对象已存在但内容不同，禁止覆盖。');
+      const object = this.objects.get(path); const fingerprint = object && this.fingerprint(object);
+      if (fingerprint) this.verified.set(path, { fingerprint, hash: expected });
       return true;
     };
     if (await verify()) return;
     if (path.includes('/')) await this.mkdir(path.slice(0, path.lastIndexOf('/')));
+    let firstAttempt = true;
     await this.retry(async () => {
-      if (await verify()) return;
+      if (!firstAttempt && await verify(true)) return;
+      firstAttempt = false;
       try {
         const chunks: Uint8Array[] = [];
         for (let offset = 0; offset < data.byteLength; offset += CHUNK) chunks.push(new Uint8Array(data.slice(offset, offset + CHUNK)));
@@ -155,9 +176,12 @@ export class BaiduProvider implements CloudStorageProvider {
         }
         const result = await this.api(XPAN + 'file', { method: 'create' }, { ...base, uploadid: pre.uploadid });
         if (result.path !== this.absolute(path) || result.size !== data.byteLength) throw new VaultSailError('response', '创建文件结果与请求不一致。');
+        const id = typeof result.fs_id === 'string' && /^\d+$/.test(result.fs_id) ? result.fs_id
+          : typeof result.fs_id === 'number' && Number.isSafeInteger(result.fs_id) ? String(result.fs_id) : undefined;
+        if (id) this.objects.set(path, { path, size: data.byteLength, id, isDirectory: false, etag: this.etag(result, data.byteLength) });
         if (!await verify()) throw new VaultSailError('visibility', '已提交对象尚不可见，结果未确认。', true);
       } catch (error) {
-        if (error instanceof VaultSailError && (error.retryable || error.code === 'exists')) { if (await verify()) return; }
+        if (error instanceof VaultSailError && (error.retryable || error.code === 'exists')) { if (await verify(true)) return; }
         throw error;
       }
     });

@@ -3,7 +3,8 @@ import test from 'node:test';
 import { md5 } from '@noble/hashes/legacy';
 import { bytesToHex } from '@noble/hashes/utils';
 import { BaiduProvider, listAll } from '../src/providers/baidu-provider.ts';
-import { bytes, hash, MAX_FILE_SIZE, VaultSailError } from '../src/core/safety.ts';
+import { bytes, hash, MAX_FILE_SIZE, uuid, VaultSailError } from '../src/core/safety.ts';
+import { RemoteVaultStore, type Revision } from '../src/sync/remote-vault.ts';
 import { apiSuccess, request, type HttpRequest, type HttpResponse } from '../src/providers/http.ts';
 
 function harness() {
@@ -24,7 +25,8 @@ function harness() {
       case 'list': {
         const dir = query.get('dir')!; if (!dirs.has(dir)) return response({ errno: -9 });
         const prefix = dir + '/'; const entries = [...files.keys(), ...dirs].filter(path => path.startsWith(prefix) && !path.slice(prefix.length).includes('/'))
-          .map(path => ({ path, size: files.get(path)?.byteLength ?? 0, isdir: dirs.has(path) ? 1 : 0, fs_id: ids.get(path) ?? '0' })).sort((a, b) => a.path.localeCompare(b.path));
+          .map(path => ({ path, size: files.get(path)?.byteLength ?? 0, isdir: dirs.has(path) ? 1 : 0, fs_id: ids.get(path) ?? '0',
+            ...(files.has(path) ? { md5: bytesToHex(md5(new Uint8Array(files.get(path)!))), server_mtime: 123 } : {}) })).sort((a, b) => a.path.localeCompare(b.path));
         const offset = Number(query.get('start')); return response({ errno: 0, list: entries.slice(offset, offset + Number(query.get('limit'))) });
       }
       case 'precreate': {
@@ -51,7 +53,7 @@ function harness() {
         for (let i = 0; i < upload.blocks.length; i++) { const chunk = new Uint8Array(upload.chunks.get(i)!); data.set(chunk, offset); offset += chunk.length; }
         assert.equal(offset, upload.size); files.set(path, data.buffer); ids.set(path, String(ids.size + 1));
         if (lost) { lost = false; throw new Error('private-access response lost'); }
-        return response({ errno: 0, path, size: data.byteLength, fs_id: ids.get(path) });
+        return response({ errno: 0, path, size: data.byteLength, fs_id: ids.get(path), md5: bytesToHex(md5(data)), mtime: 123 });
       }
       case 'filemetas': {
         const requested = String(JSON.parse(query.get('fsids')!)[0]); const path = [...ids].find(([, id]) => id === requested)![0];
@@ -75,6 +77,53 @@ test('lost create response is verified before retry and immutable conflicts neve
   const h = harness(); h.setLost(); await h.provider.writeImmutable('test/file.bin', bytes('A'));
   assert.equal(h.counts().createCalls, 1); await h.provider.writeImmutable('test/file.bin', bytes('A')); assert.equal(h.counts().createCalls, 1);
   await assert.rejects(h.provider.writeImmutable('test/file.bin', bytes('B')), { code: 'integrity' }); assert.equal(hash(h.files.get('/apps/中文应用/test/file.bin')!), hash(bytes('A')));
+});
+test('small note publication reduces request overhead while both content and record receive full readback', async () => {
+  const h = harness(); let counts = new Map<string, number>();
+  const provider = new BaiduProvider('/apps/中文应用', async input => {
+    const url = new URL(input.url); const key = url.pathname.startsWith('/file/') ? 'download' : url.searchParams.get('method')!;
+    counts.set(key, (counts.get(key) ?? 0) + 1); return h.transport(input);
+  }, { accessToken: async () => 'private-access' });
+  const remote = new RemoteVaultStore(provider); const vault = await remote.create('请求预算测试'); const deviceId = uuid();
+  for (let i = 0; i < 2; i++) {
+    counts = new Map(); await remote.revisions(vault.vaultId); const data = bytes('synthetic-note-' + i);
+    const op: Revision = { schemaVersion: 1, vaultId: vault.vaultId, opId: uuid(), deviceId, fileId: uuid(), path: 'note-' + i + '.md', parents: [], kind: 'update', hash: hash(data), size: data.byteLength, createdAt: 1 };
+    await remote.publish(vault.vaultId, op, data);
+    assert.ok([...counts.values()].reduce((sum, count) => sum + count, 0) <= 20, 'small files should not repeat ancestor checks');
+    assert.ok(counts.get('list')! <= 6); assert.equal(counts.get('download'), 2, 'content and operation record must both be downloaded and verified');
+  }
+  // Fresh listings discover new operations written through a separate device/provider.
+  const other = new RemoteVaultStore(new BaiduProvider('/apps/中文应用', h.transport, { accessToken: async () => 'private-access' }));
+  const data = bytes('other-device'); const op: Revision = { schemaVersion: 1, vaultId: vault.vaultId, opId: uuid(), deviceId: uuid(), fileId: uuid(), path: 'other.md', parents: [], kind: 'update', hash: hash(data), size: data.byteLength, createdAt: 1 };
+  await other.publish(vault.vaultId, op, data); assert.equal((await remote.revisions(vault.vaultId)).length, 3);
+});
+test('verified fingerprints are invalidated by fresh changed metadata or missing server digests', async () => {
+  const h = harness(); const path = 'cache/note.bin'; await h.provider.writeImmutable(path, bytes('A'));
+  const entry = (await h.provider.listAll('cache'))[0]; assert.equal(h.provider.verifiedContentHash(entry), hash(bytes('A')));
+  assert.equal(h.provider.verifiedContentHash({ ...entry, id: 'another-id' }), undefined);
+  assert.equal(h.provider.verifiedContentHash({ ...entry, etag: undefined }), undefined);
+  h.files.set('/apps/中文应用/' + path, bytes('B')); const changed = (await h.provider.listAll('cache'))[0];
+  assert.equal(h.provider.verifiedContentHash(changed), undefined);
+  await assert.rejects(h.provider.writeImmutable(path, bytes('A')), { code: 'integrity' });
+});
+test('vault and revision caches stop on same-size corruption, and uncoded fingerprints never hide changes', async () => {
+  for (const omitFingerprint of [false, true]) {
+    const h = harness(); const provider = new BaiduProvider('/apps/中文应用', async input => {
+      const result = await h.transport(input);
+      if (omitFingerprint && input.url.includes('method=list')) for (const entry of (result.json as { list?: Record<string, unknown>[] }).list ?? []) { delete entry.md5; delete entry.server_mtime; }
+      return result;
+    }, { accessToken: async () => 'private-access' });
+    const remote = new RemoteVaultStore(provider); const vault = await remote.create('缓存校验'); const data = bytes('note');
+    const op: Revision = { schemaVersion: 1, vaultId: vault.vaultId, opId: uuid(), deviceId: uuid(), fileId: uuid(), path: 'note.md', parents: [], kind: 'update', hash: hash(data), size: data.byteLength, createdAt: 1 };
+    await remote.publish(vault.vaultId, op, data); await remote.revisions(vault.vaultId);
+    const opPath = '/apps/中文应用/' + remote.base(vault.vaultId) + '/ops/' + op.deviceId + '/' + op.opId + '.json';
+    const original = h.files.get(opPath)!; h.files.set(opPath, bytes(new TextDecoder().decode(original).replace('"schemaVersion":1', '"schemaVersion":2')));
+    assert.equal(h.files.get(opPath)!.byteLength, original.byteLength); await assert.rejects(remote.revisions(vault.vaultId), { code: 'schema' });
+    h.files.set(opPath, original);
+    const manifestPath = '/apps/中文应用/' + remote.base(vault.vaultId) + '/vault.json';
+    const manifest = h.files.get(manifestPath)!; h.files.set(manifestPath, bytes(new TextDecoder().decode(manifest).replace('"schemaVersion":1', '"schemaVersion":2')));
+    assert.equal(h.files.get(manifestPath)!.byteLength, manifest.byteLength); await assert.rejects(remote.get(vault.vaultId), { code: 'schema' });
+  }
 });
 test('only explicit expiry refreshes token; permission errors remain distinct and sanitized', async () => {
   const h = harness(); h.setExpired(); await h.provider.profile(); assert.equal(h.counts().refreshes, 1);
