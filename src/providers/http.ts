@@ -2,13 +2,29 @@ import { record, VaultSailError } from '../core/safety.ts';
 export interface HttpRequest { url: string; method?: string; headers?: Record<string, string>; body?: string | ArrayBuffer; }
 export interface HttpResponse { status: number; headers: Record<string, string>; json?: unknown; bytes: ArrayBuffer; }
 export type HttpTransport = (request: HttpRequest) => Promise<HttpResponse>;
+export interface RequestPolicy { timeoutMs?: number; signal?: AbortSignal; }
 export function urlWith(base: string, params: Record<string, string>): string {
   const url = new URL(base); for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value); return url.toString();
 }
-export async function request(transport: HttpTransport, input: HttpRequest, allowOAuthError = false): Promise<HttpResponse> {
+export async function request(transport: HttpTransport, input: HttpRequest, allowOAuthError = false, policy: RequestPolicy = {}): Promise<HttpResponse> {
+  if (policy.signal?.aborted) throw new VaultSailError('cancelled', '请求已取消。');
+  const pending = Promise.resolve().then(() => transport(input)).catch(() => { throw new VaultSailError('network', '网络请求失败；远端状态未知，请重试。', true); });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let abort: (() => void) | undefined;
   let result: HttpResponse;
-  try { result = await transport(input); }
-  catch { throw new VaultSailError('network', '网络请求失败；远端状态未知，请重试。', true); }
+  try {
+    result = await Promise.race([pending, new Promise<never>((_, reject) => {
+      if (policy.timeoutMs) timer = setTimeout(() => reject(new VaultSailError('timeout', '百度授权请求超时，请检查网络后重新连接。', true)), policy.timeoutMs);
+      if (policy.signal) {
+        abort = () => reject(new VaultSailError('cancelled', '请求已取消。'));
+        policy.signal.addEventListener('abort', abort, { once: true });
+        if (policy.signal.aborted) abort();
+      }
+    })]);
+  } finally {
+    if (timer) clearTimeout(timer);
+    if (abort) policy.signal?.removeEventListener('abort', abort);
+  }
   if (result.status === 429 || result.status >= 500) {
     const value = Object.entries(result.headers).find(([key]) => key.toLowerCase() === 'retry-after')?.[1];
     const delay = value ? (/^\d+$/.test(value) ? Number(value) * 1000 : Math.max(0, Date.parse(value) - Date.now())) : 0;

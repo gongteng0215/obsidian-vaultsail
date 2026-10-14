@@ -102,3 +102,10 @@ test('HTTP retry-after is honored and transport errors never expose credentials'
   await assert.rejects(request(async () => ({ status: 429, headers: { 'Retry-After': '9' }, bytes: new ArrayBuffer(0) }), { url: 'https://example.invalid/?token=private' }), e => e instanceof VaultSailError && e.retryAfter === 9000);
   await assert.rejects(request(async () => { throw new Error('private-token'); }, { url: 'https://example.invalid/?token=private' }), e => e instanceof VaultSailError && !e.message.includes('private'));
 });
+test('hanging authorization request times out and cancellation does not wait for the native transport', async () => {
+  const hanging = async (): Promise<HttpResponse> => new Promise(() => {});
+  await assert.rejects(request(hanging, { url: 'https://example.invalid' }, true, { timeoutMs: 15 }), { code: 'timeout' });
+  const controller = new AbortController();
+  const pending = request(hanging, { url: 'https://example.invalid' }, true, { timeoutMs: 10000, signal: controller.signal }); controller.abort();
+  await assert.rejects(pending, { code: 'cancelled' });
+});

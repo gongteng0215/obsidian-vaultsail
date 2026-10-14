@@ -35,7 +35,9 @@ test('cancelled authorization response cannot save tokens', async () => {
 test('configuration changes invalidate late device response', async () => {
   let finish!: (value: HttpResponse) => void;
   const { auth, config, map } = setup(() => new Promise(resolve => { finish = resolve; }));
-  const pending = auth.connect(() => {}); config.appKey = 'other-app'; finish(response(device));
+  const pending = auth.connect(() => {});
+  for (let i = 0; i < 10 && !finish; i++) await Promise.resolve();
+  config.appKey = 'other-app'; finish(response(device));
   await assert.rejects(pending, { code: 'cancelled' }); assert.equal(map.size, 1);
 });
 test('only explicit unsupported authorization enables code fallback', async () => {
@@ -78,4 +80,18 @@ test('OAuth errors on HTTP 400 still provide classified fallback and reject succ
   const { auth } = setup(async () => ({ ...response({ error: 'unsupported_response_type' }), status: 400 }));
   await assert.rejects(auth.connect(() => {}), { code: 'unsupported_response_type' }); assert.equal(auth.fallbackAllowed, true);
   const second = setup(async () => ({ ...response(tokens), status: 400 })); await assert.rejects(second.auth.connect(() => {}), { code: 'http' });
+});
+test('reserved session selection is rejected before disconnect can erase the selected secret', async () => {
+  const { auth, config, map } = setup(async () => { throw new Error('must not contact OAuth'); });
+  config.sessionRef = 'vaultsail-session-test'; config.secretRef = config.sessionRef; map.set(config.secretRef, 'user-entered-secret');
+  assert.equal(auth.status(), 'unconfigured'); assert.match(auth.configurationIssue()!, /授权会话/);
+  await assert.rejects(auth.connect(() => {}), e => e instanceof VaultSailError && e.code === 'configuration' && e.message.includes('重新保存'));
+  assert.equal(map.get(config.secretRef), 'user-entered-secret'); auth.disconnect(); assert.equal(map.get(config.secretRef), 'user-entered-secret');
+});
+test('missing AppKey, missing reference and empty secret have distinct actionable messages', () => {
+  const { auth, config, map } = setup(async () => response(tokens));
+  config.appKey = ''; assert.match(auth.configurationIssue()!, /AppKey 尚未保存/);
+  config.appKey = 'saved-app'; config.secretRef = ''; assert.match(auth.configurationIssue()!, /SecretKey 尚未保存/);
+  config.secretRef = 'own-secret'; map.set(config.secretRef, ''); assert.match(auth.configurationIssue()!, /存储项为空/);
+  map.set(config.secretRef, 'saved-secret'); assert.equal(auth.configurationIssue(), null);
 });

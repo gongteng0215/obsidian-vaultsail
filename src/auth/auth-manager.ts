@@ -37,18 +37,25 @@ export class AuthManager {
     } catch { return null; }
   }
   status(): AuthStatus {
-    const cfg = this.config();
-    if (!cfg.appKey || !this.store.get(cfg.secretRef)) return 'unconfigured';
+    if (this.configurationIssue()) return 'unconfigured';
     if (this.statusValue === 'pending' || this.statusValue === 'reauthorize') return this.statusValue;
     return this.token() ? 'connected' : 'disconnected';
   }
+  configurationIssue(): string | null {
+    const cfg = this.config();
+    if (!cfg.appKey.trim()) return 'AppKey 尚未保存，请填写后点击保存。';
+    if (!cfg.secretRef) return 'SecretKey 尚未保存，请在密钥输入框填写后点击保存。';
+    if (cfg.secretRef.startsWith('vaultsail-session-')) return '旧版选中了授权会话项，并不是可用的应用密钥。请在 SecretKey 输入框重新保存一次。';
+    if (!this.store.get(cfg.secretRef)?.trim()) return 'SecretKey 存储项为空或不可用，请重新保存密钥；AppKey 无需重填。';
+    return null;
+  }
   private credentials(): { cfg: AuthConfig; secret: string } {
+    const issue = this.configurationIssue(); if (issue) throw new VaultSailError('configuration', issue);
     const cfg = { ...this.config() }; const secret = this.store.get(cfg.secretRef);
-    if (!cfg.appKey || !secret) throw new VaultSailError('configuration', '请先在本地配置自己的 AppKey 和 SecretKey。');
-    return { cfg, secret };
+    return { cfg, secret: secret! };
   }
   private async oauth(path: string, params: Record<string, string>): Promise<Record<string, unknown>> {
-    const response = await request(this.transport, { url: urlWith(OAUTH + path, params) }, true);
+    const response = await request(this.transport, { url: urlWith(OAUTH + path, params) }, true, { timeoutMs: 15000, signal: this.controller.signal });
     const result = record(response.json);
     if (typeof result.error === 'string') {
       const code = Object.hasOwn(ERRORS, result.error) ? result.error : 'oauth';
@@ -71,10 +78,14 @@ export class AuthManager {
     this.store.set(cfg.sessionRef, JSON.stringify(tokens)); this.statusValue = 'connected'; return tokens.accessToken;
   }
   cancel(): void { this.generation++; this.controller.abort(); this.controller = new AbortController(); this.statusValue = 'disconnected'; }
-  disconnect(): void { this.cancel(); this.store.remove(this.config().sessionRef); this.fallbackAllowed = false; }
+  disconnect(): void {
+    this.cancel(); const cfg = this.config();
+    if (cfg.secretRef !== cfg.sessionRef) this.store.remove(cfg.sessionRef);
+    this.fallbackAllowed = false;
+  }
   async connect(onDevice: (session: DeviceSession) => void): Promise<void> {
-    this.disconnect(); this.fallbackAllowed = false;
-    const { cfg, secret } = this.credentials(); const generation = this.generation;
+    const { cfg, secret } = this.credentials();
+    this.disconnect(); this.fallbackAllowed = false; const generation = this.generation;
     this.statusValue = 'pending'; const signal = this.controller.signal;
     try {
       const device = await this.oauth('device/code', { response_type: 'device_code', client_id: cfg.appKey, scope: 'basic,netdisk' });

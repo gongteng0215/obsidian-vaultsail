@@ -16,7 +16,12 @@ export class ObsidianCredentials implements CredentialStore {
   constructor(app: App) { this.app = app; }
   get(id: string): string | null { return id ? this.app.secretStorage.getSecret(id) : null; }
   set(id: string, value: string): void { this.app.secretStorage.setSecret(id, value); }
-  remove(id: string): void { if (id) this.app.secretStorage.setSecret(id, ''); }
+  remove(id: string): void {
+    const storage = this.app.secretStorage as App['secretStorage'] & { deleteSecret?: (key: string) => boolean };
+    if (!id || storage.getSecret(id) === null) return;
+    if (typeof storage.deleteSecret === 'function') storage.deleteSecret(id);
+    else storage.setSecret(id, '');
+  }
 }
 export function deviceIdentity(app: App): string {
   const existing: unknown = app.loadLocalStorage('vaultsail-device-id');

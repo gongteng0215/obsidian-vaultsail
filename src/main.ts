@@ -15,6 +15,8 @@ export default class VaultSailPlugin extends Plugin {
   deviceId = '';
   local!: ObsidianLocalFiles;
   deviceSession?: DeviceSession;
+  authPhase: 'idle' | 'requesting' | 'waiting' = 'idle';
+  browserRequested = false;
   statusText = '请配置自己的百度应用。';
   busy = false;
   private generation = 0;
@@ -62,11 +64,18 @@ export default class VaultSailPlugin extends Plugin {
     catch (error) { this.lastErrorCode = error instanceof VaultSailError ? error.code : 'unknown'; this.statusText = safeMessage(error); new Notice(this.statusText, 9000); }
     finally { this.busy = false; this.refreshUI(); }
   }
-  pause(): void { this.engine?.pause(); this.statusText = '已请求暂停，等待当前请求结束。'; }
+  pause(): void { this.engine?.pause(); if (this.authPhase === 'idle') this.statusText = '已请求暂停，等待当前请求结束。'; }
   async changeConfiguration(update: Partial<VaultSailSettings>): Promise<void> {
     this.pause(); this.generation++; this.engine = undefined; this.auth?.disconnect(); this.deviceSession = undefined;
     this.settings = { ...this.settings, ...update, binding: undefined, deletionEnabled: false };
     await this.saveSettings(); this.statusText = '配置已变更，请重新连接并验证权限。';
+  }
+  async saveAppSecret(secret: string): Promise<void> {
+    const value = secret.trim();
+    if (!value || /\s/.test(value)) throw new VaultSailError('configuration', '请输入完整的 SecretKey，不能包含空白字符。');
+    const ref = 'vaultsail-app-secret-' + this.deviceId;
+    new ObsidianCredentials(this.app).set(ref, value);
+    await this.changeConfiguration({ secretRef: ref });
   }
   provider(): BaiduProvider {
     if (this.settings.providerId !== 'baidu') throw new VaultSailError('configuration', '请先选择百度网盘。');
@@ -74,14 +83,27 @@ export default class VaultSailPlugin extends Plugin {
     return new BaiduProvider(root, obsidianTransport, this.auth, () => this.alive && generation === this.generation);
   }
   async connect(): Promise<void> {
-    this.pause(); this.generation++; this.engine = undefined; this.settings.binding = undefined; await this.saveSettings();
+    const issue = this.auth.configurationIssue(); if (issue) throw new VaultSailError('configuration', issue);
+    this.authPhase = 'requesting'; this.browserRequested = false; this.statusText = '正在申请百度设备授权，请稍候…'; this.refreshUI();
+    this.generation++; this.engine?.pause(); this.engine = undefined; this.settings.binding = undefined;
     this.deviceSession = undefined;
-    try { await this.auth.connect(session => { this.deviceSession = session; this.statusText = '请打开百度官方页面，输入验证码完成授权。'; this.refreshUI(); });
-      const profile = await this.provider().profile(); this.statusText = profile.label + ' 已授权';
-    } finally { this.deviceSession = undefined; }
+    try {
+      await this.saveSettings();
+      await this.auth.connect(session => {
+        this.deviceSession = session; this.authPhase = 'waiting';
+        try { window.open(session.verificationUrl, '_blank', 'noopener,noreferrer'); this.browserRequested = true; }
+        catch { this.browserRequested = false; }
+        this.statusText = this.browserRequested ? '已请求打开百度授权页；请在浏览器完成授权。未弹出时可点击下面的打开按钮。' : '浏览器未能自动打开，请点击打开百度授权页面。';
+        new Notice('设备授权码已就绪，请在百度官方页面完成授权。', 8000); this.refreshUI();
+      });
+      this.statusText = '百度授权已完成。'; new Notice('百度授权成功。应用目录可在传输前配置。', 7000);
+    } finally { this.deviceSession = undefined; this.authPhase = 'idle'; }
+  }
+  cancelAuthorization(): void {
+    this.auth.cancel(); this.deviceSession = undefined; this.authPhase = 'idle'; this.statusText = '已取消本次授权，可重新连接。'; this.refreshUI();
   }
   async disconnect(): Promise<void> {
-    this.pause(); this.generation++; this.auth.disconnect(); this.deviceSession = undefined; this.engine = undefined;
+    this.pause(); this.generation++; this.auth.disconnect(); this.deviceSession = undefined; this.authPhase = 'idle'; this.engine = undefined;
     this.settings.binding = undefined; this.settings.deletionEnabled = false; await this.saveSettings();
   }
   async checkAccess(): Promise<void> {
@@ -150,7 +172,7 @@ export default class VaultSailPlugin extends Plugin {
   diagnostics(): string {
     const b = this.settings.binding;
     const checked = b ? this.app.loadLocalStorage(this.validationKey(b.accountHash)) : null;
-    return JSON.stringify({ pluginVersion: '0.1.2', authorized: this.auth.status() === 'connected', bound: Boolean(this.settings.binding),
+    return JSON.stringify({ pluginVersion: this.manifest.version, authorized: this.auth.status() === 'connected', bound: Boolean(this.settings.binding),
       experimentalSync: this.settings.experimentalSync, deletionEnabled: this.settings.deletionEnabled,
       lastErrorCode: this.lastErrorCode ?? null, localRoundtrip: checked ? { passed: checked.passed === true, checkedAt: checked.checkedAt, results: checked.results, quota: checked.quota } : null,
       realDeviceValidation: '用户在本设备完成；开发者未验证真实账号或 iPad', maxFileMiB: 20 }, null, 2);
