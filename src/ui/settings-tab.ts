@@ -67,6 +67,8 @@ export class VaultSailSettingTab extends PluginSettingTab {
     const advanced = panels.get('transfer')!.createEl('details', { cls: 'vaultsail-advanced' }); advanced.createEl('summary', { text: '实验功能与诊断' });
     const advancedCard = advanced.createDiv({ cls: 'vaultsail-card' });
     selectTab(this.activeTab);
+    if (!p.settings.binding) new Setting(transferCard).setName('先选择云端知识库').setDesc('目录已配置不代表库已绑定。首次使用创建新库；已有其他设备时选择同一个云端库。')
+      .addButton(button => button.setButtonText('前往云端知识库').onClick(() => selectTab('vault')));
     new Setting(appCard).setName('云端服务').addDropdown(dropdown => dropdown.addOption('none', '未配置').addOption('baidu', '百度网盘').setValue(p.settings.providerId)
       .setDisabled(p.busy).onChange(value => { void p.changeConfiguration({ providerId: value as 'none' | 'baidu' }).catch(error => new Notice(safeMessage(error))); }));
     const guide = new Setting(appCard).setName('应用接入').setDesc('使用自己的百度应用。已有 AppKey 和 SecretKey，可直接填写。');

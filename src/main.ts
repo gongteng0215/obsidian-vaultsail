@@ -7,7 +7,7 @@ import { BaiduProvider } from './providers/baidu-provider';
 import { ObsidianCredentials, ObsidianLocalFiles, ObsidianStateStore, deviceIdentity, obsidianTransport } from './platform/obsidian-adapters';
 import { RemoteVaultStore } from './sync/remote-vault';
 import { SyncEngine, type SyncPlan } from './sync/engine';
-import { PlanModal } from './ui/modals';
+import { CloudVaultSetupModal, PlanModal } from './ui/modals';
 
 export default class VaultSailPlugin extends Plugin {
   settings: VaultSailSettings = { ...DEFAULT_SETTINGS };
@@ -61,7 +61,10 @@ export default class VaultSailPlugin extends Plugin {
     if (this.busy) { new Notice('已有操作在运行，请先暂停或等待结束。'); return; }
     this.busy = true; this.statusText = label; this.refreshUI();
     try { await action(); this.lastErrorCode = undefined; this.statusText = '操作完成。'; }
-    catch (error) { this.lastErrorCode = error instanceof VaultSailError ? error.code : 'unknown'; this.statusText = safeMessage(error); new Notice(this.statusText, 9000); }
+    catch (error) {
+      this.lastErrorCode = error instanceof VaultSailError ? error.code : 'unknown'; this.statusText = safeMessage(error); new Notice(this.statusText, 9000);
+      if (this.lastErrorCode === 'binding' && this.auth.status() === 'connected') this.openCloudSetup();
+    }
     finally { this.busy = false; this.refreshUI(); }
   }
   pause(): void { this.engine?.pause(); if (this.authPhase === 'idle') this.statusText = '已请求暂停，等待当前请求结束。'; }
@@ -131,14 +134,31 @@ export default class VaultSailPlugin extends Plugin {
     const vault = await new RemoteVaultStore(provider).get(vaultId);
     this.pause(); this.generation++; this.engine = undefined; this.settings.remoteVaultId = vaultId;
     this.settings.binding = { vaultId, appKey: this.settings.appKey, root: provider.root, accountHash, displayName: vault.displayName };
-    await this.saveSettings();
+    await this.saveSettings(); this.lastErrorCode = undefined; this.statusText = '已绑定云端库：' + vault.displayName;
   }
   async createVault(name: string): Promise<void> {
     const store = new RemoteVaultStore(this.provider()); const vault = await store.create(name); await this.bind(vault.vaultId);
   }
+  openCloudSetup(): void {
+    const guarded = async <T>(action: () => Promise<T>): Promise<T> => {
+      if (this.busy) throw new VaultSailError('busy', '已有操作在运行，请稍候再试。');
+      this.busy = true; this.refreshUI();
+      try { return await action(); } finally { this.busy = false; this.refreshUI(); }
+    };
+    new CloudVaultSetupModal(this.app, this.app.vault.getName(), {
+      create: name => guarded(() => this.createVault(name)),
+      list: () => guarded(() => new RemoteVaultStore(this.provider()).listVaults()),
+      bind: id => guarded(() => this.bind(id)),
+      roundtrip: () => guarded(() => this.roundtrip()),
+    }).open();
+  }
   private async getEngine(): Promise<SyncEngine> {
-    const provider = this.provider(); const profile = await provider.profile(); const b = this.settings.binding; const accountHash = hash(bytes(profile.accountId));
-    if (!b || b.appKey !== this.settings.appKey || b.root !== provider.root || b.accountHash !== accountHash) throw new VaultSailError('binding', '账号或目录未绑定，请重新选择云端库。');
+    const b = this.settings.binding;
+    if (!b) throw new VaultSailError('binding', '尚未绑定云端知识库，请创建新库或选择已有库。');
+    const provider = this.provider();
+    if (b.appKey !== this.settings.appKey || b.root !== provider.root) throw new VaultSailError('binding', '应用或目录已变更，请重新选择并验证云端库。');
+    const profile = await provider.profile(); const accountHash = hash(bytes(profile.accountId));
+    if (b.accountHash !== accountHash) throw new VaultSailError('binding', '百度账号与原绑定不一致，请为当前账号重新选择云端库。');
     const validation = this.app.loadLocalStorage(this.validationKey(accountHash));
     if (!validation?.passed) throw new VaultSailError('permission', '请先运行本设备的文件往返测试，确认上传下载权限。');
     if (this.engine) return this.engine;

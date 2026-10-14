@@ -55,6 +55,42 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   await plugin.run('connect', () => plugin.connect()); assert.equal(plugin.auth.status(), 'connected'); assert.equal(plugin.busy, false);
   assert.deepEqual(openedUrls, ['https://openapi.baidu.com/device']); assert.equal(plugin.authPhase, 'idle');
   assert.equal(document.body.innerHTML.includes('private-access'), false); assert.equal(JSON.stringify(plugin.saved).includes('private-refresh'), false);
+  const originalProvider = plugin.provider; const remoteObjects = new Map<string, ArrayBuffer>(); let providerCalls = 0;
+  const fakeProvider = { root: '/apps/test', profile: async () => ({ accountId: '1234', label: 'test' }),
+    mkdir: async () => {}, writeImmutable: async (key: string, data: ArrayBuffer) => { remoteObjects.set(key, data.slice(0)); },
+    read: async (key: string) => { assert.ok(remoteObjects.has(key)); return remoteObjects.get(key)!.slice(0); },
+    exists: async () => true,
+    list: async () => ({ complete: true, objects: [...remoteObjects.keys()].map(key => ({ path: key.slice(0, key.lastIndexOf('/')), isDirectory: true, size: 0 })) }),
+  };
+  plugin.provider = () => { providerCalls++; return fakeProvider; };
+  const setupButton = (label: string) => [...document.querySelectorAll('button')].filter(button => button.textContent === label).at(-1)!;
+  setupButton('前往云端知识库').click(); assert.equal(document.querySelector('#vaultsail-tab-vault')?.getAttribute('aria-selected'), 'true');
+  await plugin.run('preview', () => plugin.preview('upload'));
+  assert.equal(providerCalls, 0, 'missing binding must guide setup before accessing remote content');
+  assert.ok(document.body.textContent!.includes('先选择一个云端知识库'));
+  // The setup wizard creates only cloud metadata after explicit confirmation, never transfers notes.
+  [...document.querySelectorAll('button')].filter(button => button.textContent === '创建并绑定').at(-1)!.click();
+  assert.equal(remoteObjects.size, 0); setupButton('确认').click();
+  for (let i = 0; i < 80 && !plugin.settings.binding; i++) await Promise.resolve();
+  for (let i = 0; i < 80 && plugin.busy; i++) await Promise.resolve();
+  assert.ok(plugin.settings.binding); assert.equal(plugin.settings.binding.displayName, '测试笔记库');
+  assert.equal(plugin.settings.binding.root, '/apps/test'); assert.equal(remoteObjects.size, 1); assert.equal(files.size, 0);
+  for (let i = 0; i < 80 && !document.body.textContent!.includes('云端库已绑定。请先运行文件往返测试'); i++) await Promise.resolve();
+  assert.ok(document.body.textContent!.includes('云端库已绑定。请先运行文件往返测试'));
+  setupButton('完成').click();
+  await plugin.run('preview', () => plugin.preview('upload'));
+  assert.match(plugin.statusText, /文件往返测试/); assert.equal(document.body.textContent!.includes('先选择一个云端知识库'), false);
+  plugin.settings.binding.accountHash = 'different-account';
+  await plugin.run('preview', () => plugin.preview('upload')); assert.match(plugin.statusText, /百度账号与原绑定不一致/);
+  setupButton('查看已有库').click();
+  for (let i = 0; i < 80 && ![...document.querySelectorAll('button')].some(button => button.textContent === '绑定此库'); i++) await Promise.resolve();
+  for (let i = 0; i < 80 && plugin.busy; i++) await Promise.resolve();
+  for (let i = 0; i < 80 && setupButton('绑定此库')?.disabled; i++) await Promise.resolve();
+  const existingId = plugin.settings.binding.vaultId; setupButton('绑定此库').click();
+  for (let i = 0; i < 80 && plugin.busy; i++) await Promise.resolve();
+  for (let i = 0; i < 80 && !document.body.textContent!.includes('云端库已绑定。请先运行文件往返测试'); i++) await Promise.resolve();
+  assert.equal(plugin.settings.binding.vaultId, existingId); assert.notEqual(plugin.settings.binding.accountHash, 'different-account');
+  setupButton('完成').click(); plugin.provider = originalProvider;
   await plugin.changeConfiguration({ appKey: 'different-app' }); assert.equal(plugin.auth.status(), 'disconnected'); assert.equal(plugin.settings.binding, undefined);
   assert.equal(secretMap.has('vaultsail-session-' + plugin.deviceId), false, 'missing session should not create an empty selectable secret');
   await plugin.saveAppSecret('replacement-private-secret');

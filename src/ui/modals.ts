@@ -1,6 +1,51 @@
 import { Modal, Setting, type App } from 'obsidian';
 import { safeMessage } from '../core/safety';
 import type { SyncPlan, PlanRow } from '../sync/engine';
+import type { RemoteVault } from '../sync/remote-vault';
+
+export class CloudVaultSetupModal extends Modal {
+  constructor(app: App, private localName: string, private actions: {
+    create: (name: string) => Promise<void>; list: () => Promise<RemoteVault[]>; bind: (id: string) => Promise<void>; roundtrip: () => Promise<void>;
+  }) { super(app); }
+  onOpen(): void {
+    this.titleEl.setText('先选择一个云端知识库');
+    this.contentEl.createEl('p', { text: '百度账号授权与云端库绑定是两步。应用目录只是存放位置；首次使用请创建新库，另一台设备请选择同一个已有库。' });
+    let name = this.localName; let busy = false;
+    const status = this.contentEl.createEl('p'); status.setAttribute('role', 'status');
+    const controls: { setDisabled: (disabled: boolean) => unknown }[] = [];
+    const perform = async (label: string, action: () => Promise<void>) => {
+      if (busy) return;
+      busy = true; controls.forEach(control => control.setDisabled(true)); status.setText(label);
+      try { await action(); } catch (error) { status.setText(safeMessage(error)); }
+      finally { busy = false; controls.forEach(control => control.setDisabled(false)); }
+    };
+    const done = () => { this.contentEl.empty(); this.contentEl.createEl('p', { text: '云端库已绑定。请先运行文件往返测试，再重新点击预览上传或预览下载。绑定不会自动传输笔记。' });
+      const result = this.contentEl.createEl('p'); result.setAttribute('role', 'status');
+      new Setting(this.contentEl).setName('验证上传下载权限').setDesc('已在本设备通过测试时，可以直接完成并重新预览。')
+        .addButton(button => button.setButtonText('运行文件往返测试').onClick(() => new ConfirmModal(this.app, '运行隔离文件测试', '将上传、下载约 24 MiB 独立测试数据，测试文件保留；不上传笔记。', async () => {
+          button.setDisabled(true); result.setText('正在验证文件往返…');
+          try { await this.actions.roundtrip(); result.setText('文件往返测试通过，可以重新预览传输。'); }
+          catch (error) { result.setText(safeMessage(error)); throw error; }
+          finally { button.setDisabled(false); }
+        }).open()));
+      new Setting(this.contentEl).addButton(button => button.setButtonText('完成').setCta().onClick(() => this.close())); };
+    new Setting(this.contentEl).setName('第一次使用：创建新库')
+      .addText(text => { controls.push(text); text.setValue(name).onChange(value => { name = value; }); })
+      .addButton(button => { controls.push(button); button.setButtonText('创建并绑定').setCta().onClick(() => {
+        if (busy) return;
+        const requestedName = name;
+        new ConfirmModal(this.app, '创建云端库', '将在当前应用目录下创建新库：' + requestedName, () => perform('正在创建并验证云端库…', async () => { await this.actions.create(requestedName); done(); })).open();
+      }); });
+    const list = this.contentEl.createDiv();
+    new Setting(this.contentEl).setName('已有其他设备：选择已有库')
+      .addButton(button => { controls.push(button); button.setButtonText('查看已有库').onClick(() => perform('正在读取云端库…', async () => {
+        const vaults = await this.actions.list(); list.empty();
+        status.setText(vaults.length ? '请选择要与本地笔记库配对的云端库。' : '当前目录下还没有云端库，请创建新库。');
+        for (const vault of vaults) new Setting(list).setName(vault.displayName).setDesc(vault.vaultId)
+          .addButton(bindButton => { controls.push(bindButton); bindButton.setDisabled(true).setButtonText('绑定此库').onClick(() => perform('正在验证并绑定…', async () => { await this.actions.bind(vault.vaultId); done(); })); });
+      })); });
+  }
+}
 
 const LABELS: Record<PlanRow['action'], string> = { upload: '上传', download: '下载', conflict: '冲突', skip: '跳过', noop: '无变化', 'delete-local': '移入本地回收区', 'delete-remote': '发布删除记录' };
 export class ConfirmModal extends Modal {
