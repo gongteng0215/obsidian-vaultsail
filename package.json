@@ -1,0 +1,21 @@
+{
+  "name": "obsidian-vaultsail",
+  "version": "0.1.1",
+  "private": true,
+  "description": "VaultSail: an extensible, safety-first multi-cloud sync plugin for Obsidian",
+  "license": "MIT",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc --noEmit && node esbuild.config.mjs production",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "probe:baidu": "node --experimental-strip-types scripts/baidu-smoke.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.17",
+    "esbuild": "^0.25.5",
+    "obsidian": "^1.8.10",
+    "typescript": "^5.8.3"
+  },
+  "type": "module"
+}

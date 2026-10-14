@@ -1,0 +1,14 @@
+node_modules/
+main.js
+*.map
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+*.log
+coverage/
+.vaultsail-state/
+# Plugin user settings and credentials must never be committed
+/data.json
+**/.obsidian/plugins/vaultsail/data.json
