@@ -21,6 +21,15 @@ VaultSail is an open-source Obsidian plugin project focused on safe cross-device
 
 The development-machine-only probe and mobile-friendly in-plugin D0 test are described in [D0_BAIDU_PROBE.md](docs/D0_BAIDU_PROBE.md). It validates limited OAuth token access and safe listing with mocks first. **No real Baidu account access has been validated.**
 
+## Install the D0 preview release
+
+1. Download `vaultsail-0.1.1.zip` from the [0.1.1 preview release](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.1.1).
+2. Extract the ZIP into an empty test Vault's `.obsidian/plugins/` directory. The resulting files must be `.obsidian/plugins/vaultsail/main.js`, `manifest.json`, and `styles.css`.
+3. Restart Obsidian, open **Settings → Community plugins**, enable community plugins if needed, then enable **VaultSail**. Requires Obsidian 1.5.0 or newer.
+4. Open **Settings → VaultSail** or run **VaultSail: Preview local vault file inventory (read-only)** from the command palette. The optional Baidu read-only probe requires your own authorized temporary token; see [probe instructions](docs/D0_BAIDU_PROBE.md).
+
+This is a D0 preview for local testing. Real cloud synchronization and iPad device validation are still pending.
+
 ## Development
 
 Requires Node.js 22+ and npm:
