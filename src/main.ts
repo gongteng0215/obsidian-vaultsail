@@ -1,13 +1,16 @@
-import { Notice, Plugin, requireApiVersion } from 'obsidian';
+import { Modal, Notice, Plugin, requireApiVersion } from 'obsidian';
 import { VaultSailSettingTab } from './ui/settings-tab';
 import { DEFAULT_SETTINGS, migrateSettings, type VaultSailSettings } from './config';
 import { AuthManager, type DeviceSession } from './auth/auth-manager';
 import { appRoot, bytes, hash, MAX_FILE_SIZE, safeMessage, uuid, VaultSailError } from './core/safety';
 import { BaiduProvider } from './providers/baidu-provider';
 import { ObsidianCredentials, ObsidianLocalFiles, ObsidianStateStore, deviceIdentity, obsidianTransport } from './platform/obsidian-adapters';
-import { RemoteVaultStore } from './sync/remote-vault';
+import { buildHeads, RemoteVaultStore } from './sync/remote-vault';
 import { SyncEngine, type SyncPlan } from './sync/engine';
 import { CloudVaultSetupModal, PlanModal } from './ui/modals';
+import { CONFIG_EXPORT_DIRECTORY, exportPortableConfig, parsePortableConfig } from './portable-config';
+import { ConfigExportModal, ConfigImportModal } from './ui/config-modals';
+import { formatBytes, type SyncProgress } from './sync/progress';
 
 export default class VaultSailPlugin extends Plugin {
   settings: VaultSailSettings = { ...DEFAULT_SETTINGS };
@@ -19,6 +22,9 @@ export default class VaultSailPlugin extends Plugin {
   browserRequested = false;
   statusText = '请配置自己的百度应用。';
   busy = false;
+  progress?: SyncProgress;
+  private progressListeners = new Set<(progress: SyncProgress) => void>();
+  private progressTimer?: ReturnType<typeof setInterval>;
   private generation = 0;
   private engine?: SyncEngine;
   private alive = true;
@@ -55,7 +61,21 @@ export default class VaultSailPlugin extends Plugin {
     await this.auditLocalRecovery();
   }
 
-  onunload(): void { this.alive = false; this.pause(); this.auth?.cancel(); }
+  onunload(): void { this.alive = false; this.pause(); this.auth?.cancel(); if (this.progressTimer) clearInterval(this.progressTimer); this.progressListeners.clear(); }
+  subscribeProgress(listener: (progress: SyncProgress) => void): () => void {
+    this.progressListeners.add(listener); if (this.progress) listener(this.progress); return () => this.progressListeners.delete(listener);
+  }
+  private publishProgress(progress: SyncProgress): void {
+    if (!this.alive) return;
+    this.progress = { ...progress };
+    const notify = () => {
+      this.settingTab?.updateProgress();
+      for (const listener of this.progressListeners) { try { listener(this.progress!); } catch { /* UI observers cannot affect writes. */ } }
+    };
+    notify();
+    if (['preview-ready', 'completed', 'paused', 'failed'].includes(progress.phase)) { if (this.progressTimer) clearInterval(this.progressTimer); this.progressTimer = undefined; }
+    else if (!this.progressTimer) this.progressTimer = setInterval(notify, 1000);
+  }
   refreshUI(): void { if (this.alive && this.settingTab?.containerEl.isConnected) this.settingTab.display(); }
   async run(label: string, action: () => Promise<void>): Promise<void> {
     if (this.busy) { new Notice('已有操作在运行，请先暂停或等待结束。'); return; }
@@ -83,7 +103,9 @@ export default class VaultSailPlugin extends Plugin {
   provider(): BaiduProvider {
     if (this.settings.providerId !== 'baidu') throw new VaultSailError('configuration', '请先选择百度网盘。');
     const root = appRoot(this.settings.appDirectory); const generation = this.generation;
-    return new BaiduProvider(root, obsidianTransport, this.auth, () => this.alive && generation === this.generation);
+    return new BaiduProvider(root, obsidianTransport, this.auth, () => this.alive && generation === this.generation, phase => {
+      if (this.progress && this.busy && !['scanning-remote', 'scanning-local', 'preview-ready', 'completed', 'paused', 'failed'].includes(this.progress.phase)) this.publishProgress({ ...this.progress, phase, updatedAt: Date.now() });
+    });
   }
   async connect(): Promise<void> {
     const issue = this.auth.configurationIssue(); if (issue) throw new VaultSailError('configuration', issue);
@@ -134,6 +156,7 @@ export default class VaultSailPlugin extends Plugin {
     const vault = await new RemoteVaultStore(provider).get(vaultId);
     this.pause(); this.generation++; this.engine = undefined; this.settings.remoteVaultId = vaultId;
     this.settings.binding = { vaultId, appKey: this.settings.appKey, root: provider.root, accountHash, displayName: vault.displayName };
+    this.settings.pendingVaultName = undefined;
     await this.saveSettings(); this.lastErrorCode = undefined; this.statusText = '已绑定云端库：' + vault.displayName;
   }
   async createVault(name: string): Promise<void> {
@@ -152,18 +175,22 @@ export default class VaultSailPlugin extends Plugin {
       roundtrip: () => guarded(() => this.roundtrip()),
     }).open();
   }
-  private async getEngine(): Promise<SyncEngine> {
+  private async boundProvider(): Promise<{ provider: BaiduProvider; binding: NonNullable<VaultSailSettings['binding']>; accountHash: string }> {
     const b = this.settings.binding;
     if (!b) throw new VaultSailError('binding', '尚未绑定云端知识库，请创建新库或选择已有库。');
     const provider = this.provider();
     if (b.appKey !== this.settings.appKey || b.root !== provider.root) throw new VaultSailError('binding', '应用或目录已变更，请重新选择并验证云端库。');
     const profile = await provider.profile(); const accountHash = hash(bytes(profile.accountId));
     if (b.accountHash !== accountHash) throw new VaultSailError('binding', '百度账号与原绑定不一致，请为当前账号重新选择云端库。');
+    return { provider, binding: b, accountHash };
+  }
+  private async getEngine(): Promise<SyncEngine> {
+    const { provider, binding: b, accountHash } = await this.boundProvider();
     const validation = this.app.loadLocalStorage(this.validationKey(accountHash));
     if (!validation?.passed) throw new VaultSailError('permission', '请先运行本设备的文件往返测试，确认上传下载权限。');
     if (this.engine) return this.engine;
     const context = hash(bytes(b.appKey + '|' + b.root + '|' + accountHash + '|' + b.vaultId));
-    this.engine = new SyncEngine(new RemoteVaultStore(provider), this.local, new ObsidianStateStore(this.app, this.deviceId, b.vaultId, context), b.vaultId, this.app.vault.configDir);
+    this.engine = new SyncEngine(new RemoteVaultStore(provider), this.local, new ObsidianStateStore(this.app, this.deviceId, b.vaultId, context), b.vaultId, this.app.vault.configDir, event => this.publishProgress(event));
     return this.engine;
   }
   async preview(mode: SyncPlan['mode']): Promise<void> {
@@ -174,9 +201,60 @@ export default class VaultSailPlugin extends Plugin {
         if (plan.mode === 'sync' && !this.settings.experimentalSync) throw new VaultSailError('configuration', '实验性同步已关闭，请重新预览。');
         if (!this.settings.deletionEnabled && plan.rows.some(row => row.action === 'delete-local' || row.action === 'delete-remote')) throw new VaultSailError('configuration', '删除传播已关闭，请重新预览。');
         await engine.execute(plan, progress);
+        const key = this.successKey(); if (key && this.progress) this.app.saveLocalStorage(key, { completedAt: Date.now(), mode: plan.mode,
+          files: this.progress.doneFiles, bytes: this.progress.doneBytes, elapsedMs: this.progress.updatedAt - this.progress.startedAt });
       } finally { this.busy = false; this.refreshUI(); } },
       async (row, choice) => { if (this.busy) throw new VaultSailError('busy', '当前有其他操作。'); this.busy = true;
-        try { await engine.resolve(row.path, choice, row); } finally { this.busy = false; this.refreshUI(); } }, () => engine.pause()).open();
+        try { await engine.resolve(row.path, choice, row); } finally { this.busy = false; this.refreshUI(); } }, () => engine.pause(), listener => this.subscribeProgress(listener)).open();
+  }
+  cloudLocation(): string {
+    const id = this.settings.binding?.vaultId ?? this.settings.remoteVaultId;
+    const root = this.settings.binding?.root ?? this.settings.appDirectory;
+    return root.replace(/^\/apps\//, '我的应用数据/') + '/vaultsail/vaults/' + (id || '（尚未选择云端库）');
+  }
+  private successKey(): string | undefined {
+    const b = this.settings.binding;
+    return b ? 'vaultsail-success-' + hash(bytes(b.appKey + '|' + b.root + '|' + b.accountHash + '|' + b.vaultId)) : undefined;
+  }
+  lastSuccess(): { completedAt: number; files: number; bytes: number; elapsedMs: number } | undefined {
+    const key = this.successKey(); const value = key ? this.app.loadLocalStorage(key) : null;
+    return value && ['completedAt', 'files', 'bytes', 'elapsedMs'].every(field => typeof value[field] === 'number' && Number.isFinite(value[field]) && value[field] >= 0)
+      ? { completedAt: value.completedAt, files: value.files, bytes: value.bytes, elapsedMs: value.elapsedMs } : undefined;
+  }
+  async showCloudFiles(): Promise<void> {
+    const { provider, binding } = await this.boundProvider(); const store = new RemoteVaultStore(provider);
+    const heads = buildHeads(await store.revisions(binding.vaultId)); const modal = new Modal(this.app); modal.titleEl.setText('云端文件与版本');
+    modal.contentEl.createEl('p', { text: this.cloudLocation() });
+    if (!heads.size) modal.contentEl.createEl('p', { text: '当前云端库还没有笔记版本。创建库不会自动上传笔记，请预览上传后执行。' });
+    for (const [path, versions] of [...heads].sort(([a], [b]) => a.localeCompare(b))) {
+      const row = modal.contentEl.createEl('details', { cls: 'vaultsail-file-row' }); row.createEl('summary', { text: `${path} · ${versions.length > 1 ? '有冲突 · ' : ''}${versions.filter(op => op.kind === 'update').length} 个内容版本` });
+      for (const op of versions) { row.createEl('p', { text: op.kind === 'update' ? `${formatBytes(op.size)} · 设备 ${op.deviceId.slice(0, 8)} · 版本 ${op.opId.slice(0, 8)}` : '删除版本记录（历史内容保留）' });
+        if (op.hash) row.createEl('code', { text: this.cloudLocation() + '/blobs/' + op.hash }); }
+    }
+    modal.open();
+  }
+  openConfigExport(): void {
+    try { const text = exportPortableConfig(this.settings); new ConfigExportModal(this.app, text, () => this.saveConfigExport(text)).open(); }
+    catch (error) { new Notice(safeMessage(error)); }
+  }
+  openConfigImport(): void { new ConfigImportModal(this.app, text => this.importConfiguration(text)).open(); }
+  private async saveConfigExport(text: string): Promise<string> {
+    parsePortableConfig(text);
+    const stat = await this.app.vault.adapter.stat(CONFIG_EXPORT_DIRECTORY);
+    if (stat && stat.type !== 'folder') throw new VaultSailError('collision', '配置导出目录被同名文件占用。');
+    if (!stat) await this.app.vault.createFolder(CONFIG_EXPORT_DIRECTORY);
+    const path = CONFIG_EXPORT_DIRECTORY + '/vaultsail-配对-' + uuid() + '.json'; await this.app.vault.createBinary(path, bytes(text)); return path;
+  }
+  async importConfiguration(text: string): Promise<void> {
+    const config = parsePortableConfig(text); // Validate everything before touching authorization or stored settings.
+    if (this.busy) throw new VaultSailError('busy', '请先完成或暂停当前操作，再导入配置。');
+    this.busy = true;
+    try {
+      await this.changeConfiguration({ providerId: 'baidu', appKey: config.appKey, appDirectory: config.appDirectory,
+        secretRef: this.settings.appKey === config.appKey ? this.settings.secretRef : '', remoteVaultId: config.remoteVault?.id ?? '',
+        pendingVaultName: config.remoteVault?.displayName, experimentalSync: false, deletionEnabled: false });
+      this.progress = undefined; this.lastErrorCode = undefined; this.statusText = '配置已导入。请在本设备保存 SecretKey、独立授权，然后验证并绑定导入的云端库。';
+    } finally { this.busy = false; this.refreshUI(); }
   }
   async recover(): Promise<void> { await (await this.getEngine()).recover(); }
   async abandonPending(): Promise<void> { await (await this.getEngine()).abandonPending(); }
@@ -195,6 +273,7 @@ export default class VaultSailPlugin extends Plugin {
     return JSON.stringify({ pluginVersion: this.manifest.version, authorized: this.auth.status() === 'connected', bound: Boolean(this.settings.binding),
       experimentalSync: this.settings.experimentalSync, deletionEnabled: this.settings.deletionEnabled,
       lastErrorCode: this.lastErrorCode ?? null, localRoundtrip: checked ? { passed: checked.passed === true, checkedAt: checked.checkedAt, results: checked.results, quota: checked.quota } : null,
+      lastTransfer: this.lastSuccess() ?? null,
       realDeviceValidation: '用户在本设备完成；开发者未验证真实账号或 iPad', maxFileMiB: 20 }, null, 2);
   }
 

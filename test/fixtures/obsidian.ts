@@ -6,7 +6,7 @@ export class Notice { static messages: string[] = []; constructor(message: strin
 export function requireApiVersion(): boolean { return true; }
 export async function requestUrl(input: unknown): Promise<unknown> { return (globalThis as unknown as { mockRequest: (input: unknown) => Promise<unknown> }).mockRequest(input); }
 export class Plugin {
-  app: any; manifest = { version: '0.1.8' }; commands: any[] = []; tabs: any[] = []; saved: unknown;
+  app: any; manifest = { version: '0.1.9' }; commands: any[] = []; tabs: any[] = []; saved: unknown;
   constructor(app: unknown) { this.app = app; }
   async loadData(): Promise<unknown> { return this.saved; }
   async saveData(value: unknown): Promise<void> { this.saved = structuredClone(value); }
@@ -22,7 +22,7 @@ export class Modal {
   app: any; containerEl: HTMLElement; titleEl: HTMLElement; contentEl: HTMLElement;
   constructor(app: unknown) { this.app = app; this.containerEl = document.createElement('section'); this.titleEl = element(this.containerEl, 'h2'); this.contentEl = element(this.containerEl, 'div'); }
   open(): void { document.body.appendChild(this.containerEl); (this as unknown as { onOpen?: () => void }).onOpen?.(); }
-  close(): void { this.containerEl.remove(); }
+  close(): void { (this as unknown as { onClose?: () => void }).onClose?.(); this.containerEl.remove(); }
 }
 class Component {
   inputEl: HTMLInputElement; private eventName: string;

@@ -32,7 +32,8 @@ export function appRoot(path: string): string {
 }
 export function included(path: string, configDir = '.obsidian'): boolean {
   return !path.split('/').some(part => part.startsWith('.') || ['node_modules', 'Thumbs.db'].includes(part))
-    && path !== configDir && !path.startsWith(configDir + '/') && !path.startsWith('VaultSail-conflicts/');
+    && path !== configDir && !path.startsWith(configDir + '/') && !path.startsWith('VaultSail-conflicts/')
+    && path !== 'VaultSail-配置' && !path.startsWith('VaultSail-配置/');
 }
 export function collisionKey(path: string): string { return path.normalize('NFC').toLowerCase(); }
 export function assertNoCollisions(paths: string[]): void {

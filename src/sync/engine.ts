@@ -1,6 +1,7 @@
 import { assertNoCollisions, checkSize, hash, included, uuid, validId, VaultSailError } from '../core/safety.ts';
 import { reconcileFile } from '../core/reconcile.ts';
 import { buildHeads, RemoteVaultStore, validateRevision, type Revision } from './remote-vault.ts';
+import type { SyncProgress, ProgressPhase } from './progress.ts';
 
 export interface LocalFiles {
   paths(): Promise<string[]>;
@@ -48,28 +49,44 @@ const sameIds = (a: string[], b: string[]) => a.length === b.length && a.every((
 export class SyncEngine {
   private remote: RemoteVaultStore; private local: LocalFiles; private store: StateStore; readonly vaultId: string;
   private stopped = false; private running = false; private configDir: string;
-  constructor(remote: RemoteVaultStore, local: LocalFiles, store: StateStore, vaultId: string, configDir = '.obsidian') {
+  private report: (progress: SyncProgress) => void;
+  private progress!: SyncProgress;
+  constructor(remote: RemoteVaultStore, local: LocalFiles, store: StateStore, vaultId: string, configDir = '.obsidian', report: (progress: SyncProgress) => void = () => {}) {
     this.remote = remote; this.local = local; this.store = store; this.vaultId = vaultId; this.configDir = configDir;
+    this.report = report;
+  }
+  private emit(phase: ProgressPhase, update: Partial<SyncProgress> = {}): void {
+    this.progress = { ...this.progress, ...update, phase, updatedAt: Date.now() };
+    // Observers must never interrupt a journaled write or affect its result.
+    try { this.report({ ...this.progress }); } catch { /* UI is advisory. */ }
   }
   pause(): void { this.stopped = true; }
   private guard(): void { if (this.stopped) throw new VaultSailError('paused', '任务已暂停，未完成操作保留在恢复日志中。'); }
-  private async exclusive<T>(run: () => Promise<T>): Promise<T> {
+  private async exclusive<T>(run: () => Promise<T>, successPhase: 'completed' | 'preview-ready' = 'completed'): Promise<T> {
     if (this.running) throw new VaultSailError('busy', '当前库已有任务在运行。');
-    this.running = true; this.stopped = false; try { return await run(); } finally { this.running = false; }
+    this.running = true; this.stopped = false;
+    this.progress = { phase: 'checking', doneFiles: 0, totalFiles: 0, doneBytes: 0, totalBytes: 0, startedAt: Date.now(), updatedAt: Date.now() };
+    this.emit('checking');
+    try { const value = await run(); this.emit(successPhase, { path: undefined }); return value; }
+    catch (error) { this.emit(error instanceof VaultSailError && ['paused', 'cancelled'].includes(error.code) ? 'paused' : 'failed'); throw error; }
+    finally { this.running = false; }
   }
   private async state(): Promise<SyncState> {
     const state = await this.store.load(); return validateState(state, this.vaultId, state.deviceId);
   }
   private async scan(state: SyncState): Promise<{ ops: Revision[]; heads: Map<string, Revision[]>; local: Map<string, { hash: string; size: number }> }> {
-    this.guard(); const ops = await this.remote.revisions(this.vaultId); this.guard();
+    this.emit('scanning-remote', { path: undefined }); this.guard(); const ops = await this.remote.revisions(this.vaultId); this.guard();
     const found = new Set(ops.map(op => op.opId));
     if (state.knownOps.some(id => !found.has(id))) throw new VaultSailError('visibility', '之前确认的远端记录暂不可见，停止写入。');
     const heads = buildHeads(ops); const paths = (await this.local.paths()).filter(path => included(path, this.configDir));
     assertNoCollisions(paths); const local = new Map<string, { hash: string; size: number }>();
+    let scanned = 0; this.emit('scanning-local', { totalFiles: paths.length });
     for (const path of paths) {
+      this.emit('scanning-local', { path });
       this.guard(); const data = await this.local.read(path);
       if (data === null) throw new VaultSailError('changed', '扫描期间本地文件发生变化，请重新预览。');
       checkSize(data.byteLength); local.set(path, { hash: hash(data), size: data.byteLength });
+      this.emit('scanning-local', { doneFiles: ++scanned });
     }
     assertNoCollisions([...new Set([...paths, ...heads.keys()])]);
     for (const path of heads.keys()) if (!included(path, this.configDir)) throw new VaultSailError('path', '远端路径属于排除目录。');
@@ -118,8 +135,9 @@ export class SyncEngine {
         }
         rows.push({ path, action, reason, localHash: local?.hash ?? null, size: local?.size ?? head?.size ?? 0, heads, ...(renameFrom ? { renameFrom } : {}) });
       }
+      this.emit('preview-ready', { doneFiles: rows.length, totalFiles: rows.length, path: undefined });
       return { vaultId: this.vaultId, mode, deletionEnabled, revisionIds: snapshot.ops.map(op => op.opId).sort(), rows };
-    });
+    }, 'preview-ready');
   }
   async execute(plan: SyncPlan, onProgress: (done: number, total: number) => void = () => {}): Promise<void> {
     return this.exclusive(async () => {
@@ -129,10 +147,13 @@ export class SyncEngine {
       if (!sameIds(plan.revisionIds, snapshot.ops.map(op => op.opId))) throw new VaultSailError('changed', '预览后云端已变化，请重新预览。');
       const actualPaths = new Set([...snapshot.local.keys(), ...snapshot.heads.keys(), ...Object.keys(state.bases)]);
       if (actualPaths.size !== plan.rows.length || plan.rows.some(row => !actualPaths.has(row.path) || (snapshot.local.get(row.path)?.hash ?? null) !== row.localHash)) throw new VaultSailError('changed', '预览后本地已变化，请重新预览。');
-      let done = 0;
+      let done = 0; let doneBytes = 0;
+      const totalBytes = plan.rows.reduce((sum, row) => sum + (row.action === 'upload' || row.action === 'download' ? row.size : 0), 0);
+      this.emit('checking', { path: undefined, doneFiles: 0, totalFiles: plan.rows.length, doneBytes: 0, totalBytes });
       for (const row of plan.rows) {
+        this.emit('checking', { path: row.path });
         this.guard();
-        if (row.action === 'conflict' || row.action === 'skip') { onProgress(++done, plan.rows.length); continue; }
+        if (row.action === 'conflict' || row.action === 'skip') { onProgress(++done, plan.rows.length); this.emit('checking', { doneFiles: done }); continue; }
         if (row.action === 'noop') {
           const head = row.heads[0]; if (row.heads.length === 1) state.bases[row.path] = { hash: head.hash ?? null, heads: [head.opId], fileId: head.fileId };
         } else {
@@ -150,18 +171,20 @@ export class SyncEngine {
             const journal: Journal = { id: op.opId, path: row.path, action: 'publish', stage: 'prepared', revision: op, expectedLocal: row.localHash };
             if (localData) { await this.local.stage(op.opId, localData); await this.local.preserve(row.path, localData, op.opId); }
             state.journals.push(journal); await this.store.save(state); this.guard();
-            await this.remote.publish(this.vaultId, op, localData ?? undefined); journal.stage = 'published'; await this.store.save(state); this.guard();
+            await this.remote.publish(this.vaultId, op, localData ?? undefined, phase => this.emit(phase)); journal.stage = 'published'; await this.store.save(state); this.guard();
             state.bases[row.path] = { hash: op.hash ?? null, heads: [op.opId], fileId: op.fileId };
             state.knownOps = [...new Set([...state.knownOps, op.opId])]; state.journals = []; await this.store.save(state);
           } else {
             const head = row.heads[0]; const journal: Journal = { id: head.opId, path: row.path, action: 'apply', stage: 'prepared', revision: head, expectedLocal: row.localHash };
             state.journals.push(journal); await this.store.save(state);
-            const data = head.kind === 'delete' ? null : await this.remote.blob(this.vaultId, head); this.guard();
+            this.emit('downloading'); const data = head.kind === 'delete' ? null : await this.remote.blob(this.vaultId, head, () => this.emit('verifying')); this.guard();
+            this.emit('applying');
             await this.local.apply(row.path, data, row.localHash, head.opId); journal.stage = 'applied'; await this.store.save(state);
             state.bases[row.path] = { hash: head.hash ?? null, heads: [head.opId], fileId: head.fileId }; state.journals = []; await this.store.save(state);
           }
         }
-        onProgress(++done, plan.rows.length);
+        if (row.action === 'upload' || row.action === 'download') doneBytes += row.size;
+        onProgress(++done, plan.rows.length); this.emit('checking', { doneFiles: done, doneBytes });
       }
       state.knownOps = [...new Set([...state.knownOps, ...snapshot.ops.map(op => op.opId)])]; await this.store.save(state);
     });
@@ -169,8 +192,10 @@ export class SyncEngine {
   async recover(): Promise<void> {
     return this.exclusive(async () => {
       const state = await this.state(); const visible = await this.remote.revisions(this.vaultId); const known = new Set(visible.map(op => op.opId));
+      this.emit('checking', { totalFiles: state.journals.length, totalBytes: state.journals.reduce((sum, journal) => sum + journal.revision.size, 0) });
       if (state.knownOps.some(id => !known.has(id))) throw new VaultSailError('visibility', '已知远端记录缺失，恢复暂停。');
       for (const journal of [...state.journals]) {
+        this.emit('checking', { path: journal.path });
         this.guard(); const op = journal.revision;
         if (journal.action === 'publish' || journal.action === 'resolve') {
           if (!known.has(op.opId)) {
@@ -178,7 +203,7 @@ export class SyncEngine {
             if ((data ? hash(data) : null) !== (op.hash ?? null)) throw new VaultSailError('changed', '待发布内容已变化，恢复暂停；请保留恢复日志。');
             const heads = buildHeads(visible).get(op.previousPath ?? op.path) ?? [];
             if (!sameIds(ids(heads), [...op.parents].sort())) throw new VaultSailError('changed', '待发布操作的远端依据已变化，恢复暂停。');
-            await this.remote.publish(this.vaultId, op, data ?? undefined);
+            await this.remote.publish(this.vaultId, op, data ?? undefined, phase => this.emit(phase));
           }
           state.knownOps = [...new Set([...state.knownOps, op.opId])];
         }
@@ -186,12 +211,14 @@ export class SyncEngine {
           const current = await this.local.read(op.path); const currentHash = current ? hash(current) : null;
           if (currentHash !== (op.hash ?? null)) {
             if (currentHash !== journal.expectedLocal) throw new VaultSailError('changed', '本地内容已变化，停止恢复以保留修改。');
-            const data = op.kind === 'update' ? await this.remote.blob(this.vaultId, op) : null; this.guard();
+            this.emit('downloading'); const data = op.kind === 'update' ? await this.remote.blob(this.vaultId, op, () => this.emit('verifying')) : null; this.guard();
+            this.emit('applying');
             await this.local.apply(op.path, data, journal.expectedLocal, op.opId);
           }
         }
         state.bases[op.path] = { hash: op.hash ?? null, heads: [op.opId], fileId: op.fileId };
         state.journals = state.journals.filter(item => item.id !== journal.id); await this.store.save(state);
+        this.emit('checking', { doneFiles: this.progress.doneFiles + 1, doneBytes: this.progress.doneBytes + op.size });
       }
     });
   }
@@ -212,6 +239,7 @@ export class SyncEngine {
       let selected = localData;
       if (choice !== 'local') { const head = heads.find(op => op.opId === choice); if (!head) throw new VaultSailError('changed', '选择的远端版本已变化。'); selected = head.kind === 'update' ? await this.remote.blob(this.vaultId, head) : null; }
       if (!selected) throw new VaultSailError('conflict', '首期冲突处理必须选择一个内容版本，删除分支仅保留记录。');
+      this.emit('checking', { path, doneFiles: 0, totalFiles: 1, doneBytes: 0, totalBytes: selected.byteLength });
       const op: Revision = { schemaVersion: 1, vaultId: this.vaultId, opId: uuid(), deviceId: state.deviceId, fileId: heads[0]?.fileId ?? uuid(), path,
         parents: ids(heads), kind: 'update', hash: hash(selected), size: selected.byteLength, createdAt: Date.now() };
       // Preserve every competing content before either publishing or replacing the target.
@@ -223,10 +251,12 @@ export class SyncEngine {
       const journal: Journal = { id: op.opId, path, action: 'resolve', stage: 'prepared', revision: op, expectedLocal: expected };
       await this.local.stage(op.opId, selected);
       state.journals.push(journal); await this.store.save(state); this.guard();
-      await this.remote.publish(this.vaultId, op, selected); journal.stage = 'published'; await this.store.save(state); this.guard();
+      await this.remote.publish(this.vaultId, op, selected, phase => this.emit(phase)); journal.stage = 'published'; await this.store.save(state); this.guard();
+      this.emit('applying');
       await this.local.apply(path, selected, expected, op.opId); journal.stage = 'applied'; await this.store.save(state);
       state.bases[path] = { hash: op.hash!, heads: [op.opId], fileId: op.fileId }; state.knownOps = [...new Set([...snapshot.ops.map(item => item.opId), op.opId])];
       state.journals = []; await this.store.save(state);
+      this.emit('checking', { doneFiles: 1, doneBytes: selected.byteLength });
     });
   }
 }

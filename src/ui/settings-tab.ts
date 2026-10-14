@@ -4,12 +4,25 @@ import { safeMessage } from '../core/safety';
 import { RemoteVaultStore } from '../sync/remote-vault';
 import { ConfirmModal } from './modals';
 import { DEFAULT_APP_DIRECTORY } from '../config';
+import { formatBytes, formatProgress } from '../sync/progress';
+import { copyText } from './config-modals';
 
 const AUTH_LABELS = { unconfigured: '应用未配置', disconnected: '未授权', pending: '等待授权', connected: '已授权', reauthorize: '需要重新授权' };
 export class VaultSailSettingTab extends PluginSettingTab {
   private plugin: VaultSailPlugin;
   private activeTab = 'connect';
   constructor(app: App, plugin: VaultSailPlugin) { super(app, plugin); this.plugin = plugin; }
+  updateProgress(): void {
+    const progress = this.plugin.progress;
+    const text = this.containerEl.querySelector<HTMLElement>('.vaultsail-progress-text');
+    const meter = this.containerEl.querySelector<HTMLProgressElement>('.vaultsail-progress-meter');
+    if (text) text.setText(progress ? formatProgress(progress) : '尚未运行传输。预览后确认执行，才会上传或下载文件。');
+    if (meter) {
+      meter.max = Math.max(1, progress?.totalFiles ?? 1);
+      if (progress && !progress.totalFiles && !['preview-ready', 'completed', 'failed', 'paused'].includes(progress.phase)) meter.removeAttribute('value');
+      else meter.value = progress?.doneFiles ?? 0;
+    }
+  }
   display(): void {
     const el = this.containerEl; const p = this.plugin; el.empty();
     el.classList.add('vaultsail-workspace');
@@ -33,6 +46,8 @@ export class VaultSailSettingTab extends PluginSettingTab {
     }
     const status = el.createDiv({ cls: 'vaultsail-notice' }); status.setAttribute('role', 'status');
     status.createEl('span', { text: p.auth.configurationIssue() ?? p.statusText });
+    const progressCard = el.createDiv({ cls: 'vaultsail-progress-card' });
+    progressCard.createEl('p', { cls: 'vaultsail-progress-text' }); progressCard.createEl('progress', { cls: 'vaultsail-progress-meter' }).setAttribute('aria-label', '文件处理进度'); this.updateProgress();
     const nav = el.createDiv({ cls: 'vaultsail-tabs' }); nav.setAttribute('role', 'tablist'); nav.setAttribute('aria-label', '云舟工作台');
     const panels = new Map<string, HTMLElement>(); const tabs = new Map<string, HTMLButtonElement>();
     const views = [['connect', '01', '连接与授权'], ['vault', '02', '云端知识库'], ['transfer', '03', '传输与恢复']];
@@ -61,6 +76,7 @@ export class VaultSailSettingTab extends PluginSettingTab {
     const appCard = card(columns, 'APPLICATION', '接入你的网盘', '一次保存应用信息，之后在百度官方页面登录。账号密码不在这里输入。');
     const authCard = card(columns, 'CONNECTION', '启程，连接百度', '每台设备独立授权，笔记直接传输到你的网盘。');
     const accessCard = card(panels.get('connect')!, 'CHECKPOINT', '连接之后，验证通路', '先检查访问，再验证测试文件能否完整往返。');
+    const configCard = card(panels.get('connect')!, 'PAIRING', '把配置带到 iPad', '导出应用与云端库配对信息。新设备独立保存密钥、授权和验证，设备身份与任务不会复制。');
     const vaultCard = card(panels.get('vault')!, 'DESTINATION', '为这份知识，选择一个泊位', '云端库 ID 用来配对设备，本地笔记库可以有不同名称。');
     const transferCard = card(panels.get('transfer')!, 'WORKSPACE', '先看清变化，再开始传输', '20 MiB / 文件 · 单任务传输 · 同名不同内容会停在冲突。');
     const recoveryCard = card(panels.get('transfer')!, 'RECOVERY', '每一次修改，都有回程', '未完成的任务可以恢复，旧内容以恢复副本保留。');
@@ -115,6 +131,16 @@ export class VaultSailSettingTab extends PluginSettingTab {
     new Setting(accessCard).setName('接口验证').setDesc('往返测试使用独立测试文件，不扫描笔记。')
       .addButton(button => button.setButtonText('检查只读访问').setDisabled(p.busy).onClick(() => { void p.run('检查身份与目录…', () => p.checkAccess()); }))
       .addButton(button => button.setButtonText('运行文件往返测试').setDisabled(p.busy).onClick(() => new ConfirmModal(this.app, '运行隔离文件测试', '将在获准应用目录下创建独立测试目录并上传、下载约 24 MiB 测试数据。测试文件会保留，供你自行检查和清理。', () => p.run('验证真实文件接口…', () => p.roundtrip())).open()));
+    new Setting(configCard).setName('另一设备快速配置')
+      .addButton(button => button.setButtonText('导出配对配置').setDisabled(p.busy).onClick(() => p.openConfigExport()))
+      .addButton(button => button.setButtonText('导入配对配置').setDisabled(p.busy).onClick(() => p.openConfigImport()));
+    new Setting(vaultCard).setName('百度网盘中的位置').setDesc(p.cloudLocation())
+      .addButton(button => button.setButtonText('复制云端路径').onClick(() => copyText(p.cloudLocation())))
+      .addButton(button => button.setButtonText('查看云端文件').setDisabled(p.busy).onClick(() => { void p.run('读取云端文件版本…', () => p.showCloudFiles()); }));
+    const success = p.lastSuccess();
+    new Setting(vaultCard).setName('最近一次传输完成').setDesc(success ? `${new Date(success.completedAt).toLocaleString()} · 处理 ${success.files} 个文件 · 校验内容 ${formatBytes(success.bytes)} · 耗时 ${(success.elapsedMs / 1000).toFixed(1)} 秒` : '本设备尚无当前云端库的已完成传输记录。');
+    if (!p.settings.binding && p.settings.remoteVaultId) new Setting(vaultCard).setName('待验证的云端库').setDesc(`${p.settings.pendingVaultName ?? ''} · ${p.settings.remoteVaultId}`)
+      .addButton(button => button.setButtonText('验证并绑定导入库').setDisabled(p.busy || p.auth.status() !== 'connected').onClick(() => { void p.run('验证导入的云端库…', () => p.bind(p.settings.remoteVaultId)); }));
     new Setting(vaultCard).setName('当前云端库').setDesc(p.settings.binding ? `已绑定：${p.settings.binding.displayName} · ${p.settings.binding.vaultId}` : `尚未验证绑定${p.settings.remoteVaultId ? '；原设置保留为待验证标识' : ''}`)
       .addButton(button => button.setButtonText('查看已有库').setDisabled(p.busy).onClick(() => { void p.run('读取云端库…', async () => {
         const vaults = await new RemoteVaultStore(p.provider()).listVaults(); const modal = new Modal(this.app); modal.titleEl.setText('选择云端库');

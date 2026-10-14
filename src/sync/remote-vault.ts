@@ -122,21 +122,22 @@ export class RemoteVaultStore {
     }
     buildHeads(result); return result;
   }
-  async blob(id: string, op: Revision): Promise<ArrayBuffer> {
+  async blob(id: string, op: Revision, onVerify: () => void = () => {}): Promise<ArrayBuffer> {
     validateRevision(op, id);
     if (op.kind !== 'update' || !op.hash) throw new VaultSailError('schema', '删除记录没有内容对象。');
     const data = await this.provider.read(this.base(id) + '/blobs/' + op.hash);
+    onVerify();
     if (data.byteLength !== op.size || hash(data) !== op.hash) throw new VaultSailError('integrity', '云端内容 Hash 不匹配，未应用文件。');
     return data;
   }
-  async publish(id: string, op: Revision, data?: ArrayBuffer): Promise<void> {
+  async publish(id: string, op: Revision, data?: ArrayBuffer, onPhase: (phase: 'uploading' | 'publishing') => void = () => {}): Promise<void> {
     validateRevision(op, id);
     if (op.kind === 'update') {
       if (!data || data.byteLength !== op.size || hash(data) !== op.hash) throw new VaultSailError('integrity', '待上传内容与操作记录不一致。');
-      await this.provider.writeImmutable(this.base(id) + '/blobs/' + op.hash, data);
+      onPhase('uploading'); await this.provider.writeImmutable(this.base(id) + '/blobs/' + op.hash, data);
     }
     const path = this.base(id) + '/ops/' + op.deviceId + '/' + op.opId + '.json'; const recordData = jsonBytes(op);
-    await this.provider.writeImmutable(path, recordData);
+    onPhase('publishing'); await this.provider.writeImmutable(path, recordData);
     this.cachedRevisions.set(path, { contentHash: hash(recordData), size: recordData.byteLength, revision: { ...op, parents: [...op.parents] } });
   }
 }

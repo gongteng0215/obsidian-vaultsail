@@ -2,6 +2,7 @@ import { Modal, Setting, type App } from 'obsidian';
 import { safeMessage } from '../core/safety';
 import type { SyncPlan, PlanRow } from '../sync/engine';
 import type { RemoteVault } from '../sync/remote-vault';
+import { formatProgress, type SyncProgress } from '../sync/progress';
 
 export class CloudVaultSetupModal extends Modal {
   constructor(app: App, private localName: string, private actions: {
@@ -60,12 +61,20 @@ export class ConfirmModal extends Modal {
   }
 }
 export class PlanModal extends Modal {
-  constructor(app: App, private plan: SyncPlan, private execute: (progress: (done: number, total: number) => void) => Promise<void>, private resolve: (row: PlanRow, choice: string) => Promise<void>, private pause: () => void) { super(app); }
+  private unsubscribe?: () => void;
+  constructor(app: App, private plan: SyncPlan, private execute: (progress: (done: number, total: number) => void) => Promise<void>, private resolve: (row: PlanRow, choice: string) => Promise<void>, private pause: () => void,
+    private subscribe?: (listener: (progress: SyncProgress) => void) => () => void) { super(app); }
+  onClose(): void { this.unsubscribe?.(); }
   onOpen(): void {
     this.titleEl.setText('VaultSail · 传输预览');
     const changed = this.plan.rows.filter(row => row.action !== 'noop');
     this.contentEl.createEl('p', { text: `${this.plan.rows.length} 个文件，${changed.length} 项变化。冲突项不会自动执行。` });
-    const status = this.contentEl.createEl('p'); const list = this.contentEl.createDiv({ cls: 'vaultsail-plan' });
+    const status = this.contentEl.createEl('p', { cls: 'vaultsail-progress-text' }); status.setAttribute('role', 'status');
+    const meter = this.contentEl.createEl('progress', { cls: 'vaultsail-progress-meter' }); meter.max = Math.max(1, this.plan.rows.length); meter.value = 0;
+    meter.setAttribute('aria-label', '文件处理进度');
+    let executing = false;
+    if (this.subscribe) this.unsubscribe = this.subscribe(progress => { if (executing) { status.setText(formatProgress(progress)); meter.max = Math.max(1, progress.totalFiles); meter.value = progress.doneFiles; } });
+    const list = this.contentEl.createDiv({ cls: 'vaultsail-plan' });
     for (const row of changed) {
       const item = list.createDiv({ cls: 'vaultsail-plan-row' });
       item.createEl('strong', { text: `${LABELS[row.action]} · ${row.path}` }); item.createEl('p', { text: row.reason });
@@ -81,8 +90,10 @@ export class PlanModal extends Modal {
     new Setting(this.contentEl).addButton(button => button.setButtonText('关闭').onClick(() => this.close()))
       .addButton(button => button.setButtonText('暂停任务').onClick(() => { this.pause(); status.setText('暂停请求已提交，等待当前请求结束。'); }))
       .addButton(button => button.setButtonText('执行预览中的非冲突操作').setCta().onClick(async () => {
-        button.setDisabled(true); try { await this.execute((done, total) => status.setText(`已处理 ${done}/${total}`)); status.setText('执行完成；冲突和跳过项保留。请重新预览。'); }
-        catch (e) { status.setText(safeMessage(e)); }
+        button.setDisabled(true); executing = true;
+        try { await this.execute((done, total) => { if (!this.subscribe) status.setText(`已处理 ${done}/${total}`); }); status.setText(status.textContent + '\n执行完成；冲突和跳过项保留。请重新预览。'); }
+        catch (e) { status.setText(status.textContent + '\n' + safeMessage(e)); }
+        finally { executing = false; button.setDisabled(false); }
       }));
   }
 }

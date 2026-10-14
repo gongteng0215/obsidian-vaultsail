@@ -4,6 +4,7 @@ import { bytes, hash, assertNoCollisions, appRoot, included, MAX_FILE_SIZE, uuid
 import { RemoteVaultStore, buildHeads, validateRevision, type Revision } from '../src/sync/remote-vault.ts';
 import { SyncEngine, newState, type LocalFiles, type StateStore, type SyncState } from '../src/sync/engine.ts';
 import type { CloudStorageProvider, RemotePage } from '../src/providers/cloud-storage-provider.ts';
+import type { SyncProgress } from '../src/sync/progress.ts';
 
 class MemoryCloud implements CloudStorageProvider {
   readonly id = 'mock'; readonly displayName = 'mock'; readonly root = '/apps/test';
@@ -61,6 +62,22 @@ test('100 mixed files roundtrip, zero bytes and Chinese paths; repeat produces n
   const download = await eb.preview('download'); assert.equal(download.rows.filter(row => row.action === 'download').length, 100); await eb.execute(download);
   for (const [path, data] of a.files) if (included(path)) assert.equal(hash(b.files.get(path)!), hash(data));
   assert.equal(b.files.size, 100); const count = cloud.published; await ea.execute(await ea.preview('sync')); await eb.execute(await eb.preview('sync')); assert.equal(cloud.published, count);
+});
+test('progress reports real stages and verified bytes; failure never advances completion and observer errors do not interrupt writes', async () => {
+  const { remote, vault, a, b, sa, sb, cloud } = await setup(); const events: SyncProgress[] = [];
+  a.files.set('note.md', bytes('hello')); a.files.set('zero.md', new ArrayBuffer(0));
+  const engine = new SyncEngine(remote, a, sa, vault.vaultId, '.obsidian', event => { events.push(event); });
+  const plan = await engine.preview('upload'); assert.equal(events.at(-1)!.phase, 'preview-ready'); assert.equal(cloud.published, 0);
+  events.length = 0; await engine.execute(plan);
+  for (const phase of ['scanning-remote', 'scanning-local', 'uploading', 'publishing', 'completed']) assert.ok(events.some(event => event.phase === phase));
+  assert.equal(events.at(-1)!.doneFiles, 2); assert.equal(events.at(-1)!.totalFiles, 2); assert.equal(events.at(-1)!.doneBytes, 5);
+  const download = new SyncEngine(remote, b, sb, vault.vaultId, '.obsidian', event => { events.push(event); });
+  events.length = 0; const downloadPlan = await download.preview('download'); events.length = 0; await download.execute(downloadPlan);
+  for (const phase of ['downloading', 'verifying', 'applying', 'completed']) assert.ok(events.some(event => event.phase === phase));
+  a.files.set('next.md', bytes('more')); const next = await engine.preview('upload'); events.length = 0; cloud.failAfterPublish = true;
+  await assert.rejects(engine.execute(next)); assert.equal(events.at(-1)!.phase, 'failed'); assert.ok(events.at(-1)!.doneBytes < events.at(-1)!.totalBytes);
+  const observerFailure = new SyncEngine(remote, a, sa, vault.vaultId, '.obsidian', () => { throw new Error('view detached'); });
+  await observerFailure.recover(); assert.equal(sa.value.journals.length, 0);
 });
 test('manual transfer conflicts instead of overwriting; resolution saves every competing version', async () => {
   const { a, b, ea, eb, remote, vault } = await setup();

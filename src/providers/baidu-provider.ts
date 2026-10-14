@@ -15,8 +15,11 @@ export class BaiduProvider implements CloudStorageProvider {
   private transport: HttpTransport; private auth: TokenSource; private active: () => boolean;
   private objects = new Map<string, RemoteObject>();
   private verified = new Map<string, { fingerprint: string; hash: string }>();
-  constructor(root: string, transport: HttpTransport, auth: TokenSource, active = () => true) {
+  private onActivity: (phase: 'verifying' | 'downloading') => void;
+  constructor(root: string, transport: HttpTransport, auth: TokenSource, active = () => true,
+    onActivity: (phase: 'verifying' | 'downloading') => void = () => {}) {
     this.root = appRoot(root); this.transport = transport; this.auth = auth; this.active = active;
+    this.onActivity = phase => { try { onActivity(phase); } catch { /* A progress view cannot affect transfer integrity. */ } };
   }
   isConfigured(): boolean { return this.active(); }
   private guard(): void { if (!this.active()) throw new VaultSailError('cancelled', '任务已暂停，或账号及目录配置已更改。'); }
@@ -122,7 +125,8 @@ export class BaiduProvider implements CloudStorageProvider {
       });
     }
   }
-  async read(path: string): Promise<ArrayBuffer> {
+  async read(path: string, phase: 'downloading' | 'verifying' = 'downloading'): Promise<ArrayBuffer> {
+    this.onActivity(phase);
     return this.retry(async () => {
       const file = await this.find(path);
       if (!file || file.isDirectory || !file.id) throw new VaultSailError('not-found', '远端内容对象不存在。');
@@ -145,7 +149,7 @@ export class BaiduProvider implements CloudStorageProvider {
     relativePath(path); checkSize(data.byteLength); this.guard(); const expected = hash(data);
     const verify = async (fresh = false): Promise<boolean> => {
       if (!await this.find(path, fresh)) return false;
-      if (hash(await this.read(path)) !== expected) throw new VaultSailError('integrity', '不可变对象已存在但内容不同，禁止覆盖。');
+      if (hash(await this.read(path, 'verifying')) !== expected) throw new VaultSailError('integrity', '不可变对象已存在但内容不同，禁止覆盖。');
       const object = this.objects.get(path); const fingerprint = object && this.fingerprint(object);
       if (fingerprint) this.verified.set(path, { fingerprint, hash: expected });
       return true;

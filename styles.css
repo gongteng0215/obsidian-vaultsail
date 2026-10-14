@@ -57,3 +57,9 @@
   .vaultsail-metrics { gap: 5px; } .vaultsail-metric { padding: 0 6px; } .vaultsail-metric strong { font-size: 11px; }
   .vaultsail-tab span { display: none; } .vaultsail-tab strong { font-size: 11px; } .vaultsail-card { padding: 16px; }
 }
+.vaultsail-progress-card { padding: 12px 16px; margin: 12px 0; border: 1px solid var(--background-modifier-border); border-radius: 12px; }
+.vaultsail-progress-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
+.vaultsail-progress-meter { width: 100%; height: 8px; accent-color: #43b6ad; }
+.vaultsail-config-text { display: block; width: 100%; resize: vertical; font-family: var(--font-monospace); margin: 12px 0; }
+.vaultsail-file-row { padding: 12px 0; border-bottom: 1px solid var(--background-modifier-border); }
+.vaultsail-file-row code { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
