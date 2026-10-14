@@ -21,14 +21,24 @@ export class BaiduProvider implements CloudStorageProvider {
   private guard(): void { if (!this.active()) throw new VaultSailError('cancelled', '任务已暂停，或账号及目录配置已更改。'); }
   private absolute(path: string): string { return path ? this.root + '/' + relativePath(path) : this.root; }
   private async api(endpoint: string, params: Record<string, string>, form?: Record<string, string>, body?: ArrayBuffer, contentType?: string): Promise<Record<string, unknown>> {
+    const sliceUpload = endpoint === 'https://d.pcs.baidu.com/rest/2.0/pcs/superfile2' && params.method === 'upload';
+    const stage = sliceUpload ? '上传文件分片' : params.method === 'uinfo' ? '读取百度账号' : params.method === 'list' ? '读取云端目录'
+      : params.method === 'precreate' ? '申请文件上传' : params.method === 'filemetas' ? '读取下载信息'
+      : params.method === 'create' ? form?.isdir === '1' ? '创建云端目录' : '提交云端文件' : '读取网盘配额';
     for (let refresh = 0; refresh < 2; refresh++) {
       this.guard(); const token = await this.auth.accessToken(refresh > 0); this.guard();
       try {
         const response = await request(this.transport, { url: urlWith(endpoint, { ...params, access_token: token }),
           method: form || body ? 'POST' : 'GET', headers: form || body ? { 'Content-Type': contentType ?? 'application/x-www-form-urlencoded' } : {},
-          body: form ? new URLSearchParams(form).toString() : body });
-        this.guard(); return apiSuccess(response.json);
-      } catch (error) { if (refresh === 0 && error instanceof VaultSailError && error.code === 'token-expired') continue; throw error; }
+          body: form ? new URLSearchParams(form).toString() : body }, true);
+        this.guard(); const value = apiSuccess(response.json, sliceUpload ? 'pcs-upload' : 'xpan');
+        if (response.status >= 400) throw new VaultSailError('http', `接口请求未通过（HTTP ${response.status}）。`);
+        return value;
+      } catch (error) {
+        if (refresh === 0 && error instanceof VaultSailError && error.code === 'token-expired') continue;
+        if (error instanceof VaultSailError) throw new VaultSailError(error.code, `${stage}：${error.message}`, error.retryable, error.retryAfter);
+        throw error;
+      }
     }
     throw new VaultSailError('authentication', '令牌刷新后仍不可用，请重新授权。');
   }
@@ -141,7 +151,7 @@ export class BaiduProvider implements CloudStorageProvider {
           const tail = new TextEncoder().encode(`\r\n--${boundary}--\r\n`); const chunk = chunks[index];
           const body = new Uint8Array(head.length + chunk.length + tail.length); body.set(head); body.set(chunk, head.length); body.set(tail, head.length + chunk.length);
           const result = await this.api('https://d.pcs.baidu.com/rest/2.0/pcs/superfile2', { method: 'upload', type: 'tmpfile', path: this.absolute(path), uploadid: pre.uploadid, partseq: String(index) }, undefined, body.buffer, 'multipart/form-data; boundary=' + boundary);
-          if (result.md5 !== blocks[index]) throw new VaultSailError('integrity', '上传分片 Hash 不一致。');
+          if (String(result.md5).toLowerCase() !== blocks[index]) throw new VaultSailError('integrity', '上传分片 Hash 不一致。');
         }
         const result = await this.api(XPAN + 'file', { method: 'create' }, { ...base, uploadid: pre.uploadid });
         if (result.path !== this.absolute(path) || result.size !== data.byteLength) throw new VaultSailError('response', '创建文件结果与请求不一致。');

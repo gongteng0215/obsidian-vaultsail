@@ -2,11 +2,11 @@
 
 > Your vault, every cloud. 让知识自由穿行于每一朵云。
 
-**Status: 0.1.6 local test candidate. OAuth and manual transfer code implemented; real Baidu account and iPad validation pending.**
+**Status: 0.1.7 local test candidate. OAuth and manual transfer code implemented; real Baidu account and iPad validation pending.**
 
 VaultSail is an open-source Obsidian plugin project focused on safe cross-device and eventual multi-cloud synchronization. Windows and iPadOS are primary targets. Baidu Netdisk is the intended first storage backend. Future backends may include OneDrive, WebDAV, S3 and Google Drive.
 
-## Current features (v0.1.6 test candidate)
+## Current features (v0.1.7 test candidate)
 
 - Chinese setup wizard for the user's own Baidu application and account; no hosted server or shared private app credentials.
 - Distinctive VaultSail workspace with connection, remote vault and transfer tabs; explicit local AppKey/SecretKey save state.
@@ -25,7 +25,7 @@ See [用户配置与测试](docs/USER_SETUP.md): configure your own AppKey, sele
 
 ## Install the local test candidate
 
-1. Build and package the project to obtain `dist/vaultsail-0.1.6.zip`, or obtain the candidate from [CI artifacts](https://github.com/gongteng0215/obsidian-vaultsail/actions). The published [0.1.1 D0 release](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.1.1) remains unchanged and does not support OAuth.
+1. Build and package the project to obtain `dist/vaultsail-0.1.7.zip`, or obtain the candidate from [CI artifacts](https://github.com/gongteng0215/obsidian-vaultsail/actions). The published [0.1.1 D0 release](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.1.1) remains unchanged and does not support OAuth.
 2. Extract the ZIP into an empty test Vault's `.obsidian/plugins/` directory. The resulting files must be `.obsidian/plugins/vaultsail/main.js`, `manifest.json`, and `styles.css`.
 3. Restart Obsidian, open **Settings → Community plugins**, enable community plugins if needed, then enable **VaultSail**. Requires Obsidian **1.11.4 or newer**. A custom Obsidian configuration directory replaces `.obsidian` in these paths.
 4. Open **Settings → VaultSail** and follow the Chinese setup guide. First test with an empty or disposable Vault.

@@ -4,7 +4,7 @@ import { md5 } from '@noble/hashes/legacy';
 import { bytesToHex } from '@noble/hashes/utils';
 import { BaiduProvider, listAll } from '../src/providers/baidu-provider.ts';
 import { bytes, hash, MAX_FILE_SIZE, VaultSailError } from '../src/core/safety.ts';
-import { request, type HttpRequest, type HttpResponse } from '../src/providers/http.ts';
+import { apiSuccess, request, type HttpRequest, type HttpResponse } from '../src/providers/http.ts';
 
 function harness() {
   const root = '/apps/中文应用'; const dirs = new Set([root]); const files = new Map<string, ArrayBuffer>(); const ids = new Map<string, string>();
@@ -40,7 +40,7 @@ function harness() {
         const data = Buffer.from(input.body as ArrayBuffer); const start = data.indexOf('\r\n\r\n') + 4; const end = data.length - Buffer.byteLength('\r\n--' + boundary + '--\r\n');
         const chunk = data.subarray(start, end); const copy = Uint8Array.from(chunk).buffer; const index = Number(query.get('partseq'));
         assert.equal(bytesToHex(md5(chunk)), upload.blocks[index]); assert.ok(chunk.byteLength <= 4 * 1024 * 1024); upload.chunks.set(index, copy);
-        return response({ errno: 0, md5: upload.blocks[index] });
+        return response({ md5: upload.blocks[index], request_id: 123456 });
       }
       case 'create': {
         assert.equal(body.get('rtype'), '0'); const path = body.get('path')!;
@@ -87,6 +87,40 @@ test('pagination reads all pages including full final page and refuses malformed
   await assert.rejects(malformed.listAll(''), { code: 'response' });
   const duplicate = { ...h.provider, list: async () => ({ objects: [{ path: 'same', size: 0, isDirectory: true }], complete: false, nextCursor: '100' }) };
   await assert.rejects(listAll(duplicate as BaiduProvider, ''), { code: 'response' });
+});
+test('Baidu response envelopes accept PCS digest-only success and reject explicit or malformed errors', () => {
+  const md5 = 'ab56b4d92b40713acc5af89985d4b786';
+  assert.equal(apiSuccess({ md5 }, 'pcs-upload').md5, md5);
+  assert.equal(apiSuccess({ errno: 0, md5 }, 'pcs-upload').md5, md5);
+  for (const field of ['errno', 'error_code', 'error_no']) {
+    assert.throws(() => apiSuccess({ [field]: 31045, md5 }, 'pcs-upload'), { code: 'permission' });
+    assert.throws(() => apiSuccess({ errno: 0, [field]: -6, list: [] }), { code: 'permission' });
+    assert.throws(() => apiSuccess({ [field]: '0', md5 }, 'pcs-upload'), { code: 'response' });
+  }
+  assert.throws(() => apiSuccess({ md5 }), { code: 'response' });
+  assert.throws(() => apiSuccess({ list: [] }), { code: 'response' });
+  for (const value of [{}, { errno: 0 }, { md5: 'bad' }, { md5, error: 'private-access' }]) assert.throws(() => apiSuccess(value, 'pcs-upload'));
+  assert.equal(apiSuccess({ error_code: 0, list: [] }).error_code, 0);
+});
+test('gateway errors retain their real code and safe API stage, including HTTP 403', async () => {
+  for (const status of [200, 403]) {
+    let refreshes = 0;
+    const provider = new BaiduProvider('/apps/test', async () => ({ status, headers: {}, bytes: new ArrayBuffer(0), json: { error_code: 31045, error_msg: 'private-access' } }),
+      { accessToken: async force => { if (force) refreshes++; return 'private-access'; } });
+    await assert.rejects(provider.listAll(''), e => e instanceof VaultSailError && e.code === 'permission' && e.message.startsWith('读取云端目录：') && !e.message.includes('private-access'));
+    assert.equal(refreshes, 0);
+  }
+  const provider = new BaiduProvider('/apps/test', async () => ({ status: 403, headers: {}, bytes: new ArrayBuffer(0), json: { errno: 0, list: [] } }), { accessToken: async () => 'token' });
+  await assert.rejects(provider.listAll(''), { code: 'http' });
+});
+test('PCS malformed, rejected and mismatched digests never publish file metadata', async () => {
+  for (const reply of [{}, { md5: 'bad' }, { md5: '0'.repeat(32) }, { error_code: 31045, md5: '0'.repeat(32) }]) {
+    const h = harness();
+    const provider = new BaiduProvider('/apps/中文应用', async input => input.url.includes('method=upload')
+      ? { status: 200, headers: {}, bytes: new ArrayBuffer(0), json: reply } : h.transport(input), { accessToken: async () => 'private-access' });
+    await assert.rejects(provider.writeImmutable('vaultsail/vaults/test/vault.json', bytes('{}')));
+    assert.equal(h.counts().createCalls, 0); assert.equal(h.files.size, 0);
+  }
 });
 test('download refuses unrelated CDN links and oversized objects before reading bytes', async () => {
   const h = harness(); await h.provider.writeImmutable('test/file.bin', bytes('A'));

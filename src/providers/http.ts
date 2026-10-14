@@ -34,15 +34,29 @@ export async function request(transport: HttpTransport, input: HttpRequest, allo
   if (result.status < 200 || result.status >= 300) throw new VaultSailError('http', `接口请求未通过（HTTP ${result.status}）。`);
   return result;
 }
-export function apiSuccess(value: unknown): Record<string, unknown> {
+export function apiSuccess(value: unknown, format: 'xpan' | 'pcs-upload' = 'xpan'): Record<string, unknown> {
   const result = record(value);
-  if (!Number.isInteger(result.errno)) throw new VaultSailError('response', '接口缺少有效状态码，不能确认远端结果。');
-  const code = Number(result.errno);
-  if (code === 0) return result;
+  // Baidu uses different error envelopes across XPAN, PCS and gateway responses.
+  // Explicit errors always win over success-looking payload fields.
+  if (result.error !== undefined && result.error !== '') throw new VaultSailError('authentication', '百度返回授权错误，请检查应用配置并重新授权。');
+  const fields = ['errno', 'error_code', 'error_no'].filter(key => Object.hasOwn(result, key));
+  if (fields.some(key => !Number.isSafeInteger(result[key]))) throw new VaultSailError('response', '接口状态码格式无效，不能确认远端结果。');
+  const code = Number(fields.map(key => result[key]).find(value => value !== 0) ?? 0);
+  if (code !== 0) throwApiCode(code);
+  if (format === 'pcs-upload') {
+    // Only this endpoint may omit errno on success. The caller also compares this
+    // digest with the uploaded bytes before it publishes any file metadata.
+    if (typeof result.md5 !== 'string' || !/^[a-fA-F0-9]{32}$/.test(result.md5)) throw new VaultSailError('response', '分片上传未返回有效 MD5，不能确认上传结果。');
+    return result;
+  }
+  if (!fields.length) throw new VaultSailError('response', '接口缺少有效状态码，不能确认远端结果。');
+  return result;
+}
+function throwApiCode(code: number): never {
   if ([20016, 20017].includes(code)) throw new VaultSailError('token-expired', '授权令牌失效，需要续期。');
   if (code === -9) throw new VaultSailError('not-found', '远端目录或文件不存在。');
   if (code === -8) throw new VaultSailError('exists', '远端对象已存在，不能覆盖。');
-  if (code === -6 || code === 31045) throw new VaultSailError('permission', '身份或接口权限未通过，请检查应用授权。');
+  if (code === -6 || code === 31045) throw new VaultSailError('permission', `身份或接口权限未通过（百度错误码 ${code}），请检查应用授权。`);
   if (code === 31034) throw new VaultSailError('rate', '百度接口限流，任务已保留。', true);
   throw new VaultSailError('api', `百度接口返回错误码 ${code}，已停止操作。`);
 }
