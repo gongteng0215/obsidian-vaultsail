@@ -14,7 +14,7 @@ Obsidian UI / Settings / Commands
   └── Vault Adapter (Obsidian Vault API, iOS-compatible)
       └── Sync Engine (base snapshot + three-way planner + execution journal)
           └── CloudStorageProvider
-                ├── Baidu Netdisk (D0 validation, not implemented)
+                ├── Baidu Netdisk (implemented; real-account validation pending)
                 ├── WebDAV (future)
                 ├── OneDrive (future)
                 ├── S3 (future)
@@ -39,4 +39,14 @@ Obsidian UI / Settings / Commands
 - `operations`: 待执行操作清单、幂等键、状态和失败原因。
 - `conflicts`: 双方副本位置、原始指纹、用户选择、处理时间。
 
-**当前仓库只是架构骨架，不具备真实同步能力。**
+**0.1.2 已实施授权、手动传输、版本图与实验同步。真实网盘与 iPad 尚未验收，不作为稳定同步发布。**
+
+## 当前实施
+
+- AuthManager 与 Provider 分开；用户使用自己的应用、每台设备独立登录。
+- Provider 的 `list/read/writeImmutable/mkdir/exists` 使用获准根目录内的相对路径。完整分页工具属于通用 Provider 层。
+- 云端库使用 `<实际应用目录>/vaultsail/vaults/<UUID>/vault.json + blobs/<SHA-256> + ops/<deviceId>/<opId>.json`。
+- 操作以父版本建立图，缺父版本、循环、未知格式和已知事件不可见时停写；时间不决定并发胜者。
+- 本地设备 ID 使用 Vault 本地存储；基线、暂存及恢复日志位于 `.vaultsail-state/<deviceId>/`。账号、应用、目录及远端库共同决定状态上下文。
+- SecretStorage 保存凭据，普通设置只保存引用。最低 Obsidian 版本为 1.11.4。
+- 并发重命名暂停应用并保留分支，当前不提供并发重命名自动解决。历史对象不自动清理。

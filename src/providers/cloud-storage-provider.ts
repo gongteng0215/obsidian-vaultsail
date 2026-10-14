@@ -6,10 +6,13 @@ export interface RemoteObject {
   path: string;
   size: number;
   etag?: string;
+  isDirectory: boolean;
+  id?: string;
 }
 export interface RemotePage {
   objects: RemoteObject[];
   nextCursor?: string;
+  complete: boolean;
 }
 export interface CloudProviderCapabilities {
   canList: boolean;
@@ -23,8 +26,10 @@ export interface CloudStorageProvider {
   readonly displayName: string;
   readonly capabilities: CloudProviderCapabilities;
   isConfigured(): boolean;
-  list(remoteVaultId: string, cursor?: string): Promise<RemotePage>;
-  read(remoteVaultId: string, path: string): Promise<ArrayBuffer>;
-  write(remoteVaultId: string, path: string, data: ArrayBuffer): Promise<void>;
-  remove(remoteVaultId: string, path: string): Promise<void>;
+  readonly root: string;
+  list(directory: string, cursor?: string): Promise<RemotePage>;
+  read(path: string): Promise<ArrayBuffer>;
+  writeImmutable(path: string, data: ArrayBuffer): Promise<void>;
+  mkdir(directory: string): Promise<void>;
+  exists(path: string): Promise<boolean>;
 }

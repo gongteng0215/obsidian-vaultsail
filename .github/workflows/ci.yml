@@ -11,6 +11,15 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
       - run: npm test
       - run: npm run build
+      - name: Package and verify version metadata
+        shell: pwsh
+        run: ./scripts/package-release.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vaultsail-preview
+          path: |
+            dist/vaultsail-*.zip
+            dist/SHA256SUMS.txt

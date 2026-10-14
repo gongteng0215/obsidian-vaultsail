@@ -17,6 +17,8 @@ source_reference: https://github.com/owl234/obsidian-baidu-netdisk-sync
 
 > **范围更新（2026-10-14）**：正式产品定位为 **多云 Obsidian 同步插件**。百度网盘仅为第一期 Provider，不构成系统的唯一依赖。后续目标包括 OneDrive、WebDAV、S3、Google Drive。所有百度限定的需求、D0 检查和 API 验证均属于第一期适配器要求。同步引擎必须依赖能力驱动的 `CloudStorageProvider` 接口。当前不支持一个 Vault 同时向多个云端写入。详见 [`MULTI_CLOUD_ARCHITECTURE.md`](MULTI_CLOUD_ARCHITECTURE.md)。
 
+> **实施更新（2026-10-14）**：用户确认采用自带百度应用、无服务器方案。0.1.2 已加入授权、隔离接口测试、手动传输和实验双向同步；当前阶段的真实验收以 [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md) 为准。本 PRD 后文的任务列表包含长期验收要求，代码完成不自动代表真实 D0、iPad 或稳定版本验收通过。
+
 ## 0. 先看结论：立项决策
 
 ### 0.1 决策摘要

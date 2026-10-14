@@ -1,9 +1,9 @@
 {
   "id": "vaultsail",
   "name": "VaultSail",
-  "version": "0.1.1",
-  "minAppVersion": "1.5.0",
-  "description": "Safety-first, multi-cloud sync foundation for Obsidian. D0 read-only cloud API probe; synchronization disabled.",
+  "version": "0.1.2",
+  "minAppVersion": "1.11.4",
+  "description": "User-configured Baidu OAuth, verified manual transfers and experimental protected sync. Real-account and iPad validation pending.",
   "author": "VaultSail contributors",
   "isDesktopOnly": false
 }

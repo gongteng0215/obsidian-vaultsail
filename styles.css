@@ -1,1 +1,4 @@
 .vaultsail-status { opacity: 0.85; }
+.vaultsail-plan { max-height: 55vh; overflow-y: auto; }
+.vaultsail-plan-row { padding: 0.6em 0; border-bottom: 1px solid var(--background-modifier-border); overflow-wrap: anywhere; }
+.vaultsail-plan-row p { margin: 0.3em 0; color: var(--text-muted); }

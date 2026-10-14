@@ -1,5 +1,7 @@
 # Windows 安装与 GitHub 首次建仓
 
+> 当前 0.1.2 安装和授权步骤请以 [USER_SETUP.md](USER_SETUP.md) 为准，需要 Obsidian 1.11.4+。下面的建仓和 D0 段落保留为历史记录。
+
 ## 推荐目录
 
 `D:\AI\obsidian-vaultsail`

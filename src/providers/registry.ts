@@ -1,10 +1,8 @@
-import type { CloudStorageProvider } from './cloud-storage-provider';
-import { BaiduProvider } from './baidu';
+import { BaiduProvider, type TokenSource } from './baidu-provider';
+import type { HttpTransport } from './http';
 
-export const providers: ReadonlyMap<string, CloudStorageProvider> = new Map([
-  ['baidu', new BaiduProvider()],
-]);
-
-export function getProvider(id: string): CloudStorageProvider | undefined {
-  return providers.get(id);
+// A provider instance belongs to one app root and credential session.
+export function createProvider(id: string, root: string, transport: HttpTransport, auth: TokenSource, active?: () => boolean): BaiduProvider {
+  if (id !== 'baidu') throw new Error('Unsupported provider');
+  return new BaiduProvider(root, transport, auth, active);
 }

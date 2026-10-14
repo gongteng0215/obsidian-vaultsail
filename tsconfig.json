@@ -11,6 +11,7 @@
     "importHelpers": false,
     "isolatedModules": true,
     "strict": true,
+    "allowImportingTsExtensions": true,
     "lib": [
       "DOM",
       "ES2022"

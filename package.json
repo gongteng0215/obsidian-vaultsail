@@ -1,6 +1,6 @@
 {
   "name": "obsidian-vaultsail",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "VaultSail: an extensible, safety-first multi-cloud sync plugin for Obsidian",
   "license": "MIT",
@@ -14,8 +14,12 @@
   "devDependencies": {
     "@types/node": "^22.15.17",
     "esbuild": "^0.25.5",
-    "obsidian": "^1.8.10",
+    "linkedom": "0.18.12",
+    "obsidian": "1.14.4",
     "typescript": "^5.8.3"
   },
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "@noble/hashes": "1.8.0"
+  }
 }
