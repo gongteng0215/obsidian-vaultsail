@@ -50,13 +50,15 @@ export class CloudVaultSetupModal extends Modal {
 
 const LABELS: Record<PlanRow['action'], string> = { upload: '上传', download: '下载', conflict: '冲突', skip: '跳过', noop: '无变化', 'delete-local': '移入本地回收区', 'delete-remote': '发布删除记录' };
 export class ConfirmModal extends Modal {
-  constructor(app: App, private title: string, private description: string, private confirm: () => Promise<void>) { super(app); }
+  constructor(app: App, private title: string, private description: string, private confirm: (report: (message: string) => void) => Promise<void>) { super(app); }
   onOpen(): void {
     this.titleEl.setText(this.title); this.contentEl.createEl('p', { text: this.description });
     const error = this.contentEl.createEl('p');
+    error.setAttribute('role', 'status');
     new Setting(this.contentEl).addButton(button => button.setButtonText('取消').onClick(() => this.close()))
       .addButton(button => button.setButtonText('确认').setCta().onClick(async () => {
-        button.setDisabled(true); try { await this.confirm(); this.close(); } catch (e) { error.setText(safeMessage(e)); button.setDisabled(false); }
+        button.setDisabled(true); error.setText('正在处理…');
+        try { await this.confirm(message => error.setText(message)); this.close(); } catch (e) { error.setText(safeMessage(e)); button.setDisabled(false); }
       }));
   }
 }

@@ -180,17 +180,36 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   assert.equal(ipad.lastSuccess(), undefined);
   const beforeImport = JSON.stringify(ipad.saved); const beforeSecret = secretMap.get(ipad.settings.secretRef); const oldSessionRef = 'vaultsail-session-' + ipad.deviceId;
   await assert.rejects(ipad.importConfiguration(encrypted, 'incorrect-password'), { code: 'decrypt' }); assert.equal(JSON.stringify(ipad.saved), beforeImport); assert.equal(ipad.auth.status(), 'connected');
+  ipad.pairingProvider = () => ({ ...fakeProvider, profile: async () => { throw new TypeError('private-access https://example.invalid?secret=replacement-private-secret'); } });
+  await assert.rejects(ipad.importConfiguration(encrypted, pairingPassword), (error: any) => {
+    assert.equal(error.code, 'pairing-account'); assert.match(error.message, /验证百度账号失败（TypeError）/);
+    for (const secret of ['private-access', 'replacement-private-secret', 'example.invalid']) assert.equal(error.message.includes(secret), false);
+    return true;
+  });
+  assert.equal(JSON.stringify(ipad.saved), beforeImport); assert.equal(JSON.parse(ipad.diagnostics()).lastPairingStep, 'account');
   ipad.pairingProvider = () => ({ ...fakeProvider, profile: async () => ({ accountId: 'other-account' }) });
   await assert.rejects(ipad.importConfiguration(encrypted, pairingPassword), { code: 'binding' }); assert.equal(JSON.stringify(ipad.saved), beforeImport);
   ipad.pairingProvider = () => ({ ...fakeProvider, read: async (p: string) => p.endsWith('pairing.bin') ? new ArrayBuffer(0) : fakeProvider.read(p) });
   await assert.rejects(ipad.importConfiguration(encrypted, pairingPassword), { code: 'integrity' }); assert.equal(JSON.stringify(ipad.saved), beforeImport);
   ipad.pairingProvider = (_root: string, auth: any) => ({ ...fakeProvider, profile: async () => { assert.equal(await auth.accessToken(), 'private-access'); return fakeProvider.profile(); } });
+  const savedSetSecret = ipadApp.secretStorage.setSecret;
+  ipadApp.secretStorage.setSecret = (key: string, value: string) => {
+    if (key.startsWith('vaultsail-session-' + ipad.deviceId + '-') && value) throw new Error('native key storage rejected private-refresh');
+    savedSetSecret(key, value);
+  };
+  await assert.rejects(ipad.importConfiguration(encrypted, pairingPassword), (error: any) => {
+    assert.equal(error.code, 'pairing-credentials'); assert.match(error.message, /保存本机密钥失败/); assert.equal(error.message.includes('private-refresh'), false); return true;
+  });
+  assert.equal(JSON.stringify(ipad.saved), beforeImport); assert.equal(secretMap.get(ipad.settings.secretRef), beforeSecret); assert.equal(ipad.auth.status(), 'connected');
+  assert.equal(JSON.parse(ipad.diagnostics()).lastPairingStep, 'credentials'); ipadApp.secretStorage.setSecret = savedSetSecret;
   const originalSave = ipad.saveData.bind(ipad); let failSave = true;
   ipad.saveData = async (value: unknown) => { await originalSave(value); if (failSave) { failSave = false; throw new Error('simulated partial disk failure'); } };
   await assert.rejects(ipad.importConfiguration(encrypted, pairingPassword)); assert.equal(JSON.stringify(ipad.saved), beforeImport);
   assert.equal(secretMap.get(ipad.settings.secretRef), beforeSecret); assert.ok(secretMap.get(oldSessionRef)); assert.equal(ipad.auth.status(), 'connected');
   ipad.saveData = originalSave;
   const browserCalls = openedUrls.length;
+  const pairingReports: string[] = []; const originalImport = ipad.importConfiguration.bind(ipad);
+  ipad.importConfiguration = (text: string, pass?: string, report?: (message: string) => void) => originalImport(text, pass, (message: string) => { pairingReports.push(message); report?.(message); });
   setupButton('导入配对配置').click();
   const encryptedFile = [...document.querySelectorAll('input[aria-label="选择配对配置文件"]')].at(-1)! as HTMLInputElement;
   Object.defineProperty(encryptedFile, 'files', { value: [{ size: encrypted.length, text: async () => encrypted }], configurable: true }); encryptedFile.dispatchEvent(new window.Event('change'));
@@ -206,6 +225,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   setupButton('检查并导入').click(); await until(() => document.body.textContent!.includes('上传下载 1 KB'));
   setupButton('确认').click(); await until(() => !!ipad.settings.sessionRef && !ipad.busy);
   assert.equal(ipad.auth.status(), 'connected'); assert.equal(ipad.settings.binding.vaultId, existingId); assert.notEqual(ipad.settings.secretRef, plugin.settings.secretRef);
+  for (const stage of ['验证百度账号', '读取云端库', '上传校验文件', '下载校验文件', '保存本机密钥', '启用连接']) assert.ok(pairingReports.some(message => message.includes(stage)));
   assert.notEqual(ipad.deviceId, plugin.deviceId); assert.equal(openedUrls.length, browserCalls); assert.equal(ipad.settings.deletionEnabled, false);
   for (const secret of ['replacement-private-secret', 'private-access', 'private-refresh', pairingPassword]) assert.equal(JSON.stringify(ipad.saved).includes(secret), false);
   assert.equal(ipad.auth.exportCredentials().session.accessToken, 'private-access'); assert.equal(plugin.auth.status(), 'connected');
