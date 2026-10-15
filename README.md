@@ -19,9 +19,9 @@ Baidu Netdisk is the current provider. Transfers are manual, with a 20 MiB per-f
 
 Requires **Obsidian 1.11.4 or newer**. Community distribution is paused while real-device testing is completed. The community entry was archived on October 15, 2026; GitHub test releases remain available. Version 0.1.14 completed the directory's automated checks with no blocking errors, but this does not replace real-device validation.
 
-For iPad testing, install and enable [BRAT](https://github.com/TfTHacker/obsidian42-brat) through Obsidian's community plugins, then add `gongteng0215/obsidian-vaultsail` and select preview version `0.1.15`. Enable VaultSail in an empty test vault before importing an encrypted pairing code. Community publication will resume only after testing is completed and the maintainer authorizes it.
+For iPad testing, install and enable [BRAT](https://github.com/TfTHacker/obsidian42-brat) through Obsidian's community plugins, then add `gongteng0215/obsidian-vaultsail` and select preview version `0.1.16`. Enable VaultSail in an empty test vault before importing an encrypted pairing code. Community publication will resume only after testing is completed and the maintainer authorizes it.
 
-For manual installation, download the ZIP or the three individual files from the [0.1.15 preview release](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.1.15). Place `main.js`, `manifest.json` and `styles.css` in `plugins/vaultsail/` under the current vault's configuration directory, then enable VaultSail. The default directory is `.obsidian`; custom configuration directories are supported.
+For manual installation, download the ZIP or the three individual files from the [0.1.16 preview release](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.1.16). Place `main.js`, `manifest.json` and `styles.css` in `plugins/vaultsail/` under the current vault's configuration directory, then enable VaultSail. The default directory is `.obsidian`; custom configuration directories are supported.
 
 ## Connect your first device
 
@@ -49,7 +49,7 @@ Anyone holding both a pairing code and its password can reuse its authorization.
 
 ## Verification and development
 
-88 automated tests cover authorization, encrypted pairing, file APIs, pagination, concurrent changes, recovery, path safety and configuration privacy. Real iPad import, device storage/Web Crypto, large real-world transfers and long-term shared-token refresh remain unverified by the developer. Simulated checks are not real-device certification. See [implementation status](docs/IMPLEMENTATION_STATUS.md) and [performance measurements](docs/PERFORMANCE.md).
+90 automated tests cover authorization, encrypted pairing, file APIs, pagination, concurrent changes, recovery, path safety and configuration privacy. Real iPad import, device storage/Web Crypto, large real-world transfers and long-term shared-token refresh remain unverified by the developer. Simulated checks are not real-device certification. See [implementation status](docs/IMPLEMENTATION_STATUS.md) and [performance measurements](docs/PERFORMANCE.md).
 
 Use Node.js 22+, then run `npm ci`, `npm test`, `npm run build` and `pwsh ./scripts/package-release.ps1`. The installation ZIP contains only the three plugin files, never tests, user settings, credentials or notes.
 

@@ -2,6 +2,7 @@ import { Modal, Notice, Plugin, requireApiVersion } from 'obsidian';
 import { VaultSailSettingTab } from './ui/settings-tab';
 import { DEFAULT_SETTINGS, migrateSettings, type VaultSailSettings } from './config';
 import { AuthManager, type DeviceSession } from './auth/auth-manager';
+import { ownsCredentialReference, pairingCredentialReferences } from './auth/credential-references';
 import { appRoot, bytes, hash, MAX_FILE_SIZE, safeMessage, uuid, VaultSailError } from './core/safety';
 import { BaiduProvider } from './providers/baidu-provider';
 import { ObsidianCredentials, ObsidianLocalFiles, ObsidianRevisionCache, ObsidianStateStore, deviceIdentity, obsidianTransport } from './platform/obsidian-adapters';
@@ -87,7 +88,7 @@ export default class VaultSailPlugin extends Plugin {
   refreshUI(): void { if (this.alive && this.settingTab?.containerEl.isConnected) this.settingTab.display(); }
   private sessionReference(): string {
     const own = 'vaultsail-session-' + this.deviceId; const ref = this.settings.sessionRef;
-    return ref === own || ref?.startsWith(own + '-') ? ref : own;
+    return ownsCredentialReference(ref, 'session', this.deviceId) ? ref! : own;
   }
   private makeAuth(): AuthManager {
     return new AuthManager(obsidianTransport, new ObsidianCredentials(this.app), () => ({ appKey: this.settings.appKey,
@@ -322,8 +323,7 @@ export default class VaultSailPlugin extends Plugin {
       try { report?.(this.statusText); } catch { /* Progress rendering cannot change import results. */ }
     };
     guard(); this.statusText = '正在验证导入的百度连接与云端库…'; this.refreshUI();
-    const secretRef = 'vaultsail-app-secret-' + this.deviceId + '-' + uuid();
-    const sessionRef = 'vaultsail-session-' + this.deviceId + '-' + uuid();
+    const { secretRef, sessionRef } = pairingCredentialReferences(this.deviceId);
     const staged = new Map<string, string>([[secretRef, payload.secretKey]]);
     const auth = new AuthManager(obsidianTransport, { get: id => staged.get(id) ?? null, set: (id, data) => { staged.set(id, data); }, remove: id => { staged.delete(id); } },
       () => ({ appKey: config.appKey, secretRef, sessionRef }));
@@ -381,7 +381,7 @@ export default class VaultSailPlugin extends Plugin {
       // Delete only credentials owned by this device's plugin, never a user-selected shared secret.
       try {
         credentials.remove(oldSessionRef);
-        if (previous.secretRef.startsWith('vaultsail-app-secret-' + this.deviceId) && previous.secretRef !== secretRef) credentials.remove(previous.secretRef);
+        if (ownsCredentialReference(previous.secretRef, 'app-secret', this.deviceId) && previous.secretRef !== secretRef) credentials.remove(previous.secretRef);
       } catch { /* Successful migration must not be undone by obsolete credential cleanup. */ }
       new Notice(this.statusText, 9000);
     } catch (error) {

@@ -29,7 +29,11 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
     list: async (p: string) => ({ files: [...files.keys()].filter(key => key.startsWith(p + '/') && !key.slice(p.length + 1).includes('/')), folders: [...dirs].filter(key => key.startsWith(p + '/') && !key.slice(p.length + 1).includes('/')) }),
   };
   const app = {
-    secretStorage: { getSecret: (key: string) => secretMap.get(key) ?? null, setSecret: (key: string, value: string) => { secretMap.set(key, value); } },
+    secretStorage: { getSecret: (key: string) => secretMap.get(key) ?? null, setSecret: (key: string, value: string) => {
+      // Match Obsidian's actual SecretStorage.validateId contract, including its length cap.
+      if (!/^[a-z0-9-]+$/.test(key) || key.length > 64) throw new Error('Secret ID is invalid. 64 characters max.');
+      secretMap.set(key, value);
+    } },
     loadLocalStorage: (key: string) => localMap.get(key) ?? null, saveLocalStorage: (key: string, value: unknown) => { localMap.set(key, value); },
     workspace: { on: () => ({}) },
     vault: { configDir: '.obsidian', adapter, getName: () => '测试笔记库', getFiles: () => [...files].filter(([p]) => !p.startsWith('.')).map(([p, data]) => new module.TFile(p, data.byteLength)),
@@ -194,7 +198,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   ipad.pairingProvider = (_root: string, auth: any) => ({ ...fakeProvider, profile: async () => { assert.equal(await auth.accessToken(), 'private-access'); return fakeProvider.profile(); } });
   const savedSetSecret = ipadApp.secretStorage.setSecret;
   ipadApp.secretStorage.setSecret = (key: string, value: string) => {
-    if (key.startsWith('vaultsail-session-' + ipad.deviceId + '-') && value) throw new Error('native key storage rejected private-refresh');
+    if (key.startsWith('vaultsail-session-') && key !== oldSessionRef && value) throw new Error('native key storage rejected private-refresh');
     savedSetSecret(key, value);
   };
   await assert.rejects(ipad.importConfiguration(encrypted, pairingPassword), (error: any) => {
@@ -225,11 +229,17 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   setupButton('检查并导入').click(); await until(() => document.body.textContent!.includes('上传下载 1 KB'));
   setupButton('确认').click(); await until(() => !!ipad.settings.sessionRef && !ipad.busy);
   assert.equal(ipad.auth.status(), 'connected'); assert.equal(ipad.settings.binding.vaultId, existingId); assert.notEqual(ipad.settings.secretRef, plugin.settings.secretRef);
+  assert.ok(ipad.settings.secretRef.length <= 64); assert.ok(ipad.settings.sessionRef.length <= 64);
   for (const stage of ['验证百度账号', '读取云端库', '上传校验文件', '下载校验文件', '保存本机密钥', '启用连接']) assert.ok(pairingReports.some(message => message.includes(stage)));
   assert.notEqual(ipad.deviceId, plugin.deviceId); assert.equal(openedUrls.length, browserCalls); assert.equal(ipad.settings.deletionEnabled, false);
   for (const secret of ['replacement-private-secret', 'private-access', 'private-refresh', pairingPassword]) assert.equal(JSON.stringify(ipad.saved).includes(secret), false);
   assert.equal(ipad.auth.exportCredentials().session.accessToken, 'private-access'); assert.equal(plugin.auth.status(), 'connected');
   await ipad.run('preview', () => ipad.preview('download')); assert.equal(ipad.progress?.phase, 'preview-ready', 'successful pairing automatically verifies this device for transfer');
+  const previousPairingRefs = [ipad.settings.secretRef, ipad.settings.sessionRef];
+  await ipad.importConfiguration(encrypted, pairingPassword);
+  assert.notEqual(ipad.settings.secretRef, previousPairingRefs[0]); assert.notEqual(ipad.settings.sessionRef, previousPairingRefs[1]);
+  for (const ref of previousPairingRefs) assert.equal(Boolean(secretMap.get(ref)), false, 're-pairing removes only obsolete device-owned compact references');
+  assert.equal(plugin.auth.status(), 'connected', 're-pairing must preserve the source device authorization');
   const restarted = new module.Plugin(ipadApp); restarted.saved = ipad.saved; await restarted.onload(); assert.equal(restarted.auth.status(), 'connected');
   assert.equal(restarted.deviceId, ipad.deviceId); assert.equal(restarted.auth.exportCredentials().session.accessToken, 'private-access'); restarted.onunload(); restarted.tabs[0].containerEl.remove();
   const copiedStorage = new Map<string, unknown>(); const copiedApp = { ...app, loadLocalStorage: (key: string) => copiedStorage.get(key) ?? null,

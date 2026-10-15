@@ -38,7 +38,10 @@ export class ObsidianCredentials implements CredentialStore {
   private app: App;
   constructor(app: App) { this.app = app; }
   get(id: string): string | null { return id ? this.app.secretStorage.getSecret(id) : null; }
-  set(id: string, value: string): void { this.app.secretStorage.setSecret(id, value); }
+  set(id: string, value: string): void {
+    if (!/^[a-z0-9-]{1,64}$/.test(id)) throw new VaultSailError('credentials-id', '本地密钥标识无效或超过 64 个字符，请更新插件后重新导入。');
+    this.app.secretStorage.setSecret(id, value);
+  }
   remove(id: string): void {
     const storage = this.app.secretStorage as App['secretStorage'] & { deleteSecret?: (key: string) => boolean };
     if (!id || storage.getSecret(id) === null) return;
