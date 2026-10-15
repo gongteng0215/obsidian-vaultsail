@@ -1,9 +1,10 @@
 {
   "id": "vaultsail",
   "name": "VaultSail",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "minAppVersion": "1.11.4",
-  "description": "User-configured Baidu OAuth, verified manual transfers and experimental protected sync. Real-account and iPad validation pending.",
-  "author": "VaultSail contributors",
+  "description": "Sync notes and attachments through Baidu Netdisk with version preservation and encrypted device pairing.",
+  "author": "gongteng0215",
+  "authorUrl": "https://github.com/gongteng0215",
   "isDesktopOnly": false
 }

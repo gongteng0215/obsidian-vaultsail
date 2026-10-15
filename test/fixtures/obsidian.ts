@@ -6,7 +6,7 @@ export class Notice { static messages: string[] = []; constructor(message: strin
 export function requireApiVersion(): boolean { return true; }
 export async function requestUrl(input: unknown): Promise<unknown> { return (globalThis as unknown as { mockRequest: (input: unknown) => Promise<unknown> }).mockRequest(input); }
 export class Plugin {
-  app: any; manifest = { version: '0.1.11' }; commands: any[] = []; tabs: any[] = []; saved: unknown;
+  app: any; manifest = { version: '0.1.12' }; commands: any[] = []; tabs: any[] = []; saved: unknown;
   constructor(app: unknown) { this.app = app; }
   async loadData(): Promise<unknown> { return this.saved; }
   async saveData(value: unknown): Promise<void> { this.saved = structuredClone(value); }

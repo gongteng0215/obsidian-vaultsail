@@ -41,7 +41,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   const plugin = new module.Plugin(app); plugin.saved = { providerId: 'baidu', appKey: 'my-app', secretRef: 'own-secret', appDirectory: '/apps/test', remoteVaultId: 'legacy-name', access_token: 'must-be-stripped' };
   await plugin.onload(); plugin.tabs[0].display();
   const buttons = () => [...document.querySelectorAll('button')].map(button => button.textContent);
-  for (const label of ['连接百度网盘', '运行文件往返测试', '创建并绑定', '预览上传', '预览下载', '恢复未完成任务']) assert.ok(buttons().includes(label));
+  for (const label of ['连接百度网盘', '验证文件传输', '创建并绑定', '预览上传', '预览下载', '恢复未完成任务']) assert.ok(buttons().includes(label));
   assert.ok(document.body.textContent!.includes('尚未验证绑定'));
   assert.equal(document.querySelector('input[type=password]')?.getAttribute('placeholder'), '已保存 · 输入新值以更换');
   const panels = [...document.querySelectorAll('[role=tabpanel]')]; assert.equal(panels.length, 3); assert.equal(panels.filter(panel => !panel.hasAttribute('hidden')).length, 1);
@@ -83,11 +83,11 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   for (let i = 0; i < 80 && plugin.busy; i++) await Promise.resolve();
   assert.ok(plugin.settings.binding); assert.equal(plugin.settings.binding.displayName, '测试笔记库');
   assert.equal(plugin.settings.binding.root, '/apps/test'); assert.equal(remoteObjects.size, 1); assert.equal(files.size, 0);
-  for (let i = 0; i < 80 && !document.body.textContent!.includes('云端库已绑定。请先运行文件往返测试'); i++) await Promise.resolve();
-  assert.ok(document.body.textContent!.includes('云端库已绑定。请先运行文件往返测试'));
+  for (let i = 0; i < 80 && !document.body.textContent!.includes('云端库已绑定。请先验证文件传输'); i++) await Promise.resolve();
+  assert.ok(document.body.textContent!.includes('云端库已绑定。请先验证文件传输'));
   setupButton('完成').click();
   await plugin.run('preview', () => plugin.preview('upload'));
-  assert.match(plugin.statusText, /文件往返测试/); assert.equal(document.body.textContent!.includes('先选择一个云端知识库'), false);
+  assert.match(plugin.statusText, /文件传输权限验证/); assert.equal(document.body.textContent!.includes('先选择一个云端知识库'), false);
   plugin.settings.binding.accountHash = 'different-account';
   await plugin.run('preview', () => plugin.preview('upload')); assert.match(plugin.statusText, /百度账号与原绑定不一致/);
   setupButton('查看已有库').click();
@@ -96,7 +96,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   for (let i = 0; i < 80 && setupButton('绑定此库')?.disabled; i++) await Promise.resolve();
   const existingId = plugin.settings.binding.vaultId; setupButton('绑定此库').click();
   for (let i = 0; i < 80 && plugin.busy; i++) await Promise.resolve();
-  for (let i = 0; i < 80 && !document.body.textContent!.includes('云端库已绑定。请先运行文件往返测试'); i++) await Promise.resolve();
+  for (let i = 0; i < 80 && !document.body.textContent!.includes('云端库已绑定。请先验证文件传输'); i++) await Promise.resolve();
   assert.equal(plugin.settings.binding.vaultId, existingId); assert.notEqual(plugin.settings.binding.accountHash, 'different-account');
   setupButton('完成').click(); plugin.provider = originalProvider;
   await plugin.changeConfiguration({ appKey: 'different-app' }); assert.equal(plugin.auth.status(), 'disconnected'); assert.equal(plugin.settings.binding, undefined);
@@ -173,7 +173,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
     () => ({ appKey: ipad.settings.appKey, secretRef: ipad.settings.secretRef, sessionRef: 'vaultsail-session-' + ipad.deviceId }), async () => {});
   await ipad.run('connect', () => ipad.connect()); assert.equal(ipad.auth.status(), 'connected'); ipad.provider = () => fakeProvider;
   await ipad.bind(ipad.settings.remoteVaultId); assert.equal(ipad.settings.binding.vaultId, existingId);
-  await ipad.run('preview', () => ipad.preview('download')); assert.match(ipad.statusText, /文件往返测试/);
+  await ipad.run('preview', () => ipad.preview('download')); assert.match(ipad.statusText, /文件传输权限验证/);
   assert.equal(ipad.lastSuccess(), undefined);
   const beforeImport = JSON.stringify(ipad.saved); const beforeSecret = secretMap.get(ipad.settings.secretRef); const oldSessionRef = 'vaultsail-session-' + ipad.deviceId;
   await assert.rejects(ipad.importConfiguration(encrypted, 'incorrect-password'), { code: 'decrypt' }); assert.equal(JSON.stringify(ipad.saved), beforeImport); assert.equal(ipad.auth.status(), 'connected');

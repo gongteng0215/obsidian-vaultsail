@@ -16,7 +16,7 @@ export class VaultSailSettingTab extends PluginSettingTab {
     const progress = this.plugin.progress;
     const text = this.containerEl.querySelector<HTMLElement>('.vaultsail-progress-text');
     const meter = this.containerEl.querySelector<HTMLProgressElement>('.vaultsail-progress-meter');
-    if (text) text.setText(progress ? formatProgress(progress) : '尚未运行传输。预览后确认执行，才会上传或下载文件。');
+    if (text) text.setText(progress ? formatProgress(progress) : '点击开始同步，或先预览文件变化。');
     if (meter) {
       meter.max = Math.max(1, progress?.totalFiles ?? 1);
       if (progress && !progress.totalFiles && !['preview-ready', 'completed', 'failed', 'paused'].includes(progress.phase)) meter.removeAttribute('value');
@@ -41,7 +41,7 @@ export class VaultSailSettingTab extends PluginSettingTab {
     route.createEl('span', { text: this.app.vault.getName(), cls: 'vaultsail-route-local' }); route.createEl('span', { text: '→', cls: 'vaultsail-route-arrow' });
     route.createEl('span', { text: p.settings.binding?.displayName ?? '等待连接云端', cls: 'vaultsail-route-cloud' });
     const metrics = el.createDiv({ cls: 'vaultsail-metrics' });
-    for (const [label, value] of [['本地知识库', this.app.vault.getName()], ['云端目标', p.settings.binding ? '已绑定 · 百度网盘' : '尚未绑定'], ['当前版本', p.manifest.version + ' · 测试预览']]) {
+    for (const [label, value] of [['本地知识库', this.app.vault.getName()], ['云端目标', p.settings.binding ? '已绑定 · 百度网盘' : '尚未绑定'], ['当前版本', p.manifest.version]]) {
       const metric = metrics.createDiv({ cls: 'vaultsail-metric' }); metric.createEl('span', { text: label }); metric.createEl('strong', { text: value });
     }
     const status = el.createDiv({ cls: 'vaultsail-notice' }); status.setAttribute('role', 'status');
@@ -75,10 +75,10 @@ export class VaultSailSettingTab extends PluginSettingTab {
     const columns = panels.get('connect')!.createDiv({ cls: 'vaultsail-connect-grid' });
     const appCard = card(columns, 'APPLICATION', '接入你的网盘', '一次保存应用信息，之后在百度官方页面登录。账号密码不在这里输入。');
     const authCard = card(columns, 'CONNECTION', '启程，连接百度', '首台设备授权，也可以导入电脑的加密连接。笔记直接传到你的网盘。');
-    const accessCard = card(panels.get('connect')!, 'CHECKPOINT', '连接之后，验证通路', '先检查访问，再验证测试文件能否完整往返。');
+    const accessCard = card(panels.get('connect')!, 'CHECKPOINT', '连接之后，验证通路', '先检查访问，再验证校验文件能否完整往返。');
     const configCard = card(panels.get('connect')!, 'PAIRING', '把连接带到 iPad', '密码加密配对码，导入后自动验证、连接与绑定，无需再次网页登录。设备身份与任务独立保留。');
     const vaultCard = card(panels.get('vault')!, 'DESTINATION', '为这份知识，选择一个泊位', '云端库 ID 用来配对设备，本地笔记库可以有不同名称。');
-    const transferCard = card(panels.get('transfer')!, 'WORKSPACE', '先看清变化，再开始传输', '20 MiB / 文件 · 单任务传输 · 同名不同内容会停在冲突。');
+    const transferCard = card(panels.get('transfer')!, 'WORKSPACE', '先看清变化，再开始传输', '20 MiB / 文件 · 单任务传输 · 并发改动自动保留双方副本。');
     const recoveryCard = card(panels.get('transfer')!, 'RECOVERY', '每一次修改，都有回程', '未完成的任务可以恢复，旧内容以恢复副本保留。');
     const advanced = panels.get('transfer')!.createEl('details', { cls: 'vaultsail-advanced' }); advanced.createEl('summary', { text: '实验功能与诊断' });
     const advancedCard = advanced.createDiv({ cls: 'vaultsail-card' });
@@ -128,9 +128,9 @@ export class VaultSailSettingTab extends PluginSettingTab {
     }
     new Setting(authCard).setName('管理授权').setDesc('本地断开后，百度端授权可在账号管理页撤销。')
       .addButton(button => button.setButtonText('打开百度账号授权管理').onClick(() => window.open('https://passport.baidu.com/accountbind', '_blank', 'noopener,noreferrer')));
-    new Setting(accessCard).setName('接口验证').setDesc('往返测试使用独立测试文件，不扫描笔记。')
+    new Setting(accessCard).setName('接口验证').setDesc('往返校验使用独立校验文件，不扫描笔记。')
       .addButton(button => button.setButtonText('检查只读访问').setDisabled(p.busy).onClick(() => { void p.run('检查身份与目录…', () => p.checkAccess()); }))
-      .addButton(button => button.setButtonText('运行文件往返测试').setDisabled(p.busy).onClick(() => new ConfirmModal(this.app, '运行隔离文件测试', '将在获准应用目录下创建独立测试目录并上传、下载约 24 MiB 测试数据。测试文件会保留，供你自行检查和清理。', () => p.run('验证真实文件接口…', () => p.roundtrip())).open()));
+      .addButton(button => button.setButtonText('验证文件传输').setDisabled(p.busy).onClick(() => new ConfirmModal(this.app, '验证文件传输权限', '将在获准应用目录下创建独立校验目录并上传、下载约 24 MiB 校验数据。校验文件会保留，供你自行检查和清理。', () => p.run('验证真实文件接口…', () => p.roundtrip())).open()));
     new Setting(configCard).setName('另一设备快速配置')
       .addButton(button => button.setButtonText('导出配对配置').setDisabled(p.busy).onClick(() => p.openConfigExport()))
       .addButton(button => button.setButtonText('导入配对配置').setDisabled(p.busy).onClick(() => p.openConfigImport()));
@@ -153,7 +153,7 @@ export class VaultSailSettingTab extends PluginSettingTab {
     new Setting(vaultCard).setName('创建新云端库').setDesc('创建独立空间，随后由你预览并选择传输内容。')
       .addText(text => text.setValue(name).onChange(value => { name = value; }))
       .addButton(button => button.setButtonText('创建并绑定').setDisabled(p.busy).onClick(() => new ConfirmModal(this.app, '创建云端库', '将在获准应用目录下创建新库：' + name, () => p.run('创建云端库…', () => p.createVault(name))).open()));
-    new Setting(transferCard).setName('双向同步（预览版）').setDesc('根据上次成功的基线自动判断上传与下载。双方改动自动保留原笔记和冲突副本；删除默认关闭。')
+    new Setting(transferCard).setName('双向同步').setDesc('根据上次成功的基线自动判断上传与下载。双方改动自动保留原笔记和冲突副本；删除默认关闭。')
       .addButton(button => button.setButtonText('开始同步').setCta().setDisabled(p.busy).onClick(() => { void p.run('正在同步…', () => p.startSync()); }))
       .addButton(button => button.setButtonText('先看同步清单').setDisabled(p.busy).onClick(() => { void p.run('扫描双向变更…', () => p.preview('sync')); }));
     new Setting(transferCard).setName('单向传输').setDesc('也可只上传或只下载；冲突会自动保存双方副本。')
@@ -162,7 +162,7 @@ export class VaultSailSettingTab extends PluginSettingTab {
       .addButton(button => button.setButtonText('恢复未完成任务').setDisabled(p.busy).onClick(() => { void p.run('核验并恢复任务…', () => p.recover()); }));
     new Setting(recoveryCard).setName('旧任务遇到新的编辑').setDesc('保留内容与恢复点，结束旧任务，然后重新预览双方差异。')
       .addButton(button => button.setButtonText('结束旧任务并重新预览').setDisabled(p.busy).onClick(() => new ConfirmModal(this.app, '结束旧任务', '未完成操作停止重试，所有已保存内容保留。下一次预览会重新判断双方差异。', () => p.run('结束旧任务…', () => p.abandonPending())).open()));
-    new Setting(advancedCard).setName('实验性删除传播').setDesc('开启后才显示删除选项；真实双设备与 iPad 验收尚未完成。')
+    new Setting(advancedCard).setName('实验性删除传播').setDesc('默认关闭。开启后显示删除选项，本地保留恢复副本，云端保留历史对象。')
       .addToggle(toggle => toggle.setValue(p.settings.experimentalSync).setDisabled(p.busy).onChange(async value => {
         p.settings.experimentalSync = value; if (!value) p.settings.deletionEnabled = false; await p.saveSettings(); p.refreshUI();
       }));
@@ -185,6 +185,6 @@ export class VaultSailSettingTab extends PluginSettingTab {
     new Setting(advancedCard).setName('诊断信息').setDesc('报告不含账号、文件名、凭据或笔记正文。')
       .addButton(button => button.setButtonText('查看脱敏报告').onClick(() => { const modal = new Modal(this.app); modal.titleEl.setText('脱敏诊断'); modal.contentEl.createEl('pre', { text: p.diagnostics() }); modal.open(); }))
       .addButton(button => button.setButtonText('暂停当前任务').onClick(() => { p.pause(); new Notice('已请求暂停，当前网络请求结束后生效。'); }));
-    el.createEl('p', { cls: 'vaultsail-footer', text: '预览版 · 真实网盘与 iPad 仍待验收 · 你的笔记直接传到自己的网盘' });
+    el.createEl('p', { cls: 'vaultsail-footer', text: '你的笔记直接传到自己的网盘 · 凭据保存在本设备' });
   }
 }

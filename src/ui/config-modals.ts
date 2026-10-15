@@ -92,7 +92,7 @@ export class ConfigImportModal extends Modal {
           if (generation !== this.generation) return;
           summary.setText(`云端库：${config.remoteVault?.displayName || config.appDirectory}`);
           new ConfirmModal(this.app, '确认导入连接', encrypted
-            ? `连接到「${config.remoteVault!.displayName}」。将自动验证账号、云端库并上传下载 1 KB 隔离测试文件；通过后替换原连接，可直接同步。现有笔记保留，删除同步关闭。`
+            ? `连接到「${config.remoteVault!.displayName}」。将自动验证账号、云端库并上传下载 1 KB 隔离校验文件；通过后替换原连接，可直接同步。现有笔记保留，删除同步关闭。`
             : `将替换当前应用配置和云端目标。旧版文件未包含授权，需在本设备重新登录。目标：${config.remoteVault?.displayName || config.appDirectory}。`,
           async () => {
             if (generation !== this.generation) throw new VaultSailError('cancelled', '输入已更改，请重新检查后导入。');

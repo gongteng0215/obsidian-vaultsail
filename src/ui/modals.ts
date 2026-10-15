@@ -20,12 +20,12 @@ export class CloudVaultSetupModal extends Modal {
       try { await action(); } catch (error) { status.setText(safeMessage(error)); }
       finally { busy = false; controls.forEach(control => control.setDisabled(false)); }
     };
-    const done = () => { this.contentEl.empty(); this.contentEl.createEl('p', { text: '云端库已绑定。请先运行文件往返测试，再重新点击预览上传或预览下载。绑定不会自动传输笔记。' });
+    const done = () => { this.contentEl.empty(); this.contentEl.createEl('p', { text: '云端库已绑定。请先验证文件传输，再重新点击预览上传或预览下载。绑定不会自动传输笔记。' });
       const result = this.contentEl.createEl('p'); result.setAttribute('role', 'status');
       new Setting(this.contentEl).setName('验证上传下载权限').setDesc('已在本设备通过测试时，可以直接完成并重新预览。')
-        .addButton(button => button.setButtonText('运行文件往返测试').onClick(() => new ConfirmModal(this.app, '运行隔离文件测试', '将上传、下载约 24 MiB 独立测试数据，测试文件保留；不上传笔记。', async () => {
+        .addButton(button => button.setButtonText('验证文件传输').onClick(() => new ConfirmModal(this.app, '验证文件传输权限', '将上传、下载约 24 MiB 独立校验数据，校验文件保留；不上传笔记。', async () => {
           button.setDisabled(true); result.setText('正在验证文件往返…');
-          try { await this.actions.roundtrip(); result.setText('文件往返测试通过，可以重新预览传输。'); }
+          try { await this.actions.roundtrip(); result.setText('文件传输权限验证通过，可以重新预览传输。'); }
           catch (error) { result.setText(safeMessage(error)); throw error; }
           finally { button.setDisabled(false); }
         }).open()));

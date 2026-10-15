@@ -51,9 +51,9 @@ export default class VaultSailPlugin extends Plugin {
     });
 
     for (const mode of ['upload', 'download', 'sync'] as const) this.addCommand({ id: 'preview-' + mode,
-      name: mode === 'upload' ? '预览上传' : mode === 'download' ? '预览下载' : '预览双向同步（实验）', callback: () => { void this.run('正在扫描…', () => this.preview(mode)); } });
+      name: mode === 'upload' ? '预览上传' : mode === 'download' ? '预览下载' : '预览双向同步', callback: () => { void this.run('正在扫描…', () => this.preview(mode)); } });
     this.addCommand({ id: 'recover-transfer', name: '恢复未完成传输', callback: () => { void this.run('正在恢复…', async () => { const engine = await this.getEngine(); await engine.recover(); }); } });
-    this.addCommand({ id: 'start-sync', name: '开始双向同步（预览版）', callback: () => { void this.run('正在同步…', () => this.startSync()); } });
+    this.addCommand({ id: 'start-sync', name: '开始双向同步', callback: () => { void this.run('正在同步…', () => this.startSync()); } });
     this.addRibbonIcon('cloud', 'VaultSail：开始同步', () => { void this.run('正在同步…', () => this.startSync()); });
     this.registerDomEvent(document, 'visibilitychange', () => {
       if (document.hidden) this.pause();
@@ -142,7 +142,7 @@ export default class VaultSailPlugin extends Plugin {
   }
   async checkAccess(): Promise<void> {
     const provider = this.provider(); const profile = await provider.profile(); await provider.listAll('');
-    new Notice(profile.label + '：身份与目录列表通过；上传下载需运行往返测试。', 9000);
+    new Notice(profile.label + '：身份与目录列表通过；上传下载需运行往返校验。', 9000);
   }
   private validationKey(accountHash: string): string { return 'vaultsail-validation-' + hash(bytes(this.settings.appKey + '|' + this.settings.appDirectory + '|' + accountHash)); }
   async roundtrip(): Promise<void> {
@@ -158,7 +158,7 @@ export default class VaultSailPlugin extends Plugin {
     await provider.listAll(root);
     let quota = '未验证'; try { await provider.quota(); quota = '已验证'; } catch { /* Quota is reported separately from verified transfer capabilities. */ }
     this.app.saveLocalStorage(this.validationKey(accountHash), { passed: true, checkedAt: Date.now(), results, quota });
-    new Notice('往返测试通过。测试文件保留在独立目录，可在网盘中自行清理。', 9000);
+    new Notice('往返校验通过。校验文件保留在独立目录，可在网盘中自行清理。', 9000);
   }
   async bind(vaultId: string): Promise<void> {
     const provider = this.provider(); const profile = await provider.profile(); const accountHash = hash(bytes(profile.accountId));
@@ -196,7 +196,7 @@ export default class VaultSailPlugin extends Plugin {
   private async getEngine(): Promise<SyncEngine> {
     const { provider, binding: b, accountHash } = await this.boundProvider();
     const validation = this.app.loadLocalStorage(this.validationKey(accountHash));
-    if (!validation?.passed) throw new VaultSailError('permission', '请先运行本设备的文件往返测试，确认上传下载权限。');
+    if (!validation?.passed) throw new VaultSailError('permission', '请先运行本设备的文件传输权限验证，确认上传下载权限。');
     if (this.engine) return this.engine;
     const context = hash(bytes(b.appKey + '|' + b.root + '|' + accountHash + '|' + b.vaultId));
     this.engine = new SyncEngine(new RemoteVaultStore(provider, new ObsidianRevisionCache(this.app, this.deviceId, context)), this.local,

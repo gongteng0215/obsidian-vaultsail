@@ -1,5 +1,6 @@
 import esbuild from 'esbuild';
 import process from 'node:process';
+import { readFileSync } from 'node:fs';
 
 const production = process.argv.includes('production');
 const context = await esbuild.context({
@@ -12,6 +13,7 @@ const context = await esbuild.context({
   outfile: 'main.js',
   sourcemap: production ? false : 'inline',
   minify: production,
+  banner: { js: '/*!\n' + readFileSync('LICENSE', 'utf8') + '\n\nThird-party runtime dependency: @noble/hashes\n' + readFileSync('node_modules/@noble/hashes/LICENSE', 'utf8') + '\n*/' },
   logLevel: 'info',
 });
 if (production) {
