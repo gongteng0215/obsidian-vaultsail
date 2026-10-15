@@ -19,11 +19,11 @@ Baidu Netdisk is the current provider. Automatic sync requires opt-in after upgr
 
 Requires **Obsidian 1.11.4 or newer**. The [community listing](https://community.obsidian.md/plugins/vaultsail) is restored, and **0.1.17** completed the automated review with no blocking errors on October 15, 2026. The in-app search catalog updates separately from the listing. Automated review does not replace real-device validation.
 
-**[0.2.0 is an automatic-sync and merge test release](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.0) awaiting real Windows/iPad validation.** It is developed on a separate branch; the default branch's community manifest remains at 0.1.23. Pin 0.2.0 in BRAT or install its files manually. See the [test-build notes](docs/releases/0.2.0.md). Community installation follows the default-branch manifest; a prerelease flag alone does not isolate updates.
+**[0.2.0 is available through community plugin updates](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.0).** In Obsidian, open Community plugins, check for updates, and update VaultSail. Reload the plugin, then opt into automatic sync under Transfer & recovery. Update both devices before testing merge behavior. Automated validation passed; real Windows/iPad validation is still pending. See the [release notes](docs/releases/0.2.0.md).
 
 For direct GitHub installation on iPad, install and enable [BRAT](https://github.com/TfTHacker/obsidian42-brat) through Obsidian's community plugins, then add `gongteng0215/obsidian-vaultsail` and select version `0.2.0`. Enable VaultSail in an empty test vault before importing an encrypted pairing code.
 
-For manual installation, download the ZIP or the three individual files from the [0.2.0 test release](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.0). Place `main.js`, `manifest.json` and `styles.css` in `plugins/vaultsail/` under the current vault's configuration directory, then enable VaultSail. The default directory is `.obsidian`; custom configuration directories are supported.
+For manual installation, download the ZIP or the three individual files from the [0.2.0 release](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.0). Place `main.js`, `manifest.json` and `styles.css` in `plugins/vaultsail/` under the current vault's configuration directory, then enable VaultSail. The default directory is `.obsidian`; custom configuration directories are supported.
 
 ## Connect your first device
 
