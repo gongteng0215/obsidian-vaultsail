@@ -47,6 +47,8 @@ export class Setting {
   private el: HTMLElement;
   constructor(parent: HTMLElement) { this.el = element(parent, 'div'); this.el.className = 'setting-item'; }
   setName(value: string): this { element(this.el, 'label').textContent = value; return this; }
+  setHeading(): this { this.el.classList.add('setting-item-heading'); return this; }
+  setClass(value: string): this { this.el.classList.add(value); return this; }
   setDesc(value: string): this { element(this.el, 'p').textContent = value; return this; }
   addText(callback: (input: Component) => unknown): this { callback(new Component(this.el, 'input', 'input')); return this; }
   addDropdown(callback: (input: Component) => unknown): this { callback(new Component(this.el, 'select')); return this; }

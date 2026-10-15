@@ -35,7 +35,8 @@ export class VaultSailSettingTab extends PluginSettingTab {
     }
     mark.appendChild(svg);
     const title = brand.createDiv({ cls: 'vaultsail-brand-copy' }); title.createEl('span', { text: 'YOUR VAULT, EVERY CLOUD', cls: 'vaultsail-eyebrow' });
-    title.createEl('h2', { text: 'VaultSail · 云舟' }); title.createEl('p', { text: '让笔记，随你远航。' });
+    new Setting(title).setName('VaultSail · 云舟').setHeading().setClass('vaultsail-brand-heading');
+    title.createEl('p', { text: '让笔记，随你远航。' });
     const badge = hero.createEl('span', { cls: 'vaultsail-badge', text: AUTH_LABELS[p.auth.status()] }); badge.setAttribute('data-status', p.auth.status());
     const route = hero.createDiv({ cls: 'vaultsail-route' });
     route.createEl('span', { text: this.app.vault.getName(), cls: 'vaultsail-route-local' }); route.createEl('span', { text: '→', cls: 'vaultsail-route-arrow' });
@@ -70,7 +71,8 @@ export class VaultSailSettingTab extends PluginSettingTab {
     }
     const card = (parent: HTMLElement, label: string, heading: string, description: string) => {
       const result = parent.createDiv({ cls: 'vaultsail-card' }); result.createEl('span', { text: label, cls: 'vaultsail-eyebrow' });
-      result.createEl('h3', { text: heading }); result.createEl('p', { text: description, cls: 'vaultsail-card-intro' }); return result;
+      new Setting(result).setName(heading).setHeading().setClass('vaultsail-card-heading');
+      result.createEl('p', { text: description, cls: 'vaultsail-card-intro' }); return result;
     };
     const columns = panels.get('connect')!.createDiv({ cls: 'vaultsail-connect-grid' });
     const appCard = card(columns, 'APPLICATION', '接入你的网盘', '一次保存应用信息，之后在百度官方页面登录。账号密码不在这里输入。');

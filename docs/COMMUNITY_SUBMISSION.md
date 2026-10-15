@@ -6,7 +6,7 @@
 
 短描述：Sync notes and attachments through Baidu Netdisk with version preservation and encrypted device pairing.
 
-2026-10-15 已在维护者确认政策后提交并发布 [社区条目](https://community.obsidian.md/plugins/vaultsail)。初次 0.1.12 审核已启动，公开页面显示 Review Pending，安装按钮暂时禁用。0.1.13 补齐英文 README，以及文件枚举和只写剪贴板行为的说明，供后续审核读取。提交不等于审核通过，最终安装状态以官方页面为准。
+2026-10-15 已在维护者确认政策后提交并发布 [社区条目](https://community.obsidian.md/plugins/vaultsail)。初次 0.1.12 审核发现设置标题必须使用官方 Setting 接口，目录安装暂未开放；构建已被官方逐字节复现通过。0.1.13 修复标题组件，补齐英文 README，以及文件枚举和只写剪贴板行为的说明，供后续审核读取。提交不等于审核通过，最终安装状态以官方页面为准。
 
 GitHub 0.1.12 已公开，独立插件文件/ZIP 已下载与本地校验一致，云端构建 main.js 也与发布文件一致。0.1.1 D0 旧测试发布撤回到草稿，保留恢复能力；18 项旧本地产物移入 dist 下的可恢复归档，测试代码和用户配置保留。
 

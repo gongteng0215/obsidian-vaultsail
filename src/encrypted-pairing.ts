@@ -18,8 +18,9 @@ function passwordBytes(password: string): Uint8Array {
   return new TextEncoder().encode(password); // Spaces are part of the password; never silently trim.
 }
 function cryptoApi(): Crypto {
-  if (!globalThis.crypto?.subtle) throw new VaultSailError('configuration', '当前环境不支持安全加解密，请更新 Obsidian；不会降级为明文导出。');
-  return globalThis.crypto;
+  const api = typeof window !== 'undefined' && window.crypto?.subtle ? window.crypto : typeof crypto !== 'undefined' ? crypto : undefined;
+  if (!api?.subtle) throw new VaultSailError('configuration', '当前环境不支持安全加解密，请更新 Obsidian；不会降级为明文导出。');
+  return api;
 }
 function base64url(data: Uint8Array): string {
   let s = ''; for (const byte of data) s += String.fromCharCode(byte);
