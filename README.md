@@ -81,7 +81,7 @@ This inventory describes **0.2.0**, not future releases. **Implemented** means c
 | Full English UI, language selection, and accessible mobile refinements | Planned for 0.6.0 |
 | QR/fragmented pairing and configurable pairing profiles | Backlog; existing encrypted code/file pairing remains available |
 | WebDAV, S3-compatible storage, OneDrive, or other providers | Post-1.0 candidates; only Baidu has a working adapter today |
-| Files larger than 20 MiB and streaming/resumable large-file transfer | Research backlog; no new size limit promised |
+| Files larger than 20 MiB and streaming/resumable large-file transfer | [Detailed staged design](docs/LARGE_FILES.md); not implemented, platform gates before size increases |
 | End-to-end note encryption and safe permanent cloud cleanup | Separate design/migration work; no implementation commitment yet |
 | Live collaborative editing, semantic/AI merges, continuous iPad background sync | Outside the current roadmap |
 
@@ -100,6 +100,8 @@ We will deliver one reviewable milestone at a time. These are proposed scopes, n
 | **0.9.0 RC → 1.0.0** | Compatibility and stable release | Migration rehearsal, end-to-end acceptance, documented support and recovery |
 
 See the **[full roadmap and acceptance criteria](docs/ROADMAP.md)**. Our next implementation scope is **0.2.1 stabilization**, not all planned features at once. This documentation update does not change the installed plugin or its version.
+
+The **[large-file implementation plan](docs/LARGE_FILES.md)** details metadata-first skipping, memory budgets, compatible readers, platform prototypes, snapshots, chunk I/O, and recovery. Its first step keeps the 20 MiB cap; larger limits are conditional on measurements.
 
 ## Requirements and defaults
 

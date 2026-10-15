@@ -2,7 +2,7 @@
 
 **English** | [简体中文](ROADMAP.zh-CN.md) · [Feature inventory](../README.md#feature-inventory)
 
-Baseline: **0.2.0**, updated **2026-10-15**. This is the proposed implementation order, not a list of completed features or promised dates. Patch versions follow actual findings. If acceptance fails, continue fixing rather than advancing solely to reach a version number.
+Baseline: **0.2.0**, updated **2026-10-16**. This is the proposed implementation order, not a list of completed features or promised dates. Patch versions follow actual findings. If acceptance fails, continue fixing rather than advancing solely to reach a version number.
 
 ## Direction and lasting boundaries
 
@@ -29,6 +29,8 @@ Make notes sync reliably between computers and iPad using the user's own cloud a
 | 1.0.0 | Conditional | Stable maintenance release | RC gates passed; platform support, limits, and recovery documented |
 
 Version gaps leave room for fixes. Additional providers, large files, and encryption will not all start before the foundation is reliable.
+
+The [large-file plan](LARGE_FILES.md) adds a conditional track: 0.2.x isolates oversized files and removes chunk copies; 0.3.x proves platform capabilities and compatible readers; 0.4.x evaluates higher limits/chunk I/O only after gates pass; 0.5.x or later improves recovery. The default stays 20 MiB. Desktop results do not qualify iPad or promise GB support.
 
 ## 0.2.1 / 0.2.x: stabilize the current release
 
@@ -77,6 +79,7 @@ Version gaps leave room for fixes. Additional providers, large files, and encryp
 - Treat an index only as a verified discovery hint. A single mutable manifest must not overwrite concurrent history; missing, stale, damaged, or incomplete data falls back to full validation.
 - Evaluate adaptive scheduling against attachment memory, rate limits, and failure rates, retaining the user's concurrency ceiling and default 8.
 - Show understandable request/cache statistics. Any format change first specifies migration and old-client behavior.
+- Large attachments follow separate platform, compatibility, and memory gates in the [detailed plan](LARGE_FILES.md); a performance release does not automatically unlock higher limits.
 
 ### Acceptance
 
@@ -137,7 +140,7 @@ Failed RC acceptance means more patches and rechecking affected scenarios. Commu
 | Candidate | Questions to resolve before implementation |
 | --- | --- |
 | A second provider: WebDAV / S3-compatible / OneDrive, choose one first | Actual demand, authentication/access, pagination/consistency/rate limits, shared adapter contract tests |
-| Large files, streaming, resumable transfers | Mobile APIs, measured memory, chunk verification, resume identity and recovery; research before raising limits |
+| Very large/GB attachments beyond tested large-file profiles | Platform and memory gates still apply; prove capabilities before increasing supported scope |
 | End-to-end note encryption | Key derivation/distribution/recovery, metadata exposure, existing-vault migration, compatibility, security review |
 | Permanent cloud history cleanup | Reachable versions and retention across devices, offline devices, concurrent publication, previews and revalidation |
 | QR/fragmented pairing | Ciphertext size/capacity, verified offline reassembly, expiry/wrong imports without weakening credential protection |
