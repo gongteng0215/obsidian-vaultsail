@@ -6,6 +6,7 @@ import { ConfirmModal } from './modals';
 import { DEFAULT_APP_DIRECTORY } from '../config';
 import { formatBytes, formatProgress, progressRunning } from '../sync/progress';
 import { copyText } from './config-modals';
+import { DEFAULT_TRANSFER_CONCURRENCY, MAX_TRANSFER_CONCURRENCY } from '../core/concurrency';
 
 const AUTH_LABELS = { unconfigured: '应用未配置', disconnected: '未授权', pending: '等待授权', connected: '已授权', reauthorize: '需要重新授权' };
 export class VaultSailSettingTab extends PluginSettingTab {
@@ -179,11 +180,20 @@ export class VaultSailSettingTab extends PluginSettingTab {
     new Setting(transferCard).setName('双向同步').setDesc('根据上次成功的基线自动判断上传与下载。双方改动自动保留原笔记和冲突副本；删除默认关闭。')
       .addButton(button => button.setButtonText('开始同步').setCta().setDisabled(p.busy).onClick(() => { void p.run('正在同步…', () => p.startSync()); }))
       .addButton(button => button.setButtonText('先看同步清单').setDisabled(p.busy).onClick(() => { void p.run('扫描双向变更…', () => p.preview('sync')); }));
-    new Setting(transferCard).setName('同时传输的文件数').setDesc('默认 3 路。网络不稳定时可调低；大附件会自动减少同时传输数量。修改不影响账号和云端库绑定。')
-      .addDropdown(dropdown => dropdown.addOptions({ '1': '1 路', '2': '2 路', '3': '3 路（推荐）', '4': '4 路' })
-        .setValue(String(p.settings.transferConcurrency)).setDisabled(p.busy).onChange(value => {
-          void p.setTransferConcurrency(Number(value)).catch(error => new Notice(safeMessage(error)));
-        }));
+    let concurrencyDraft = String(p.settings.transferConcurrency);
+    const concurrencySetting = new Setting(transferCard).setName('同时传输的文件数')
+      .setDesc(`可自行输入 1–${MAX_TRANSFER_CONCURRENCY} 之间的整数，默认 ${DEFAULT_TRANSFER_CONCURRENCY}。大附件自动减少同时传输数量，修改不影响账号或云端库绑定。`);
+    concurrencySetting.addText(text => {
+      text.inputEl.type = 'number'; text.inputEl.min = '1'; text.inputEl.max = String(MAX_TRANSFER_CONCURRENCY); text.inputEl.step = '1';
+      text.inputEl.setAttribute('inputmode', 'numeric'); text.inputEl.setAttribute('aria-label', '传输并发数');
+      text.setValue(concurrencyDraft).setPlaceholder(String(DEFAULT_TRANSFER_CONCURRENCY)).setDisabled(p.busy).onChange(value => {
+        concurrencyDraft = value; concurrencySetting.setDesc('有修改尚未保存，请点击保存并发数。');
+      });
+    }).addButton(button => button.setButtonText('保存并发数').setDisabled(p.busy).onClick(() => {
+      void p.setTransferConcurrency(Number(concurrencyDraft)).catch(error => new Notice(safeMessage(error)));
+    })).addButton(button => button.setButtonText(`恢复默认 ${DEFAULT_TRANSFER_CONCURRENCY}`).setDisabled(p.busy).onClick(() => {
+      void p.setTransferConcurrency(DEFAULT_TRANSFER_CONCURRENCY).catch(error => new Notice(safeMessage(error)));
+    }));
     new Setting(transferCard).setName('单向传输').setDesc('也可只上传或只下载；冲突会自动保存双方副本。')
       .addButton(button => button.setButtonText('预览上传').setDisabled(p.busy).onClick(() => { void p.run('扫描上传清单…', () => p.preview('upload')); }))
       .addButton(button => button.setButtonText('预览下载').setDisabled(p.busy).onClick(() => { void p.run('扫描下载清单…', () => p.preview('download')); }))

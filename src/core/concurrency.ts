@@ -1,5 +1,5 @@
-export const DEFAULT_TRANSFER_CONCURRENCY = 3;
-export const MAX_TRANSFER_CONCURRENCY = 4;
+export const DEFAULT_TRANSFER_CONCURRENCY = 8;
+export const MAX_TRANSFER_CONCURRENCY = 32;
 export const TRANSFER_BATCH_BYTES = 24 * 1024 * 1024;
 export function validConcurrency(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= MAX_TRANSFER_CONCURRENCY;

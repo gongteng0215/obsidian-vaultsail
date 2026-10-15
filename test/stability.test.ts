@@ -129,6 +129,12 @@ test('successful operations retain actionable results, while failures remain cla
   await plugin.run('同步中', async () => { throw new Error('synthetic'); });
   assert.notEqual(plugin.statusText, '操作完成。'); assert.equal(plugin.lastErrorCode, 'unknown');
 });
+test('importing an account preserves the destination custom transfer concurrency', async () => {
+  const f = fixture(); await f.plugin.setTransferConcurrency(12);
+  await f.plugin.importConfiguration(await f.code(), 'synthetic-password');
+  assert.equal(f.plugin.settings.transferConcurrency, 12); assert.equal(f.disk.settings.transferConcurrency, 12);
+  assert.equal(f.plugin.auth.status(), 'connected');
+});
 
 test('connection checks replace stale failures immediately, heartbeat while waiting, and expose failure reasons', async () => {
   const { plugin } = fixture(); const started = deferred(), finish = deferred(); const events: any[] = [];

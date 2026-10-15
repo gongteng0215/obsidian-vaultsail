@@ -13,7 +13,7 @@ import { CONFIG_EXPORT_DIRECTORY, exportPortableConfig, parsePortableConfig } fr
 import { ConfigExportModal, ConfigImportModal } from './ui/config-modals';
 import { formatBytes, progressRunning, PROGRESS_LABELS, type SyncProgress } from './sync/progress';
 import { withConfigurationLock } from './platform/configuration-lock';
-import { validConcurrency } from './core/concurrency';
+import { MAX_TRANSFER_CONCURRENCY, validConcurrency } from './core/concurrency';
 import { decryptPairing, encryptPairing, isEncryptedPairing, PAIRING_LIFETIME_MS, validateAuthorizedPairing, validatePairingCode, type AuthorizedPairing, type PairingImportOptions } from './encrypted-pairing';
 
 const PAIRING_STEPS = {
@@ -147,7 +147,7 @@ export default class VaultSailPlugin extends Plugin {
   }
   async setTransferConcurrency(value: number): Promise<void> {
     if (this.busy) throw new VaultSailError('busy', '请等待当前任务完成，再修改并发数。');
-    if (!validConcurrency(value)) throw new VaultSailError('configuration', '请选择 1–4 路并发。');
+    if (!validConcurrency(value)) throw new VaultSailError('configuration', `请输入 1–${MAX_TRANSFER_CONCURRENCY} 之间的整数。`);
     this.engine?.configureConcurrency(value); this.settings.transferConcurrency = value; await this.saveSettings();
     this.statusText = `传输并发已设为 ${value} 路，下次任务生效。`; this.refreshUI();
   }
@@ -403,7 +403,7 @@ export default class VaultSailPlugin extends Plugin {
       advance('integrity');
       if (hash(received) !== hash(probe.buffer)) throw new VaultSailError('integrity', '导入连接的文件校验未通过，原连接已保留。');
       const next: VaultSailSettings = { ...DEFAULT_SETTINGS, providerId: 'baidu', appKey: config.appKey, appDirectory: provider.root,
-        secretRef, sessionRef, ...(vault ? { remoteVaultId: vault.vaultId,
+        secretRef, sessionRef, transferConcurrency: this.settings.transferConcurrency, ...(vault ? { remoteVaultId: vault.vaultId,
         binding: { vaultId: vault.vaultId, displayName: vault.displayName, appKey: config.appKey, root: provider.root, accountHash } } : {}) };
       await withConfigurationLock(this.app, async () => {
         guard(); options.onCommit?.();

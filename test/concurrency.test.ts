@@ -18,3 +18,10 @@ test('worker failure stops dispatching and drains every started operation before
   const rejected = assert.rejects(pending, /synthetic/); await new Promise(resolve => setTimeout(resolve, 5));
   assert.equal(settled, false); assert.deepEqual(started, [0, 1, 2]); release(); await rejected; assert.deepEqual(finished, [1, 2]);
 });
+test('custom concurrency above four is honored without exceeding the chosen value', async () => {
+  let active = 0; let peak = 0;
+  await mapConcurrent(Array.from({ length: 24 }, (_, i) => i), 12, async () => {
+    active++; peak = Math.max(peak, active); await new Promise(resolve => setTimeout(resolve, 5)); active--;
+  });
+  assert.equal(peak, 12);
+});

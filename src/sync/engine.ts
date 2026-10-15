@@ -2,7 +2,7 @@ import { assertNoCollisions, checkSize, hash, included, safeMessage, uuid, valid
 import { reconcileFile } from '../core/reconcile.ts';
 import { buildHeads, RemoteVaultStore, validateRevision, type Revision } from './remote-vault.ts';
 import type { SyncProgress, ProgressPhase } from './progress.ts';
-import { DEFAULT_TRANSFER_CONCURRENCY, mapConcurrent, TRANSFER_BATCH_BYTES, validConcurrency } from '../core/concurrency.ts';
+import { DEFAULT_TRANSFER_CONCURRENCY, MAX_TRANSFER_CONCURRENCY, mapConcurrent, TRANSFER_BATCH_BYTES, validConcurrency } from '../core/concurrency.ts';
 
 export interface LocalFiles {
   paths(): Promise<string[]>;
@@ -65,7 +65,7 @@ export class SyncEngine {
   private prepared?: { plan: SyncPlan; snapshot: Snapshot };
   private concurrency: number;
   constructor(remote: RemoteVaultStore, local: LocalFiles, store: StateStore, vaultId: string, configDir = '.obsidian', report: (progress: SyncProgress) => void = () => {}, concurrency = DEFAULT_TRANSFER_CONCURRENCY) {
-    if (!validConcurrency(concurrency)) throw new VaultSailError('configuration', '传输并发数必须为 1–4。');
+    if (!validConcurrency(concurrency)) throw new VaultSailError('configuration', `传输并发数必须为 1–${MAX_TRANSFER_CONCURRENCY} 之间的整数。`);
     this.concurrency = concurrency;
     this.remote = remote; this.local = local; this.store = store; this.vaultId = vaultId; this.configDir = configDir;
     this.report = report;
@@ -78,7 +78,7 @@ export class SyncEngine {
   pause(): void { this.stopped = true; }
   configureConcurrency(value: number): void {
     if (this.running) throw new VaultSailError('busy', '请等待当前任务结束后修改并发数。');
-    if (!validConcurrency(value)) throw new VaultSailError('configuration', '传输并发数必须为 1–4。');
+    if (!validConcurrency(value)) throw new VaultSailError('configuration', `传输并发数必须为 1–${MAX_TRANSFER_CONCURRENCY} 之间的整数。`);
     this.concurrency = value; this.remote.setReadConcurrency(value);
   }
   get pauseRequested(): boolean { return this.running && this.stopped; }

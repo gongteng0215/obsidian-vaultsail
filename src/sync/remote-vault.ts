@@ -1,6 +1,6 @@
 import { checkSize, hash, included, jsonBytes, parseJson, record, relativePath, uuid, validId, VaultSailError } from '../core/safety.ts';
 import { listAll } from '../providers/provider-utils.ts';
-import { DEFAULT_TRANSFER_CONCURRENCY, mapConcurrent, validConcurrency } from '../core/concurrency.ts';
+import { DEFAULT_TRANSFER_CONCURRENCY, MAX_TRANSFER_CONCURRENCY, mapConcurrent, validConcurrency } from '../core/concurrency.ts';
 import type { CloudStorageProvider } from '../providers/cloud-storage-provider';
 
 export interface RemoteVault { schemaVersion: 1; vaultId: string; displayName: string; createdAt: number; }
@@ -72,7 +72,7 @@ export class RemoteVaultStore {
   private readConcurrency: number;
   constructor(provider: CloudStorageProvider, cache?: RevisionCache, concurrency = DEFAULT_TRANSFER_CONCURRENCY) { this.provider = provider; this.disk = cache; this.readConcurrency = concurrency; }
   setReadConcurrency(value: number): void {
-    if (!validConcurrency(value)) throw new VaultSailError('configuration', '读取并发数必须为 1–4。');
+    if (!validConcurrency(value)) throw new VaultSailError('configuration', `读取并发数必须为 1–${MAX_TRANSFER_CONCURRENCY} 之间的整数。`);
     this.readConcurrency = value;
   }
   private async loadCache(id: string): Promise<void> {

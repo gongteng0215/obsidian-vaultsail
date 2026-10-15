@@ -11,8 +11,8 @@ test('legacy intent is preserved without inventing a verified binding or retaini
 test('malformed settings and deletion without experimental sync cannot enable writes', () => {
   assert.equal(migrateSettings(null).providerId, 'none'); assert.equal(migrateSettings({ deletionEnabled: true }).deletionEnabled, false);
 });
-test('transfer concurrency defaults to three and only device-local values one through four are accepted', () => {
-  assert.equal(migrateSettings({}).transferConcurrency, 3);
-  for (const value of [1, 2, 3, 4]) assert.equal(migrateSettings({ transferConcurrency: value }).transferConcurrency, value);
-  for (const value of [0, 5, -1, 2.5, '4', null]) assert.equal(migrateSettings({ transferConcurrency: value }).transferConcurrency, 3);
+test('transfer concurrency defaults to eight and preserves valid device-local custom values', () => {
+  assert.equal(migrateSettings({}).transferConcurrency, 8);
+  for (const value of [1, 2, 3, 4, 8, 12, 16, 32]) assert.equal(migrateSettings({ transferConcurrency: value }).transferConcurrency, value);
+  for (const value of [0, 33, -1, 2.5, '4', null]) assert.equal(migrateSettings({ transferConcurrency: value }).transferConcurrency, 8);
 });

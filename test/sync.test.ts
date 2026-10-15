@@ -53,12 +53,34 @@ class MemoryState implements StateStore {
   async load(): Promise<SyncState> { return structuredClone(this.value); }
   async save(state: SyncState): Promise<void> { this.value = structuredClone(state); }
 }
-async function setup() {
-  const cloud = new MemoryCloud(); const remote = new RemoteVaultStore(cloud); const vault = await remote.create('测试库');
+async function setup(concurrency = 3) {
+  const cloud = new MemoryCloud(); const remote = new RemoteVaultStore(cloud, undefined, concurrency); const vault = await remote.create('测试库');
   const a = new MemoryLocal(); const b = new MemoryLocal(); const sa = new MemoryState(); const sb = new MemoryState();
-  const ea = new SyncEngine(remote, a, sa, vault.vaultId); const eb = new SyncEngine(remote, b, sb, vault.vaultId);
+  const ea = new SyncEngine(remote, a, sa, vault.vaultId, '.obsidian', () => {}, concurrency); const eb = new SyncEngine(remote, b, sb, vault.vaultId, '.obsidian', () => {}, concurrency);
   return { cloud, remote, vault, a, b, sa, sb, ea, eb };
 }
+test('default engines transfer and read history with eight concurrent jobs and preserve all file hashes', async () => {
+  const cloud = new MemoryCloud(); const remote = new RemoteVaultStore(cloud); const vault = await remote.create('默认并发');
+  const a = new MemoryLocal(), b = new MemoryLocal(), sa = new MemoryState(), sb = new MemoryState();
+  const ea = new SyncEngine(remote, a, sa, vault.vaultId), eb = new SyncEngine(new RemoteVaultStore(cloud), b, sb, vault.vaultId);
+  for (let i = 0; i < 16; i++) a.files.set(`note-${i}.md`, bytes('content-' + i));
+  let active = 0; let peak = 0; const write = cloud.writeImmutable.bind(cloud), read = cloud.read.bind(cloud);
+  cloud.writeImmutable = async (path, data) => { active++; peak = Math.max(peak, active);
+    try { await new Promise(resolve => setTimeout(resolve, 2)); await write(path, data); } finally { active--; } };
+  await ea.sync(); assert.equal(peak, 8); peak = 0;
+  let historyActive = 0, historyPeak = 0, downloadActive = 0, downloadPeak = 0;
+  cloud.read = async path => {
+    active++; peak = Math.max(peak, active);
+    const history = path.includes('/ops/'), content = path.includes('/blobs/');
+    if (history) { historyActive++; historyPeak = Math.max(historyPeak, historyActive); }
+    if (content) { downloadActive++; downloadPeak = Math.max(downloadPeak, downloadActive); }
+    try { await new Promise(resolve => setTimeout(resolve, 2)); return await read(path); }
+    finally { active--; if (history) historyActive--; if (content) downloadActive--; }
+  };
+  await eb.sync(); assert.equal(peak, 8); assert.equal(historyPeak, 8); assert.equal(downloadPeak, 8); assert.equal(b.files.size, 16);
+  assert.equal(sa.value.journals.length, 0); assert.equal(sb.value.journals.length, 0);
+  for (const [path, data] of a.files) assert.equal(hash(b.files.get(path)!), hash(data));
+});
 test('three file transfers overlap while journal saves and local application remain serialized', async () => {
   const { a, b, ea, eb, cloud, sa, sb } = await setup();
   for (let i = 0; i < 9; i++) a.files.set(`note-${i}.md`, bytes('content-' + i));
@@ -130,7 +152,7 @@ test('cold history enumeration reads three records concurrently and reports veri
   let active = 0; let peak = 0; const read = cloud.read.bind(cloud); const counts: number[] = [];
   cloud.read = async path => { if (!path.includes('/ops/')) return read(path); active++; peak = Math.max(peak, active);
     try { await new Promise(resolve => setTimeout(resolve, 3)); return await read(path); } finally { active--; } };
-  const records = await new RemoteVaultStore(cloud).revisions(vault.vaultId, (done, total) => { assert.equal(total, 9); counts.push(done); });
+  const records = await new RemoteVaultStore(cloud, undefined, 3).revisions(vault.vaultId, (done, total) => { assert.equal(total, 9); counts.push(done); });
   assert.equal(records.length, 9); assert.equal(peak, 3); assert.deepEqual(counts, [0,1,2,3,4,5,6,7,8,9]);
 });
 test('pause drains three in-flight publications and recovery does not duplicate their versions', async () => {

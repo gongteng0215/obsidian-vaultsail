@@ -329,6 +329,17 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   assert.equal(plugin.auth.status(), 'connected'); assert.deepEqual(plugin.settings.binding, bindingBeforeConcurrency);
   plugin.busy = true; await assert.rejects(plugin.setTransferConcurrency(2), { code: 'busy' }); plugin.busy = false;
   assert.equal(plugin.settings.transferConcurrency, 4); await plugin.setTransferConcurrency(3);
+  const concurrencyField = () => document.querySelector('input[aria-label="传输并发数"]') as HTMLInputElement;
+  assert.equal(concurrencyField().type, 'number'); assert.equal(concurrencyField().getAttribute('inputmode'), 'numeric');
+  concurrencyField().value = '12'; concurrencyField().dispatchEvent(new window.Event('input'));
+  assert.equal(plugin.settings.transferConcurrency, 3, 'typing must not save an intermediate value');
+  setupButton('保存并发数').click(); await until(() => plugin.saved.transferConcurrency === 12);
+  assert.equal(plugin.settings.transferConcurrency, 12); assert.deepEqual(plugin.settings.binding, bindingBeforeConcurrency); assert.equal(plugin.auth.status(), 'connected');
+  assert.equal(plugin.engine.concurrency, 12, 'custom input must update the retained execution engine');
+  await until(() => concurrencyField().value === '12');
+  concurrencyField().value = '2.5'; concurrencyField().dispatchEvent(new window.Event('input')); setupButton('保存并发数').click();
+  await Promise.resolve(); assert.equal(plugin.settings.transferConcurrency, 12);
+  setupButton('恢复默认 8').click(); await until(() => plugin.saved.transferConcurrency === 8); await until(() => concurrencyField().value === '8');
   // Exercise a real timer against the rendered view, including a pending file
   // request, failure, recovery actions and a new task replacing the old snapshot.
   const realNow = Date.now; const clock = realNow();
