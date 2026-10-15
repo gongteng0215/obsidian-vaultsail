@@ -6,7 +6,7 @@ import type { CloudStorageProvider, RemoteObject, RemotePage } from './cloud-sto
 import { listAll } from './provider-utils.ts';
 export { listAll } from './provider-utils.ts';
 
-export interface TokenSource { accessToken(forceRefresh?: boolean): Promise<string>; }
+export interface TokenSource { accessToken(forceRefresh?: boolean, rejectedToken?: string): Promise<string>; }
 export interface BaiduRequestPolicy { apiTimeoutMs?: number; transferTimeoutMs?: number; signal?: AbortSignal; }
 const XPAN = 'https://pan.baidu.com/rest/2.0/xpan/';
 const CHUNK = 4 * 1024 * 1024;
@@ -18,6 +18,8 @@ export class BaiduProvider implements CloudStorageProvider {
   private verified = new Map<string, { fingerprint: string; hash: string }>();
   private onActivity: (phase: 'verifying' | 'downloading') => void;
   private requestPolicy: BaiduRequestPolicy;
+  private pendingDirectories = new Map<string, Promise<void>>();
+  private pendingWrites = new Map<string, { hash: string; operation: Promise<void> }>();
   constructor(root: string, transport: HttpTransport, auth: TokenSource, active = () => true,
     onActivity: (phase: 'verifying' | 'downloading') => void = () => {}, requestPolicy: BaiduRequestPolicy = {}) {
     this.root = appRoot(root); this.transport = transport; this.auth = auth; this.active = active;
@@ -43,8 +45,9 @@ export class BaiduProvider implements CloudStorageProvider {
     const stage = sliceUpload ? '上传文件分片' : params.method === 'uinfo' ? '读取百度账号' : params.method === 'list' ? '读取云端目录'
       : params.method === 'precreate' ? '申请文件上传' : params.method === 'filemetas' ? '读取下载信息'
       : params.method === 'create' ? form?.isdir === '1' ? '创建云端目录' : '提交云端文件' : '读取网盘配额';
+    let rejectedToken: string | undefined;
     for (let refresh = 0; refresh < 2; refresh++) {
-      this.guard(); const token = await this.auth.accessToken(refresh > 0); this.guard();
+      this.guard(); const token = await this.auth.accessToken(refresh > 0, rejectedToken); this.guard();
       try {
         const response = await request(this.transport, { url: urlWith(endpoint, { ...params, access_token: token }),
           method: form || body ? 'POST' : 'GET', headers: form || body ? { 'Content-Type': contentType ?? 'application/x-www-form-urlencoded' } : {},
@@ -56,7 +59,7 @@ export class BaiduProvider implements CloudStorageProvider {
         if (response.status >= 400) throw new VaultSailError('http', `接口请求未通过（HTTP ${response.status}）。`);
         return value;
       } catch (error) {
-        if (refresh === 0 && error instanceof VaultSailError && error.code === 'token-expired') continue;
+        if (refresh === 0 && error instanceof VaultSailError && error.code === 'token-expired') { rejectedToken = token; continue; }
         if (error instanceof VaultSailError) throw new VaultSailError(error.code, `${stage}：${error.message}`, error.retryable, error.retryAfter);
         throw error;
       }
@@ -122,9 +125,16 @@ export class BaiduProvider implements CloudStorageProvider {
   async exists(path: string): Promise<boolean> { return Boolean(await this.find(path)); }
   async mkdir(directory: string): Promise<void> {
     const parts = relativePath(directory).split('/');
-    for (let i = 1; i <= parts.length; i++) {
-      const path = parts.slice(0, i).join('/'); const existing = await this.find(path);
-      if (existing) { if (!existing.isDirectory) throw new VaultSailError('collision', '远端目录位置已被文件占用。'); continue; }
+    for (let i = 1; i <= parts.length; i++) await this.ensureDirectory(parts.slice(0, i).join('/'));
+  }
+  private async ensureDirectory(path: string): Promise<void> {
+    const pending = this.pendingDirectories.get(path); if (pending) return pending;
+    const operation = this.createDirectory(path); this.pendingDirectories.set(path, operation);
+    try { await operation; } finally { if (this.pendingDirectories.get(path) === operation) this.pendingDirectories.delete(path); }
+  }
+  private async createDirectory(path: string): Promise<void> {
+      const existing = await this.find(path);
+      if (existing) { if (!existing.isDirectory) throw new VaultSailError('collision', '远端目录位置已被文件占用。'); return; }
       await this.retry(async () => {
         try { const result = await this.api(XPAN + 'file', { method: 'create' }, { path: this.absolute(path), isdir: '1', rtype: '0' });
           if (result.path !== this.absolute(path) || result.isdir !== 1) throw new VaultSailError('response', '目录创建结果不符合请求。');
@@ -140,7 +150,6 @@ export class BaiduProvider implements CloudStorageProvider {
           throw error;
         }
       });
-    }
   }
   async read(path: string, phase: 'downloading' | 'verifying' = 'downloading'): Promise<ArrayBuffer> {
     this.onActivity(phase);
@@ -165,6 +174,15 @@ export class BaiduProvider implements CloudStorageProvider {
   }
   async writeImmutable(path: string, data: ArrayBuffer): Promise<void> {
     relativePath(path); checkSize(data.byteLength); this.guard(); const expected = hash(data);
+    const pending = this.pendingWrites.get(path);
+    if (pending) {
+      if (pending.hash !== expected) throw new VaultSailError('integrity', '同一不可变对象出现不同内容，已停止写入。');
+      return pending.operation;
+    }
+    const operation = this.writeObject(path, data, expected); this.pendingWrites.set(path, { hash: expected, operation });
+    try { await operation; } finally { if (this.pendingWrites.get(path)?.operation === operation) this.pendingWrites.delete(path); }
+  }
+  private async writeObject(path: string, data: ArrayBuffer, expected: string): Promise<void> {
     const verify = async (fresh = false): Promise<boolean> => {
       if (!await this.find(path, fresh)) return false;
       if (hash(await this.read(path, 'verifying')) !== expected) throw new VaultSailError('integrity', '不可变对象已存在但内容不同，禁止覆盖。');

@@ -146,11 +146,11 @@ export class AuthManager {
     this.cancel(); const { cfg, secret } = this.credentials(); const generation = this.generation;
     this.save(await this.oauth('token', { grant_type: 'authorization_code', code: code.trim(), client_id: cfg.appKey, client_secret: secret, redirect_uri: 'oob' }), cfg, generation);
   }
-  async accessToken(forceRefresh = false): Promise<string> {
+  async accessToken(forceRefresh = false, rejectedToken?: string): Promise<string> {
     const current = this.token();
     if (!current || this.statusValue === 'reauthorize') throw new VaultSailError('authentication', '请先连接百度网盘或重新授权。');
-    if (!forceRefresh && current.expiresAt > Date.now() + 120000) return current.accessToken;
     if (this.refreshTask && this.refreshGeneration === this.generation) return this.refreshTask;
+    if ((!forceRefresh || (rejectedToken !== undefined && rejectedToken !== current.accessToken)) && current.expiresAt > Date.now() + 120000) return current.accessToken;
     const { cfg, secret } = this.credentials(); const generation = this.generation;
     this.refreshGeneration = generation;
     const task = (async () => {

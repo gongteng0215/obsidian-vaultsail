@@ -253,3 +253,19 @@ test('pause and disconnect interrupt long rate-limit backoff without issuing ano
     await rejected; assert.equal(calls, 1);
   }
 });
+test('parallel identical content shares one upload and shared parent directories are created once', async () => {
+  const h = harness(); const directories = new Map<string, number>();
+  const provider = new BaiduProvider('/apps/中文应用', async input => {
+    const body = new URLSearchParams(typeof input.body === 'string' ? input.body : '');
+    if (new URL(input.url).searchParams.get('method') === 'create' && body.get('isdir') === '1') {
+      const path = body.get('path')!; directories.set(path, (directories.get(path) ?? 0) + 1);
+    }
+    await new Promise(resolve => setTimeout(resolve, 1)); return h.transport(input);
+  }, { accessToken: async () => 'private-access' });
+  await Promise.all([provider.writeImmutable('shared/nested/a.bin', bytes('A')), provider.writeImmutable('shared/nested/a.bin', bytes('A')),
+    provider.writeImmutable('shared/nested/b.bin', bytes('B'))]);
+  assert.equal(h.counts().createCalls, 2); assert.ok([...directories.values()].every(value => value === 1));
+  const first = provider.writeImmutable('shared/unique.bin', bytes('first'));
+  await assert.rejects(provider.writeImmutable('shared/unique.bin', bytes('second')), { code: 'integrity' }); await first;
+  assert.equal(hash(await provider.read('shared/unique.bin')), hash(bytes('first')));
+});

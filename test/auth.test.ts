@@ -109,3 +109,9 @@ test('imported authorization remaps local references and refreshes without devic
   assert.equal('secretRef' in exported.session, false); assert.equal('sessionRef' in exported.session, false);
   const before = map.get(config.sessionRef); assert.throws(() => auth.restoreSession({ accessToken: '', refreshToken: 'x', expiresAt: 1 })); assert.equal(map.get(config.sessionRef), before);
 });
+test('late expiry responses for an old token reuse the newer token instead of refreshing it again', async () => {
+  let refreshes = 0; const { auth } = setup(async () => { refreshes++; return response({ ...tokens, access_token: 'new-access' }); });
+  auth.restoreSession({ accessToken: 'old-access', refreshToken: 'old-refresh', expiresAt: Date.now() + 3600000 });
+  assert.equal(await auth.accessToken(true, 'old-access'), 'new-access');
+  assert.equal(await auth.accessToken(true, 'old-access'), 'new-access'); assert.equal(refreshes, 1);
+});

@@ -59,6 +59,103 @@ async function setup() {
   const ea = new SyncEngine(remote, a, sa, vault.vaultId); const eb = new SyncEngine(remote, b, sb, vault.vaultId);
   return { cloud, remote, vault, a, b, sa, sb, ea, eb };
 }
+test('three file transfers overlap while journal saves and local application remain serialized', async () => {
+  const { a, b, ea, eb, cloud, sa, sb } = await setup();
+  for (let i = 0; i < 9; i++) a.files.set(`note-${i}.md`, bytes('content-' + i));
+  let active = 0; let peak = 0; let saving = 0; let applying = 0; let maxJournals = 0;
+  const write = cloud.writeImmutable.bind(cloud); const read = cloud.read.bind(cloud);
+  cloud.writeImmutable = async (path, data) => { active++; peak = Math.max(peak, active); try { await new Promise(resolve => setTimeout(resolve, 5)); await write(path, data); } finally { active--; } };
+  for (const store of [sa, sb]) { const save = store.save.bind(store); store.save = async state => {
+    assert.equal(saving++, 0, 'state saves must never overlap'); maxJournals = Math.max(maxJournals, state.journals.length);
+    try { await new Promise(resolve => setTimeout(resolve, 1)); await save(state); } finally { saving--; }
+  }; }
+  const uploaded = await ea.execute(await ea.preview('upload'), () => { throw new Error('detached observer'); });
+  assert.equal(uploaded.uploadedFiles, 9); assert.equal(peak, 3); assert.equal(maxJournals, 3);
+  peak = 0; cloud.read = async path => { if (!path.includes('/blobs/')) return read(path); active++; peak = Math.max(peak, active);
+    try { await new Promise(resolve => setTimeout(resolve, 5)); return await read(path); } finally { active--; } };
+  const apply = b.apply.bind(b); b.apply = async (...args) => { assert.equal(applying++, 0, 'local writes must never overlap');
+    try { await new Promise(resolve => setTimeout(resolve, 1)); await apply(...args); } finally { applying--; } };
+  const downloaded = await eb.sync(); assert.equal(downloaded.downloadedFiles, 9); assert.equal(peak, 3);
+  assert.equal(sa.value.journals.length, 0); assert.equal(sb.value.journals.length, 0);
+  for (const [path, data] of a.files) assert.equal(hash(b.files.get(path)!), hash(data));
+  const count = cloud.published; await ea.sync(); await eb.sync(); assert.equal(cloud.published, count);
+});
+test('changing the idle concurrency applies to an existing preview and remains bounded at four', async () => {
+  const { a, ea, cloud } = await setup(); for (let i = 0; i < 8; i++) a.files.set(`note-${i}.md`, bytes('data-' + i));
+  const plan = await ea.preview('upload'); ea.configureConcurrency(4);
+  let active = 0; let peak = 0; const write = cloud.writeImmutable.bind(cloud);
+  cloud.writeImmutable = async (path, data) => { active++; peak = Math.max(peak, active);
+    try { assert.throws(() => ea.configureConcurrency(2), { code: 'busy' }); await new Promise(resolve => setTimeout(resolve, 2)); await write(path, data); } finally { active--; } };
+  const result = await ea.execute(plan); assert.equal(result.uploadedFiles, 8); assert.equal(peak, 4);
+});
+
+test('parallel response loss drains in-flight files and recovers their original operation IDs', async () => {
+  const { a, ea, cloud, sa } = await setup(); for (let i = 0; i < 6; i++) a.files.set(`note-${i}.md`, bytes('data-' + i));
+  const write = cloud.writeImmutable.bind(cloud); const started: string[] = []; let release!: () => void; let lost = false;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  cloud.writeImmutable = async (path, data) => {
+    if (path.includes('/blobs/')) { started.push(path); if (started.length > 1) await gate; }
+    await write(path, data);
+    if (path.includes('/ops/') && !lost) { lost = true; throw new VaultSailError('network', 'response lost'); }
+  };
+  let settled = false; const rejected = assert.rejects(ea.sync().finally(() => { settled = true; }), { code: 'network' });
+  for (let i = 0; i < 200 && !lost; i++) await new Promise(resolve => setTimeout(resolve, 1));
+  assert.equal(lost, true); assert.equal(started.length, 3); assert.equal(settled, false); release(); await rejected;
+  assert.equal(cloud.published, 3); assert.equal(sa.value.journals.length, 1);
+  const oldId = sa.value.journals[0].id; await ea.recover(); assert.equal(cloud.published, 3); assert.ok(sa.value.knownOps.includes(oldId));
+  await ea.sync(); assert.equal(cloud.published, 6); assert.equal(sa.value.journals.length, 0);
+});
+
+test('a failed state commit leaves other prepared journals recoverable without later workers overwriting them', async () => {
+  const { a, ea, cloud, sa } = await setup(); for (let i = 0; i < 3; i++) a.files.set(`note-${i}.md`, bytes('data-' + i));
+  const save = sa.save.bind(sa); let failed = false;
+  sa.save = async state => { if (!failed && state.journals.some(j => j.stage === 'published')) { failed = true; throw new VaultSailError('state', 'synthetic disk failure'); } await save(state); };
+  await assert.rejects(ea.sync(), { code: 'state' }); assert.equal(sa.value.journals.length, 3); assert.equal(cloud.published, 3);
+  await ea.recover(); assert.equal(sa.value.journals.length, 0); assert.equal(cloud.published, 3);
+  await ea.sync(); assert.equal(cloud.published, 3);
+});
+
+test('large attachment batches reduce concurrency and keep verified content intact', async () => {
+  const { a, ea, cloud } = await setup();
+  for (let i = 0; i < 3; i++) { const data = new Uint8Array(9 * 1024 * 1024); data.fill(i); a.files.set(`large-${i}.bin`, data.buffer); }
+  let active = 0; let peak = 0; const write = cloud.writeImmutable.bind(cloud);
+  cloud.writeImmutable = async (path, data) => { active++; peak = Math.max(peak, active);
+    try { await new Promise(resolve => setTimeout(resolve, 2)); await write(path, data); } finally { active--; } };
+  const result = await ea.sync(); assert.equal(peak, 2); assert.equal(result.uploadedFiles, 3);
+  for (const data of a.files.values()) assert.ok([...cloud.files.keys()].some(path => path.endsWith('/blobs/' + hash(data))));
+});
+
+test('cold history enumeration reads three records concurrently and reports verified record counts', async () => {
+  const { a, ea, cloud, vault } = await setup(); for (let i = 0; i < 9; i++) a.files.set(`note-${i}.md`, bytes('data-' + i)); await ea.sync();
+  let active = 0; let peak = 0; const read = cloud.read.bind(cloud); const counts: number[] = [];
+  cloud.read = async path => { if (!path.includes('/ops/')) return read(path); active++; peak = Math.max(peak, active);
+    try { await new Promise(resolve => setTimeout(resolve, 3)); return await read(path); } finally { active--; } };
+  const records = await new RemoteVaultStore(cloud).revisions(vault.vaultId, (done, total) => { assert.equal(total, 9); counts.push(done); });
+  assert.equal(records.length, 9); assert.equal(peak, 3); assert.deepEqual(counts, [0,1,2,3,4,5,6,7,8,9]);
+});
+test('pause drains three in-flight publications and recovery does not duplicate their versions', async () => {
+  const { a, ea, cloud, sa } = await setup(); for (let i = 0; i < 6; i++) a.files.set(`note-${i}.md`, bytes('data-' + i));
+  const write = cloud.writeImmutable.bind(cloud); let started = 0; let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  cloud.writeImmutable = async (path, data) => { if (path.includes('/blobs/')) { started++; await gate; } await write(path, data); };
+  let settled = false; const rejected = assert.rejects(ea.sync().finally(() => { settled = true; }), { code: 'paused' });
+  for (let i = 0; i < 200 && started < 3; i++) await new Promise(resolve => setTimeout(resolve, 1));
+  assert.equal(started, 3); ea.pause(); assert.equal(settled, false); release(); await rejected;
+  assert.equal(started, 3); assert.equal(sa.value.journals.length, 3); assert.equal(cloud.published, 3);
+  await ea.recover(); assert.equal(cloud.published, 3); await ea.sync(); assert.equal(cloud.published, 6);
+});
+test('editing a note during parallel download preserves the edit and leaves unapplied operations recoverable', async () => {
+  const { a, b, ea, eb, cloud, sb } = await setup(); for (let i = 0; i < 3; i++) a.files.set(`note-${i}.md`, bytes('old-' + i));
+  await ea.sync(); await eb.sync(); for (let i = 0; i < 3; i++) a.files.set(`note-${i}.md`, bytes('new-' + i)); await ea.sync();
+  const read = cloud.read.bind(cloud); let started = 0; let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  cloud.read = async path => { if (path.includes('/blobs/')) { started++; await gate; } return read(path); };
+  const rejected = assert.rejects(eb.sync(), { code: 'changed' });
+  for (let i = 0; i < 200 && started < 3; i++) await new Promise(resolve => setTimeout(resolve, 1));
+  assert.equal(started, 3); b.files.set('note-0.md', bytes('user edit')); release(); await rejected;
+  assert.equal(hash(b.files.get('note-0.md')!), hash(bytes('user edit'))); assert.equal(sb.value.journals.length, 3);
+  await assert.rejects(eb.recover(), { code: 'changed' }); assert.equal(hash(b.files.get('note-0.md')!), hash(bytes('user edit')));
+});
 test('100 mixed files roundtrip, zero bytes and Chinese paths; repeat produces no new events', async () => {
   const { a, b, ea, eb, cloud } = await setup();
   for (let i = 0; i < 100; i++) a.files.set(`中文/目录/文件${i}.${i % 3 === 0 ? 'md' : i % 3 === 1 ? 'png' : 'pdf'}`, i ? bytes('mixed-content-' + i) : new ArrayBuffer(0));

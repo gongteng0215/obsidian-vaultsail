@@ -1,15 +1,18 @@
+import { DEFAULT_TRANSFER_CONCURRENCY, validConcurrency } from './core/concurrency.ts';
 export interface VaultSailSettings {
   providerId: 'none' | 'baidu'; remoteVaultId: string; appKey: string; appDirectory: string; secretRef: string;
   binding?: { vaultId: string; appKey: string; root: string; accountHash: string; displayName: string; };
   experimentalSync: boolean; deletionEnabled: boolean;
   pendingVaultName?: string;
   sessionRef?: string;
+  transferConcurrency: number;
 }
 export const DEFAULT_APP_DIRECTORY = '/apps/VaultSail';
-export const DEFAULT_SETTINGS: VaultSailSettings = { providerId: 'none', remoteVaultId: '', appKey: '', appDirectory: DEFAULT_APP_DIRECTORY, secretRef: '', experimentalSync: false, deletionEnabled: false };
+export const DEFAULT_SETTINGS: VaultSailSettings = { providerId: 'none', remoteVaultId: '', appKey: '', appDirectory: DEFAULT_APP_DIRECTORY, secretRef: '', experimentalSync: false, deletionEnabled: false, transferConcurrency: DEFAULT_TRANSFER_CONCURRENCY };
 export function migrateSettings(value: unknown): VaultSailSettings {
   const source = value && typeof value === 'object' ? value as Record<string, unknown> : {};
   const result: VaultSailSettings = { ...DEFAULT_SETTINGS };
+  if (validConcurrency(source.transferConcurrency)) result.transferConcurrency = source.transferConcurrency;
   if (source.providerId === 'baidu') result.providerId = 'baidu';
   for (const key of ['remoteVaultId', 'appKey', 'appDirectory', 'secretRef'] as const) if (typeof source[key] === 'string') result[key] = source[key];
   result.appDirectory = result.appDirectory.trim() || DEFAULT_APP_DIRECTORY;

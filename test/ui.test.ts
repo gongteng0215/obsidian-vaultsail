@@ -322,6 +322,13 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   const originalNote = files.get('note.md')!;
   await local.writeConflictCopy('note.md', 'local-test', originalNote); assert.equal(hash((await local.readConflictCopy('note.md', 'local-test'))!), hash(originalNote));
   assert.equal([...remoteObjects.keys()].some(p => p.includes('VaultSail-conflicts')), false);
+  const bindingBeforeConcurrency = structuredClone(plugin.settings.binding);
+  const engineBeforeConcurrency = plugin.engine;
+  await plugin.setTransferConcurrency(4); assert.equal(plugin.settings.transferConcurrency, 4); assert.equal(plugin.saved.transferConcurrency, 4);
+  assert.equal(plugin.engine, engineBeforeConcurrency, 'changing concurrency must retain the current engine and preview context');
+  assert.equal(plugin.auth.status(), 'connected'); assert.deepEqual(plugin.settings.binding, bindingBeforeConcurrency);
+  plugin.busy = true; await assert.rejects(plugin.setTransferConcurrency(2), { code: 'busy' }); plugin.busy = false;
+  assert.equal(plugin.settings.transferConcurrency, 4); await plugin.setTransferConcurrency(3);
   // Exercise a real timer against the rendered view, including a pending file
   // request, failure, recovery actions and a new task replacing the old snapshot.
   const realNow = Date.now; const clock = realNow();

@@ -1,0 +1,117 @@
+{
+  "synthetic": true,
+  "measuredAt": "2026-10-15T11:17:06.827Z",
+  "latencyMs": 20,
+  "files": 12,
+  "bytesPerFile": 1024,
+  "repeats": 3,
+  "description": "Synthetic cloud read/write delay; complete readback/hash verification; excludes real Baidu bandwidth, OAuth and local disk latency.",
+  "summary": [
+    {
+      "concurrency": 1,
+      "uploadMs": 1303,
+      "downloadMs": 797,
+      "peakUpload": 1,
+      "peakDownload": 1
+    },
+    {
+      "concurrency": 3,
+      "uploadMs": 463,
+      "downloadMs": 298,
+      "peakUpload": 3,
+      "peakDownload": 3
+    }
+  ],
+  "results": [
+    {
+      "concurrency": 1,
+      "repeat": 1,
+      "upload": {
+        "ms": 1316,
+        "peak": 1,
+        "calls": 62
+      },
+      "download": {
+        "ms": 802,
+        "peak": 1,
+        "calls": 38
+      },
+      "hashesVerified": 12
+    },
+    {
+      "concurrency": 1,
+      "repeat": 2,
+      "upload": {
+        "ms": 1293,
+        "peak": 1,
+        "calls": 62
+      },
+      "download": {
+        "ms": 792,
+        "peak": 1,
+        "calls": 38
+      },
+      "hashesVerified": 12
+    },
+    {
+      "concurrency": 1,
+      "repeat": 3,
+      "upload": {
+        "ms": 1300,
+        "peak": 1,
+        "calls": 62
+      },
+      "download": {
+        "ms": 798,
+        "peak": 1,
+        "calls": 38
+      },
+      "hashesVerified": 12
+    },
+    {
+      "concurrency": 3,
+      "repeat": 1,
+      "upload": {
+        "ms": 466,
+        "peak": 3,
+        "calls": 62
+      },
+      "download": {
+        "ms": 300,
+        "peak": 3,
+        "calls": 38
+      },
+      "hashesVerified": 12
+    },
+    {
+      "concurrency": 3,
+      "repeat": 2,
+      "upload": {
+        "ms": 464,
+        "peak": 3,
+        "calls": 62
+      },
+      "download": {
+        "ms": 297,
+        "peak": 3,
+        "calls": 38
+      },
+      "hashesVerified": 12
+    },
+    {
+      "concurrency": 3,
+      "repeat": 3,
+      "upload": {
+        "ms": 460,
+        "peak": 3,
+        "calls": 62
+      },
+      "download": {
+        "ms": 298,
+        "peak": 3,
+        "calls": 38
+      },
+      "hashesVerified": 12
+    }
+  ]
+}

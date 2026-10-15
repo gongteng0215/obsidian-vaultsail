@@ -2,6 +2,7 @@ export type ProgressPhase = 'connecting' | 'scanning-remote' | 'scanning-local' 
 export interface SyncProgress {
   phase: ProgressPhase; path?: string; doneFiles: number; totalFiles: number; doneBytes: number; totalBytes: number; startedAt: number; updatedAt: number;
   message?: string;
+  activeFiles?: number; concurrency?: number;
 }
 export const PROGRESS_LABELS: Record<ProgressPhase, string> = {
   connecting: '检查百度连接与云端库',
@@ -16,10 +17,11 @@ export function formatProgress(progress: SyncProgress, now = Date.now()): string
   const ended = !progressRunning(progress);
   const elapsed = Math.max(0, Math.floor(((ended ? progress.updatedAt : now) - progress.startedAt) / 1000));
   const scanning = ['connecting', 'scanning-remote', 'scanning-local', 'preview-ready'].includes(progress.phase);
-  const count = `${scanning ? '已扫描' : '已处理'} ${progress.doneFiles}/${progress.totalFiles} 个文件`;
+  const count = progress.phase === 'scanning-remote' ? `已读取 ${progress.doneFiles}/${progress.totalFiles} 条版本记录` : `${scanning ? '已扫描' : '已处理'} ${progress.doneFiles}/${progress.totalFiles} 个文件`;
   const size = scanning ? '' : ` · 已校验内容 ${formatBytes(progress.doneBytes)} / ${formatBytes(progress.totalBytes)}`;
   const waiting = !ended && now - progress.updatedAt >= 2000 ? `\n本步骤进行中，已等待新进度 ${Math.floor((now - progress.updatedAt) / 1000)} 秒。` : '';
   const result = progress.message ? '\n' + progress.message : '';
   const stopped = progress.phase === 'failed' ? '\n任务已停止，请根据错误恢复任务或重新同步。' : '';
-  return `${PROGRESS_LABELS[progress.phase]}${progress.path ? ' · ' + progress.path : ''}\n${count}${size} · 耗时 ${elapsed} 秒${waiting}${result}${stopped}`;
+  const parallel = progress.concurrency && !scanning ? `\n同时传输 ${progress.activeFiles ?? 0}/${progress.concurrency} 个文件` : '';
+  return `${PROGRESS_LABELS[progress.phase]}${progress.path ? ' · ' + progress.path : ''}\n${count}${size} · 耗时 ${elapsed} 秒${parallel}${waiting}${result}${stopped}`;
 }

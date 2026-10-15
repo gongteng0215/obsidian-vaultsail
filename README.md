@@ -13,13 +13,13 @@ Sync notes and attachments through Baidu Netdisk with version preservation and p
 - See scan, transfer and verification progress, elapsed time, last completion and remote version locations.
 - Keep deletion propagation off by default. Exclude Obsidian configuration, credentials, internal state and recovery folders from note sync.
 
-Baidu Netdisk is the current provider. Transfers are manual, with a 20 MiB per-file limit and concurrency of one. Pairing configuration is encrypted; note contents stored in the cloud are **not** end-to-end encrypted. Automatic text merging and continuous mobile background sync are not provided.
+Baidu Netdisk is the current provider. Transfers are manual, with a 20 MiB per-file limit and three concurrent file transfers by default (configurable from one to four). Large attachments automatically reduce the batch size. Pairing configuration is encrypted; note contents stored in the cloud are **not** end-to-end encrypted. Automatic text merging and continuous mobile background sync are not provided.
 
 ## Install
 
 Requires **Obsidian 1.11.4 or newer**. The [community listing](https://community.obsidian.md/plugins/vaultsail) is restored, and **0.1.17** completed the automated review with no blocking errors on October 15, 2026. The in-app search catalog updates separately from the listing. Automated review does not replace real-device validation.
 
-**[0.1.19 is a GitHub test release](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.1.19) awaiting device validation.** It adds live progress from connection checks onward, elapsed/waiting time, visible failure reasons and recovery controls, alongside the 0.1.18 stability fixes. Select 0.1.19 in BRAT to test it; the community version remains 0.1.17. See the [test-build notes](docs/releases/0.1.19.md).
+**[0.1.20 is a GitHub test release](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.1.20) awaiting device validation.** It adds bounded concurrent uploads/downloads and history reads, serialized recovery commits and live worker counts. Select 0.1.20 in BRAT to test it; the community version remains 0.1.17. See the [test-build notes](docs/releases/0.1.20.md).
 
 For direct GitHub installation on iPad, install and enable [BRAT](https://github.com/TfTHacker/obsidian42-brat) through Obsidian's community plugins, then add `gongteng0215/obsidian-vaultsail` and select version `0.1.17`. Enable VaultSail in an empty test vault before importing an encrypted pairing code.
 
@@ -51,7 +51,7 @@ Anyone holding both a pairing code and its password can reuse its authorization.
 
 ## Verification and development
 
-92 automated tests cover authorization, encrypted pairing, file APIs, pagination, concurrent changes, recovery, path safety and configuration privacy. Real iPad import, device storage/Web Crypto, large real-world transfers and long-term shared-token refresh remain unverified by the developer. Simulated checks are not real-device certification. See [implementation status](docs/IMPLEMENTATION_STATUS.md) and [performance measurements](docs/PERFORMANCE.md).
+124 automated tests cover authorization, encrypted pairing, bounded parallel transfers, serialized recovery commits, pagination, concurrent changes, path safety and configuration privacy. Real iPad import, device storage/Web Crypto, large real-world transfers and long-term shared-token refresh remain unverified by the developer. Simulated checks are not real-device certification. See [implementation status](docs/IMPLEMENTATION_STATUS.md) and [performance measurements](docs/PERFORMANCE.md).
 
 Use Node.js 22+, then run `npm ci`, `npm test`, `npm run build` and `pwsh ./scripts/package-release.ps1`. The installation ZIP contains only the three plugin files, never tests, user settings, credentials or notes.
 

@@ -1,5 +1,6 @@
 import { checkSize, hash, included, jsonBytes, parseJson, record, relativePath, uuid, validId, VaultSailError } from '../core/safety.ts';
 import { listAll } from '../providers/provider-utils.ts';
+import { DEFAULT_TRANSFER_CONCURRENCY, mapConcurrent, validConcurrency } from '../core/concurrency.ts';
 import type { CloudStorageProvider } from '../providers/cloud-storage-provider';
 
 export interface RemoteVault { schemaVersion: 1; vaultId: string; displayName: string; createdAt: number; }
@@ -68,7 +69,12 @@ export class RemoteVaultStore {
   private cachedRevisions = new Map<string, { etag?: string; contentHash?: string; size: number; revision: Revision }>();
   private cachedVaults = new Map<string, { etag?: string; contentHash: string; size: number; vault: RemoteVault }>();
   private diskLoaded = false; private disk?: RevisionCache;
-  constructor(provider: CloudStorageProvider, cache?: RevisionCache) { this.provider = provider; this.disk = cache; }
+  private readConcurrency: number;
+  constructor(provider: CloudStorageProvider, cache?: RevisionCache, concurrency = DEFAULT_TRANSFER_CONCURRENCY) { this.provider = provider; this.disk = cache; this.readConcurrency = concurrency; }
+  setReadConcurrency(value: number): void {
+    if (!validConcurrency(value)) throw new VaultSailError('configuration', '读取并发数必须为 1–4。');
+    this.readConcurrency = value;
+  }
   private async loadCache(id: string): Promise<void> {
     if (this.diskLoaded) return; this.diskLoaded = true;
     if (!this.disk) return;
@@ -132,24 +138,33 @@ export class RemoteVaultStore {
     }
     return result;
   }
-  async revisions(id: string): Promise<Revision[]> {
+  async revisions(id: string, onProgress: (done: number, total: number) => void = () => {}): Promise<Revision[]> {
     await this.loadCache(id); await this.get(id); const base = this.base(id) + '/ops'; const result: Revision[] = []; const active = new Set<string>();
+    const entries: { deviceId: string; entry: Awaited<ReturnType<typeof listAll>>[number] }[] = [];
     for (const device of await listAll(this.provider, base)) {
       const deviceId = device.path.split('/').at(-1)!;
       if (!device.isDirectory || !validId(deviceId)) throw new VaultSailError('schema', '操作目录含未知对象，停止扫描。');
       for (const entry of await listAll(this.provider, device.path)) {
-        if (entry.isDirectory || entry.size > 1024 * 1024 || result.length >= 10000) throw new VaultSailError('schema', '操作记录异常或超过扫描上限。');
+        if (entry.isDirectory || entry.size > 1024 * 1024 || entries.length >= 10000) throw new VaultSailError('schema', '操作记录异常或超过扫描上限。');
+        entries.push({ deviceId, entry });
+      }
+    }
+    let completed = 0;
+    const report = () => { try { onProgress(completed, entries.length); } catch { /* Inventory callbacks are advisory. */ } };
+    report();
+    const records = await mapConcurrent(entries, this.readConcurrency, async ({ deviceId, entry }) => {
         const cached = this.cachedRevisions.get(entry.path);
         const reusable = cached && cached.size === entry.size && ((entry.etag !== undefined && cached.etag === entry.etag)
           || (cached.contentHash !== undefined && this.provider.verifiedContentHash?.(entry) === cached.contentHash));
         const data = reusable ? undefined : await this.provider.read(entry.path);
         const op = reusable ? cached.revision : validateRevision(parseJson(data!), id);
-        if (op.deviceId !== deviceId || entry.path !== device.path + '/' + op.opId + '.json') throw new VaultSailError('schema', '操作文件与记录标识不一致。');
+        if (op.deviceId !== deviceId || entry.path !== base + '/' + deviceId + '/' + op.opId + '.json') throw new VaultSailError('schema', '操作文件与记录标识不一致。');
         this.cachedRevisions.set(entry.path, { etag: entry.etag, contentHash: data ? hash(data) : cached?.contentHash, size: entry.size, revision: op });
         active.add(entry.path);
-        result.push(op);
-      }
-    }
+        completed++; report();
+        return op;
+    });
+    result.push(...records);
     buildHeads(result); await this.saveCache(id, active); return result;
   }
   async blob(id: string, op: Revision, onVerify: () => void = () => {}): Promise<ArrayBuffer> {

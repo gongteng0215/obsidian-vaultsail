@@ -13,6 +13,7 @@ import { CONFIG_EXPORT_DIRECTORY, exportPortableConfig, parsePortableConfig } fr
 import { ConfigExportModal, ConfigImportModal } from './ui/config-modals';
 import { formatBytes, progressRunning, PROGRESS_LABELS, type SyncProgress } from './sync/progress';
 import { withConfigurationLock } from './platform/configuration-lock';
+import { validConcurrency } from './core/concurrency';
 import { decryptPairing, encryptPairing, isEncryptedPairing, PAIRING_LIFETIME_MS, validateAuthorizedPairing, validatePairingCode, type AuthorizedPairing, type PairingImportOptions } from './encrypted-pairing';
 
 const PAIRING_STEPS = {
@@ -144,6 +145,12 @@ export default class VaultSailPlugin extends Plugin {
     new ObsidianCredentials(this.app).set(ref, value);
     await this.changeConfiguration({ secretRef: ref });
   }
+  async setTransferConcurrency(value: number): Promise<void> {
+    if (this.busy) throw new VaultSailError('busy', '请等待当前任务完成，再修改并发数。');
+    if (!validConcurrency(value)) throw new VaultSailError('configuration', '请选择 1–4 路并发。');
+    this.engine?.configureConcurrency(value); this.settings.transferConcurrency = value; await this.saveSettings();
+    this.statusText = `传输并发已设为 ${value} 路，下次任务生效。`; this.refreshUI();
+  }
   provider(): BaiduProvider {
     if (this.settings.providerId !== 'baidu') throw new VaultSailError('configuration', '请先选择百度网盘。');
     const root = appRoot(this.settings.appDirectory); const generation = this.generation;
@@ -237,8 +244,8 @@ export default class VaultSailPlugin extends Plugin {
       if (!validation?.passed) throw new VaultSailError('permission', '请先运行本设备的文件传输权限验证，确认上传下载权限。');
       if (this.engine) return this.engine;
       const context = hash(bytes(b.appKey + '|' + b.root + '|' + accountHash + '|' + b.vaultId));
-      this.engine = new SyncEngine(new RemoteVaultStore(provider, new ObsidianRevisionCache(this.app, this.deviceId, context)), this.local,
-        new ObsidianStateStore(this.app, this.deviceId, b.vaultId, context), b.vaultId, this.app.vault.configDir, event => this.publishProgress(event));
+      this.engine = new SyncEngine(new RemoteVaultStore(provider, new ObsidianRevisionCache(this.app, this.deviceId, context), this.settings.transferConcurrency), this.local,
+        new ObsidianStateStore(this.app, this.deviceId, b.vaultId, context), b.vaultId, this.app.vault.configDir, event => this.publishProgress(event), this.settings.transferConcurrency);
       return this.engine;
     } catch (error) { this.failTransfer(error); throw error; }
   }
@@ -464,7 +471,7 @@ export default class VaultSailPlugin extends Plugin {
         source: checked.source === 'pairing-local-probe' ? 'pairing-local-probe' : 'full-roundtrip', results: checked.results, quota: checked.quota } : null,
       lastTransfer: this.lastSuccess() ?? null,
       lastPairingStep: this.lastPairingStep ?? null,
-      realDeviceValidation: '用户在本设备完成；开发者未验证真实账号或 iPad', maxFileMiB: 20 }, null, 2);
+      realDeviceValidation: '用户在本设备完成；开发者未验证真实账号或 iPad', maxFileMiB: 20, transferConcurrency: this.settings.transferConcurrency }, null, 2);
   }
 
   async loadSettings(): Promise<void> {

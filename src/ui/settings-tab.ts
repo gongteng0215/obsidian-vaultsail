@@ -101,7 +101,7 @@ export class VaultSailSettingTab extends PluginSettingTab {
     const accessCard = card(panels.get('connect')!, 'CHECKPOINT', '连接之后，验证通路', '先检查访问，再验证校验文件能否完整往返。');
     const configCard = card(panels.get('connect')!, 'PAIRING', '在其他 Vault 使用账号', '默认只迁移应用配置和百度授权，不携带云端库绑定。每个 Vault 单独创建或选择云端库；同步同一库时再明确选择复用。');
     const vaultCard = card(panels.get('vault')!, 'DESTINATION', '为这份知识，选择一个泊位', '云端库 ID 用来配对设备，本地笔记库可以有不同名称。');
-    const transferCard = card(panels.get('transfer')!, 'WORKSPACE', '先看清变化，再开始传输', '20 MiB / 文件 · 单任务传输 · 并发改动自动保留双方副本。');
+    const transferCard = card(panels.get('transfer')!, 'WORKSPACE', '先看清变化，再开始传输', `20 MiB / 文件 · 最多 ${p.settings.transferConcurrency} 个文件同时传输 · 并发改动自动保留双方副本。`);
     const recoveryCard = card(panels.get('transfer')!, 'RECOVERY', '每一次修改，都有回程', '未完成的任务可以恢复，旧内容以恢复副本保留。');
     const advanced = panels.get('transfer')!.createEl('details', { cls: 'vaultsail-advanced' }); advanced.createEl('summary', { text: '实验功能与诊断' });
     const advancedCard = advanced.createDiv({ cls: 'vaultsail-card' });
@@ -179,6 +179,11 @@ export class VaultSailSettingTab extends PluginSettingTab {
     new Setting(transferCard).setName('双向同步').setDesc('根据上次成功的基线自动判断上传与下载。双方改动自动保留原笔记和冲突副本；删除默认关闭。')
       .addButton(button => button.setButtonText('开始同步').setCta().setDisabled(p.busy).onClick(() => { void p.run('正在同步…', () => p.startSync()); }))
       .addButton(button => button.setButtonText('先看同步清单').setDisabled(p.busy).onClick(() => { void p.run('扫描双向变更…', () => p.preview('sync')); }));
+    new Setting(transferCard).setName('同时传输的文件数').setDesc('默认 3 路。网络不稳定时可调低；大附件会自动减少同时传输数量。修改不影响账号和云端库绑定。')
+      .addDropdown(dropdown => dropdown.addOptions({ '1': '1 路', '2': '2 路', '3': '3 路（推荐）', '4': '4 路' })
+        .setValue(String(p.settings.transferConcurrency)).setDisabled(p.busy).onChange(value => {
+          void p.setTransferConcurrency(Number(value)).catch(error => new Notice(safeMessage(error)));
+        }));
     new Setting(transferCard).setName('单向传输').setDesc('也可只上传或只下载；冲突会自动保存双方副本。')
       .addButton(button => button.setButtonText('预览上传').setDisabled(p.busy).onClick(() => { void p.run('扫描上传清单…', () => p.preview('upload')); }))
       .addButton(button => button.setButtonText('预览下载').setDisabled(p.busy).onClick(() => { void p.run('扫描下载清单…', () => p.preview('download')); }))
