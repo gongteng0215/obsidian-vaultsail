@@ -11,7 +11,7 @@ import { SyncEngine, type SyncPlan } from './sync/engine';
 import { CloudVaultSetupModal, PlanModal } from './ui/modals';
 import { CONFIG_EXPORT_DIRECTORY, exportPortableConfig, parsePortableConfig } from './portable-config';
 import { ConfigExportModal, ConfigImportModal } from './ui/config-modals';
-import { formatBytes, type SyncProgress } from './sync/progress';
+import { formatBytes, progressRunning, PROGRESS_LABELS, type SyncProgress } from './sync/progress';
 import { withConfigurationLock } from './platform/configuration-lock';
 import { decryptPairing, encryptPairing, isEncryptedPairing, PAIRING_LIFETIME_MS, validateAuthorizedPairing, validatePairingCode, type AuthorizedPairing, type PairingImportOptions } from './encrypted-pairing';
 
@@ -34,6 +34,8 @@ export default class VaultSailPlugin extends Plugin {
   progress?: SyncProgress;
   private progressListeners = new Set<(progress: SyncProgress) => void>();
   private progressTimer?: ReturnType<typeof setInterval>;
+  private transferStartedAt?: number;
+  private transferPauseRequested = false;
   private generation = 0;
   private connectionRequests = new AbortController();
   private engine?: SyncEngine;
@@ -73,7 +75,7 @@ export default class VaultSailPlugin extends Plugin {
     await this.auditLocalRecovery();
   }
 
-  onunload(): void { this.alive = false; this.connectionRequests.abort(); this.pause(); this.auth?.cancel(); if (this.progressTimer) clearInterval(this.progressTimer); this.progressListeners.clear(); }
+  onunload(): void { this.alive = false; this.connectionRequests.abort(); this.pause(); this.auth?.cancel(); if (this.progressTimer) clearInterval(this.progressTimer); this.progressTimer = undefined; this.progressListeners.clear(); }
   private invalidateConnection(): void {
     this.generation++; this.connectionRequests.abort(); this.connectionRequests = new AbortController();
   }
@@ -82,15 +84,28 @@ export default class VaultSailPlugin extends Plugin {
   }
   private publishProgress(progress: SyncProgress): void {
     if (!this.alive) return;
-    this.progress = { ...progress };
+    this.progress = { ...progress, startedAt: this.transferStartedAt ?? progress.startedAt };
+    if (this.pauseRequested && progressRunning(progress)) this.statusText = '已请求暂停，等待当前请求结束。';
+    else this.statusText = progress.message ?? PROGRESS_LABELS[progress.phase];
+    if (!progressRunning(progress)) this.transferPauseRequested = false;
     const notify = () => {
-      this.settingTab?.updateProgress();
+      try { this.settingTab?.updateProgress(); } catch { /* A detached view cannot prevent heartbeats or other observers. */ }
       for (const listener of this.progressListeners) { try { listener(this.progress!); } catch { /* UI observers cannot affect writes. */ } }
     };
     notify();
-    if (['preview-ready', 'completed', 'paused', 'failed'].includes(progress.phase)) { if (this.progressTimer) clearInterval(this.progressTimer); this.progressTimer = undefined; }
-    else if (!this.progressTimer) this.progressTimer = setInterval(notify, 1000);
+    if (!progressRunning(progress)) { if (this.progressTimer) clearInterval(this.progressTimer); this.progressTimer = undefined; }
+    else if (!this.progressTimer) this.progressTimer = setInterval(notify, 500);
   }
+  private beginTransfer(): void {
+    this.transferStartedAt = Date.now(); this.transferPauseRequested = false;
+    this.publishProgress({ phase: 'connecting', doneFiles: 0, totalFiles: 0, doneBytes: 0, totalBytes: 0,
+      startedAt: this.transferStartedAt, updatedAt: this.transferStartedAt });
+  }
+  private failTransfer(error: unknown): void {
+    if (this.progress) this.publishProgress({ ...this.progress,
+      phase: error instanceof VaultSailError && ['paused', 'cancelled'].includes(error.code) ? 'paused' : 'failed', message: safeMessage(error), updatedAt: Date.now() });
+  }
+  get pauseRequested(): boolean { return this.transferPauseRequested || (this.engine?.pauseRequested ?? false); }
   refreshUI(): void { if (this.alive && this.settingTab?.containerEl.isConnected) this.settingTab.display(); }
   private sessionReference(): string {
     const own = 'vaultsail-session-' + this.deviceId; const ref = this.settings.sessionRef;
@@ -110,7 +125,13 @@ export default class VaultSailPlugin extends Plugin {
     }
     finally { this.busy = false; this.refreshUI(); }
   }
-  pause(): void { this.engine?.pause(); if (this.authPhase === 'idle') this.statusText = '已请求暂停，等待当前请求结束。'; }
+  pause(): void {
+    this.engine?.pause();
+    if (this.authPhase === 'idle' && this.busy && this.progress && progressRunning(this.progress)) {
+      this.transferPauseRequested = true; this.statusText = '已请求暂停，等待当前请求结束。';
+      try { this.settingTab?.updateProgress(); } catch { /* Pausing must survive a detached settings view. */ }
+    }
+  }
   async changeConfiguration(update: Partial<VaultSailSettings>): Promise<void> {
     this.pause(); this.invalidateConnection(); this.engine = undefined; this.auth?.disconnect(); this.deviceSession = undefined;
     this.settings = { ...this.settings, ...update, binding: undefined, deletionEnabled: false };
@@ -126,7 +147,7 @@ export default class VaultSailPlugin extends Plugin {
   provider(): BaiduProvider {
     if (this.settings.providerId !== 'baidu') throw new VaultSailError('configuration', '请先选择百度网盘。');
     const root = appRoot(this.settings.appDirectory); const generation = this.generation;
-    return new BaiduProvider(root, obsidianTransport, this.auth, () => this.alive && generation === this.generation && !this.engine?.pauseRequested, phase => {
+    return new BaiduProvider(root, obsidianTransport, this.auth, () => this.alive && generation === this.generation && !this.pauseRequested, phase => {
       if (this.progress && this.busy && !['scanning-remote', 'scanning-local', 'preview-ready', 'completed', 'paused', 'failed'].includes(this.progress.phase)) this.publishProgress({ ...this.progress, phase, updatedAt: Date.now() });
     }, { signal: this.connectionRequests.signal });
   }
@@ -208,26 +229,33 @@ export default class VaultSailPlugin extends Plugin {
     return { provider, binding: b, accountHash };
   }
   private async getEngine(): Promise<SyncEngine> {
-    const { provider, binding: b, accountHash } = await this.boundProvider();
-    const validation = this.app.loadLocalStorage(this.validationKey(accountHash));
-    if (!validation?.passed) throw new VaultSailError('permission', '请先运行本设备的文件传输权限验证，确认上传下载权限。');
-    if (this.engine) return this.engine;
-    const context = hash(bytes(b.appKey + '|' + b.root + '|' + accountHash + '|' + b.vaultId));
-    this.engine = new SyncEngine(new RemoteVaultStore(provider, new ObsidianRevisionCache(this.app, this.deviceId, context)), this.local,
-      new ObsidianStateStore(this.app, this.deviceId, b.vaultId, context), b.vaultId, this.app.vault.configDir, event => this.publishProgress(event));
-    return this.engine;
+    this.beginTransfer();
+    try {
+      const { provider, binding: b, accountHash } = await this.boundProvider();
+      if (this.pauseRequested) throw new VaultSailError('paused', '任务已暂停，请重新开始或恢复任务。');
+      const validation = this.app.loadLocalStorage(this.validationKey(accountHash));
+      if (!validation?.passed) throw new VaultSailError('permission', '请先运行本设备的文件传输权限验证，确认上传下载权限。');
+      if (this.engine) return this.engine;
+      const context = hash(bytes(b.appKey + '|' + b.root + '|' + accountHash + '|' + b.vaultId));
+      this.engine = new SyncEngine(new RemoteVaultStore(provider, new ObsidianRevisionCache(this.app, this.deviceId, context)), this.local,
+        new ObsidianStateStore(this.app, this.deviceId, b.vaultId, context), b.vaultId, this.app.vault.configDir, event => this.publishProgress(event));
+      return this.engine;
+    } catch (error) { this.failTransfer(error); throw error; }
   }
   async preview(mode: SyncPlan['mode']): Promise<void> {
     const engine = await this.getEngine(); const plan = await engine.preview(mode, this.settings.deletionEnabled);
     new PlanModal(this.app, plan, async progress => { if (this.busy) throw new VaultSailError('busy', '当前有其他操作。'); this.busy = true;
+      this.beginTransfer(); this.refreshUI();
       try {
         if (!this.settings.deletionEnabled && plan.rows.some(row => row.action === 'delete-local' || row.action === 'delete-remote')) throw new VaultSailError('configuration', '删除传播已关闭，请重新预览。');
         await engine.execute(plan, progress, true);
         const key = this.successKey(); if (key && this.progress) this.app.saveLocalStorage(key, { completedAt: Date.now(), mode: plan.mode,
           files: this.progress.doneFiles, bytes: this.progress.doneBytes, elapsedMs: this.progress.updatedAt - this.progress.startedAt });
-      } finally { this.busy = false; this.refreshUI(); } },
+      } catch (error) { this.failTransfer(error); throw error; } finally { this.busy = false; this.refreshUI(); } },
       async (row, choice) => { if (this.busy) throw new VaultSailError('busy', '当前有其他操作。'); this.busy = true;
-        try { await engine.resolve(row.path, choice, row); } finally { this.busy = false; this.refreshUI(); } }, () => engine.pause(), listener => this.subscribeProgress(listener)).open();
+        this.beginTransfer(); this.refreshUI();
+        try { await engine.resolve(row.path, choice, row); } catch (error) { this.failTransfer(error); throw error; }
+        finally { this.busy = false; this.refreshUI(); } }, () => this.pause(), listener => this.subscribeProgress(listener)).open();
   }
   async startSync(): Promise<void> {
     const startedAt = Date.now(); const engine = await this.getEngine(); let conflicts = 0; let incoming = 0; let files = 0; let contentBytes = 0;

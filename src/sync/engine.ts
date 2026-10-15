@@ -1,4 +1,4 @@
-import { assertNoCollisions, checkSize, hash, included, uuid, validId, VaultSailError } from '../core/safety.ts';
+import { assertNoCollisions, checkSize, hash, included, safeMessage, uuid, validId, VaultSailError } from '../core/safety.ts';
 import { reconcileFile } from '../core/reconcile.ts';
 import { buildHeads, RemoteVaultStore, validateRevision, type Revision } from './remote-vault.ts';
 import type { SyncProgress, ProgressPhase } from './progress.ts';
@@ -80,7 +80,7 @@ export class SyncEngine {
     this.progress = { phase: 'checking', doneFiles: 0, totalFiles: 0, doneBytes: 0, totalBytes: 0, startedAt: Date.now(), updatedAt: Date.now() };
     this.emit('checking');
     try { const value = await run(); this.emit(successPhase, { path: undefined }); return value; }
-    catch (error) { this.emit(error instanceof VaultSailError && ['paused', 'cancelled'].includes(error.code) ? 'paused' : 'failed'); throw error; }
+    catch (error) { this.emit(error instanceof VaultSailError && ['paused', 'cancelled'].includes(error.code) ? 'paused' : 'failed', { message: safeMessage(error) }); throw error; }
     finally { this.running = false; }
   }
   private async state(): Promise<SyncState> {

@@ -8,7 +8,7 @@ import { parseHTML } from 'linkedom';
 import { encryptPairing, PAIRING_LIFETIME_MS } from '../src/encrypted-pairing.ts';
 import { hash, bytes, uuid } from '../src/core/safety.ts';
 
-const bundle = await build({ stdin: { contents: "export { default as Plugin } from './src/main.ts'; export { ConfigImportModal } from './src/ui/config-modals.ts';", resolveDir: process.cwd() },
+const bundle = await build({ stdin: { contents: "export { default as Plugin } from './src/main.ts'; export { ConfigImportModal } from './src/ui/config-modals.ts'; export { VaultSailError } from './src/core/safety.ts';", resolveDir: process.cwd() },
   bundle: true, format: 'esm', platform: 'node', write: false, plugins: [{ name: 'obsidian-harness', setup(b) {
     b.onResolve({ filter: /^obsidian$/ }, () => ({ path: path.resolve('test/fixtures/obsidian.ts') }));
   } }] });
@@ -128,4 +128,35 @@ test('successful operations retain actionable results, while failures remain cla
   await plugin.run('同步中', async () => {}); assert.equal(plugin.statusText, '操作完成。');
   await plugin.run('同步中', async () => { throw new Error('synthetic'); });
   assert.notEqual(plugin.statusText, '操作完成。'); assert.equal(plugin.lastErrorCode, 'unknown');
+});
+
+test('connection checks replace stale failures immediately, heartbeat while waiting, and expose failure reasons', async () => {
+  const { plugin } = fixture(); const started = deferred(), finish = deferred(); const events: any[] = [];
+  plugin.subscribeProgress((event: any) => events.push(event));
+  plugin.boundProvider = async () => { started.resolve(); await finish.promise; throw new runtime.VaultSailError('network', '网络请求失败；远端状态未知，请重试。'); };
+  const rejected = assert.rejects(plugin.startSync(), { code: 'network' }); await started.promise;
+  assert.equal(plugin.progress.phase, 'connecting'); assert.equal(plugin.progress.message, undefined);
+  await until(() => events.length >= 2); assert.equal(events.at(-1).phase, 'connecting');
+  finish.resolve(); await rejected;
+  assert.equal(plugin.progress.phase, 'failed'); assert.match(plugin.progress.message, /网络请求失败/);
+  assert.equal(plugin.progressTimer, undefined); plugin.onunload();
+});
+
+test('a detached or failing view cannot stop progress heartbeats or other observers', async () => {
+  const { plugin } = fixture(); let updates = 0;
+  plugin.settingTab = { updateProgress: () => { throw new Error('detached view'); } };
+  plugin.subscribeProgress(() => { updates++; }); plugin.beginTransfer();
+  await until(() => updates >= 2); assert.equal(plugin.progress.phase, 'connecting');
+  plugin.onunload();
+  assert.equal(plugin.progressTimer, undefined);
+});
+
+test('pausing the connection check stops before scanning and does not poison subsequent operations', async () => {
+  const { plugin } = fixture(); const started = deferred(), finish = deferred(); plugin.busy = true;
+  plugin.boundProvider = async () => { started.resolve(); await finish.promise; return {}; };
+  const rejected = assert.rejects(plugin.startSync(), { code: 'paused' }); await started.promise;
+  plugin.pause(); assert.equal(plugin.progress.phase, 'connecting'); assert.match(plugin.statusText, /等待当前请求结束/);
+  finish.resolve(); await rejected; plugin.busy = false;
+  assert.equal(plugin.progress.phase, 'paused'); assert.equal(plugin.pauseRequested, false); assert.equal(plugin.progressTimer, undefined);
+  plugin.onunload();
 });

@@ -64,6 +64,14 @@
 .vaultsail-progress-card { padding: 12px 16px; margin: 12px 0; border: 1px solid var(--background-modifier-border); border-radius: 12px; }
 .vaultsail-progress-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
 .vaultsail-progress-meter { width: 100%; height: 8px; accent-color: #43b6ad; }
+.vaultsail-progress-state { font-size: 11px; color: var(--text-muted); }
+.vaultsail-progress-card[aria-busy="true"] .vaultsail-progress-state::before { content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 7px; border-radius: 50%; background: #43b6ad; animation: vaultsail-progress-pulse 1.2s ease-in-out infinite; }
+@keyframes vaultsail-progress-pulse { 50% { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) { .vaultsail-progress-card[aria-busy="true"] .vaultsail-progress-state::before { animation: none; } }
+.vaultsail-progress-card[data-phase="failed"] { border-color: var(--text-error); }
+.vaultsail-progress-card[data-phase="failed"] .vaultsail-progress-meter { accent-color: var(--text-error); }
+.vaultsail-progress-actions[hidden] { display: none; }
+.vaultsail-progress-actions .setting-item { border: 0; padding-bottom: 0; }
 .vaultsail-config-text { display: block; width: 100%; resize: vertical; font-family: var(--font-monospace); margin: 12px 0; }
 .vaultsail-pairing label { display: block; margin: 14px 0; font-size: 13px; }
 .vaultsail-pairing input[type=password] { display: block; width: 100%; min-height: 38px; margin: 8px 0; }

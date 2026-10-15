@@ -4,7 +4,7 @@ import { safeMessage } from '../core/safety';
 import { RemoteVaultStore } from '../sync/remote-vault';
 import { ConfirmModal } from './modals';
 import { DEFAULT_APP_DIRECTORY } from '../config';
-import { formatBytes, formatProgress } from '../sync/progress';
+import { formatBytes, formatProgress, progressRunning } from '../sync/progress';
 import { copyText } from './config-modals';
 
 const AUTH_LABELS = { unconfigured: '应用未配置', disconnected: '未授权', pending: '等待授权', connected: '已授权', reauthorize: '需要重新授权' };
@@ -13,15 +13,29 @@ export class VaultSailSettingTab extends PluginSettingTab {
   private activeTab = 'connect';
   constructor(app: App, plugin: VaultSailPlugin) { super(app, plugin); this.plugin = plugin; }
   updateProgress(): void {
-    const progress = this.plugin.progress;
+    const p = this.plugin; const progress = p.progress;
+    const running = Boolean(progress && progressRunning(progress));
+    const status = this.containerEl.querySelector<HTMLElement>('.vaultsail-status-text');
+    const summary = p.statusText === '操作完成。' && progress?.phase === 'failed'
+      ? '上次任务未完成：' + (progress.message ?? '请恢复任务或重新同步。') : p.statusText;
+    const notice = p.auth.configurationIssue() ?? summary;
+    if (status && status.textContent !== notice) status.setText(notice);
+    const card = this.containerEl.querySelector<HTMLElement>('.vaultsail-progress-card');
+    card?.setAttribute('data-phase', progress?.phase ?? 'idle'); card?.setAttribute('aria-busy', String(running));
+    const state = this.containerEl.querySelector<HTMLElement>('.vaultsail-progress-state');
+    const stateLabel = running ? '进行中 · 实时更新' : progress?.phase === 'failed' ? '上次任务 · 已停止' : progress?.phase === 'paused' ? '上次任务 · 已暂停' : progress ? '上次任务' : '等待开始';
+    if (state && state.textContent !== stateLabel) state.setText(stateLabel);
     const text = this.containerEl.querySelector<HTMLElement>('.vaultsail-progress-text');
     const meter = this.containerEl.querySelector<HTMLProgressElement>('.vaultsail-progress-meter');
-    if (text) text.setText(progress ? formatProgress(progress) : '点击开始同步，或先预览文件变化。');
+    const detail = progress ? formatProgress(progress) : '点击开始同步，或先预览文件变化。';
+    if (text && text.textContent !== detail) text.setText(detail);
     if (meter) {
       meter.max = Math.max(1, progress?.totalFiles ?? 1);
-      if (progress && !progress.totalFiles && !['preview-ready', 'completed', 'failed', 'paused'].includes(progress.phase)) meter.removeAttribute('value');
+      if (running && !progress!.totalFiles) meter.removeAttribute('value');
       else meter.value = progress?.doneFiles ?? 0;
     }
+    const actions = this.containerEl.querySelector<HTMLElement>('.vaultsail-progress-actions');
+    if (actions) { actions.hidden = !progress || !['failed', 'paused'].includes(progress.phase); actions.querySelectorAll('button').forEach(button => { button.disabled = p.busy; }); }
   }
   display(): void {
     const el = this.containerEl; const p = this.plugin; el.empty();
@@ -47,9 +61,15 @@ export class VaultSailSettingTab extends PluginSettingTab {
       const metric = metrics.createDiv({ cls: 'vaultsail-metric' }); metric.createEl('span', { text: label }); metric.createEl('strong', { text: value });
     }
     const status = el.createDiv({ cls: 'vaultsail-notice' }); status.setAttribute('role', 'status');
-    status.createEl('span', { text: p.auth.configurationIssue() ?? p.statusText });
+    status.createEl('span', { cls: 'vaultsail-status-text' });
     const progressCard = el.createDiv({ cls: 'vaultsail-progress-card' });
-    progressCard.createEl('p', { cls: 'vaultsail-progress-text' }); progressCard.createEl('progress', { cls: 'vaultsail-progress-meter' }).setAttribute('aria-label', '文件处理进度'); this.updateProgress();
+    progressCard.createEl('span', { cls: 'vaultsail-progress-state' });
+    progressCard.createEl('p', { cls: 'vaultsail-progress-text' }); progressCard.createEl('progress', { cls: 'vaultsail-progress-meter' }).setAttribute('aria-label', '文件处理进度');
+    const progressActions = progressCard.createDiv({ cls: 'vaultsail-progress-actions' });
+    new Setting(progressActions)
+      .addButton(button => button.setButtonText('恢复未完成任务').onClick(() => { void p.run('核验并恢复任务…', () => p.recover()); }))
+      .addButton(button => button.setButtonText('重新同步').onClick(() => { void p.run('正在同步…', () => p.startSync()); }));
+    this.updateProgress();
     const nav = el.createDiv({ cls: 'vaultsail-tabs' }); nav.setAttribute('role', 'tablist'); nav.setAttribute('aria-label', '云舟工作台');
     const panels = new Map<string, HTMLElement>(); const tabs = new Map<string, HTMLButtonElement>();
     const views = [['connect', '01', '连接与授权'], ['vault', '02', '云端知识库'], ['transfer', '03', '传输与恢复']];

@@ -322,5 +322,31 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   const originalNote = files.get('note.md')!;
   await local.writeConflictCopy('note.md', 'local-test', originalNote); assert.equal(hash((await local.readConflictCopy('note.md', 'local-test'))!), hash(originalNote));
   assert.equal([...remoteObjects.keys()].some(p => p.includes('VaultSail-conflicts')), false);
+  // Exercise a real timer against the rendered view, including a pending file
+  // request, failure, recovery actions and a new task replacing the old snapshot.
+  const realNow = Date.now; const clock = realNow();
+  try {
+    Date.now = () => clock; plugin.busy = true; plugin.beginTransfer();
+    plugin.publishProgress({ phase: 'uploading', path: 'pending.md', doneFiles: 1, totalFiles: 7, doneBytes: 1024, totalBytes: 8192, startedAt: clock, updatedAt: clock });
+    const progressNode = document.querySelector('.vaultsail-progress-text')!;
+    const draft = document.querySelector('input:not([type=password])') as HTMLInputElement; draft.value = 'unsaved-app-draft';
+    Date.now = () => clock + 4000; await new Promise(resolve => setTimeout(resolve, 650));
+    assert.equal(document.querySelector('.vaultsail-progress-text'), progressNode, 'heartbeats must update in place');
+    assert.equal(draft.value, 'unsaved-app-draft', 'heartbeats must not rebuild settings or discard edits');
+    assert.match(progressNode.textContent!, /耗时 4 秒/); assert.match(progressNode.textContent!, /已等待新进度 4 秒/);
+    assert.match(progressNode.textContent!, /已处理 1\/7/); assert.match(document.querySelector('.vaultsail-status-text')!.textContent!, /上传笔记内容/);
+    plugin.publishProgress({ ...plugin.progress, phase: 'failed', message: '网络请求超时，请检查网络后重试。', updatedAt: clock + 4000 });
+    plugin.busy = false; plugin.statusText = '操作完成。'; plugin.refreshUI();
+    assert.match(document.querySelector('.vaultsail-status-text')!.textContent!, /网络请求超时/);
+    assert.match(document.querySelector('.vaultsail-progress-text')!.textContent!, /任务已停止/);
+    assert.equal(document.querySelector('.vaultsail-progress-actions')!.hasAttribute('hidden'), false);
+    assert.equal(plugin.progressTimer, undefined);
+    Date.now = () => clock + 20000; plugin.tabs[0].updateProgress();
+    assert.match(document.querySelector('.vaultsail-progress-text')!.textContent!, /耗时 4 秒/);
+    plugin.beginTransfer();
+    assert.equal(document.querySelector('.vaultsail-progress-meter')!.hasAttribute('value'), false);
+    assert.equal(document.querySelector('.vaultsail-progress-text')!.textContent!.includes('网络请求超时'), false);
+    plugin.publishProgress({ ...plugin.progress, phase: 'completed', updatedAt: Date.now() });
+  } finally { Date.now = realNow; plugin.busy = false; }
   plugin.onunload();
 });
