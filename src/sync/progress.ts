@@ -1,4 +1,4 @@
-export type ProgressPhase = 'connecting' | 'scanning-remote' | 'scanning-local' | 'checking' | 'uploading' | 'verifying' | 'publishing' | 'downloading' | 'applying' | 'preview-ready' | 'completed' | 'paused' | 'failed';
+export type ProgressPhase = 'connecting' | 'scanning-remote' | 'checking-remote' | 'scanning-local' | 'checking' | 'uploading' | 'verifying' | 'publishing' | 'downloading' | 'applying' | 'preview-ready' | 'completed' | 'paused' | 'failed';
 export interface SyncProgress {
   phase: ProgressPhase; path?: string; doneFiles: number; totalFiles: number; doneBytes: number; totalBytes: number; startedAt: number; updatedAt: number;
   message?: string;
@@ -6,6 +6,7 @@ export interface SyncProgress {
 }
 export const PROGRESS_LABELS: Record<ProgressPhase, string> = {
   connecting: '检查百度连接与云端库',
+  'checking-remote': '复查云端版本',
   'scanning-remote': '读取云端版本', 'scanning-local': '扫描本地文件', checking: '重新核验变更', uploading: '上传笔记内容', verifying: '回读并校验内容',
   publishing: '发布版本记录', downloading: '下载云端内容', applying: '写入本地文件', 'preview-ready': '预览已就绪，尚未传输', completed: '处理完成', paused: '已暂停，任务可恢复', failed: '操作未完成',
 };

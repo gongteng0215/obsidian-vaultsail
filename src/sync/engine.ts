@@ -306,7 +306,9 @@ export class SyncEngine {
       await flush();
       // Immutable parent-linked publications preserve concurrent writers as branches.
       // Verify the complete inventory at batch boundaries instead of for every file.
+      this.emit('checking-remote', { path: undefined });
       const finalOps = await this.remote.revisions(this.vaultId); const found = new Set(finalOps.map(op => op.opId));
+      this.emit('checking');
       if ([...state.knownOps, ...snapshot.ops.map(op => op.opId), ...published].some(id => !found.has(id))) throw new VaultSailError('visibility', '批次结束时已验证版本不可见，任务状态保留，请重试。');
       state.knownOps = [...new Set([...state.knownOps, ...found])]; await this.store.save(state);
       return { incomingChanges: finalOps.filter(op => !startIds.has(op.opId) && !published.has(op.opId)).length,
@@ -368,7 +370,8 @@ export class SyncEngine {
   }
   async recover(): Promise<void> {
     return this.exclusive(async () => {
-      const state = await this.state(); const visible = await this.remote.revisions(this.vaultId); const known = new Set(visible.map(op => op.opId));
+      const state = await this.state(); this.emit('checking-remote', { path: undefined });
+      const visible = await this.remote.revisions(this.vaultId); const known = new Set(visible.map(op => op.opId));
       this.emit('checking', { totalFiles: state.journals.length, totalBytes: state.journals.reduce((sum, journal) => sum + journal.revision.size, 0) });
       if (state.knownOps.some(id => !known.has(id))) throw new VaultSailError('visibility', '已知远端记录缺失，恢复暂停。');
       for (const journal of [...state.journals]) {
@@ -402,7 +405,9 @@ export class SyncEngine {
   }
   async abandonPending(): Promise<void> {
     return this.exclusive(async () => {
-      const state = await this.state(); const ops = await this.remote.revisions(this.vaultId); const found = new Set(ops.map(op => op.opId));
+      const state = await this.state(); this.emit('checking-remote', { path: undefined });
+      const ops = await this.remote.revisions(this.vaultId); const found = new Set(ops.map(op => op.opId));
+      this.emit('checking');
       if (state.knownOps.some(id => !found.has(id))) throw new VaultSailError('visibility', '已知远端记录缺失，暂停处理。');
       // Keep baseline, staged contents and recovery points; a subsequent plan sees any published branch.
       state.journals = []; state.knownOps = [...new Set([...state.knownOps, ...found])]; await this.store.save(state);
@@ -423,7 +428,9 @@ export class SyncEngine {
       // Preserve every competing content before either publishing or replacing the target.
       for (const head of heads) if (head.kind === 'update') await this.local.preserve(path, await this.remote.blob(this.vaultId, head), head.opId);
       if (localData) await this.local.preserve(path, localData, op.opId);
+      this.emit('checking-remote', { path: undefined });
       const latest = buildHeads(await this.remote.revisions(this.vaultId)).get(path) ?? [];
+      this.emit('checking', { path });
       if (!sameIds(ids(heads), ids(latest))) throw new VaultSailError('changed', '保存副本期间远端发生变化，请重新处理冲突。');
       const now = await this.local.read(path); if ((now ? hash(now) : null) !== expected) throw new VaultSailError('changed', '保存副本期间本地发生变化。');
       const journal: Journal = { id: op.opId, path, action: 'resolve', stage: 'prepared', revision: op, expectedLocal: expected };

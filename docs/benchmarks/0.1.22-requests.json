@@ -1,0 +1,146 @@
+{
+  "version": "0.1.22",
+  "baselineRef": "7e601e8123bea13119214b0fe1a28b8fad9a3496",
+  "measuredAt": "2026-10-15T13:04:26.331Z",
+  "simulated": true,
+  "latencyMs": 10,
+  "serviceSlots": 4,
+  "concurrency": 8,
+  "repeats": 3,
+  "results": [
+    {
+      "scenario": "8 notes, unique blobs",
+      "before": {
+        "elapsedMs": 401,
+        "requests": 98,
+        "lists": 17,
+        "downloads": 16,
+        "verifiedFiles": 8
+      },
+      "after": {
+        "elapsedMs": 369,
+        "requests": 84,
+        "lists": 3,
+        "downloads": 16,
+        "verifiedFiles": 8
+      },
+      "rows": [
+        {
+          "before": {
+            "elapsedMs": 403,
+            "requests": 98,
+            "lists": 17,
+            "downloads": 16,
+            "verifiedFiles": 8
+          },
+          "after": {
+            "elapsedMs": 368,
+            "requests": 84,
+            "lists": 3,
+            "downloads": 16,
+            "verifiedFiles": 8
+          }
+        },
+        {
+          "before": {
+            "elapsedMs": 399,
+            "requests": 98,
+            "lists": 17,
+            "downloads": 16,
+            "verifiedFiles": 8
+          },
+          "after": {
+            "elapsedMs": 372,
+            "requests": 84,
+            "lists": 3,
+            "downloads": 16,
+            "verifiedFiles": 8
+          }
+        },
+        {
+          "before": {
+            "elapsedMs": 402,
+            "requests": 98,
+            "lists": 17,
+            "downloads": 16,
+            "verifiedFiles": 8
+          },
+          "after": {
+            "elapsedMs": 367,
+            "requests": 84,
+            "lists": 3,
+            "downloads": 16,
+            "verifiedFiles": 8
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "16 notes, 8 reused blobs across batches",
+      "before": {
+        "elapsedMs": 648,
+        "requests": 162,
+        "lists": 25,
+        "downloads": 32,
+        "verifiedFiles": 16
+      },
+      "after": {
+        "elapsedMs": 572,
+        "requests": 133,
+        "lists": 12,
+        "downloads": 24,
+        "verifiedFiles": 16
+      },
+      "rows": [
+        {
+          "before": {
+            "elapsedMs": 647,
+            "requests": 162,
+            "lists": 25,
+            "downloads": 32,
+            "verifiedFiles": 16
+          },
+          "after": {
+            "elapsedMs": 574,
+            "requests": 133,
+            "lists": 12,
+            "downloads": 24,
+            "verifiedFiles": 16
+          }
+        },
+        {
+          "before": {
+            "elapsedMs": 651,
+            "requests": 162,
+            "lists": 25,
+            "downloads": 32,
+            "verifiedFiles": 16
+          },
+          "after": {
+            "elapsedMs": 573,
+            "requests": 133,
+            "lists": 12,
+            "downloads": 24,
+            "verifiedFiles": 16
+          }
+        },
+        {
+          "before": {
+            "elapsedMs": 647,
+            "requests": 162,
+            "lists": 25,
+            "downloads": 32,
+            "verifiedFiles": 16
+          },
+          "after": {
+            "elapsedMs": 569,
+            "requests": 133,
+            "lists": 12,
+            "downloads": 24,
+            "verifiedFiles": 16
+          }
+        }
+      ]
+    }
+  ]
+}

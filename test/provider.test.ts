@@ -7,64 +7,8 @@ import { bytes, hash, MAX_FILE_SIZE, uuid, VaultSailError } from '../src/core/sa
 import { RemoteVaultStore, type Revision } from '../src/sync/remote-vault.ts';
 import { apiSuccess, request, type HttpRequest, type HttpResponse } from '../src/providers/http.ts';
 
-function harness() {
-  const root = '/apps/中文应用'; const dirs = new Set([root]); const files = new Map<string, ArrayBuffer>(); const ids = new Map<string, string>();
-  const uploads = new Map<string, { path: string; chunks: Map<number, ArrayBuffer>; blocks: string[]; size: number }>();
-  let lost = false; let rejectToken = false; let permissions = false; let refreshes = 0; let createCalls = 0;
-  const response = (value: unknown): HttpResponse => ({ status: 200, headers: {}, json: value, bytes: bytes(JSON.stringify(value)) });
-  const transport = async (input: HttpRequest): Promise<HttpResponse> => {
-    const url = new URL(input.url); const query = url.searchParams; const body = new URLSearchParams(typeof input.body === 'string' ? input.body : '');
-    if (url.pathname.startsWith('/file/')) {
-      assert.equal(input.headers?.['User-Agent'], 'pan.baidu.com'); return { status: 200, headers: {}, bytes: files.get(decodeURIComponent(url.pathname.slice(6)))!.slice(0) };
-    }
-    assert.ok(['pan.baidu.com', 'd.pcs.baidu.com'].includes(url.hostname)); assert.equal(query.get('access_token'), 'private-access');
-    if (rejectToken) { rejectToken = false; return response({ errno: 20016 }); }
-    if (permissions) return response({ errno: -6, errmsg: 'private-access' });
-    switch (query.get('method')) {
-      case 'uinfo': return response({ errno: 0, uk: 123456, baidu_name: 'private-name' });
-      case 'list': {
-        const dir = query.get('dir')!; if (!dirs.has(dir)) return response({ errno: -9 });
-        const prefix = dir + '/'; const entries = [...files.keys(), ...dirs].filter(path => path.startsWith(prefix) && !path.slice(prefix.length).includes('/'))
-          .map(path => ({ path, size: files.get(path)?.byteLength ?? 0, isdir: dirs.has(path) ? 1 : 0, fs_id: ids.get(path) ?? '0',
-            ...(files.has(path) ? { md5: bytesToHex(md5(new Uint8Array(files.get(path)!))), server_mtime: 123 } : {}) })).sort((a, b) => a.path.localeCompare(b.path));
-        const offset = Number(query.get('start')); return response({ errno: 0, list: entries.slice(offset, offset + Number(query.get('limit'))) });
-      }
-      case 'precreate': {
-        assert.equal(body.get('rtype'), '0'); const path = body.get('path')!;
-        if (files.has(path)) return response({ errno: -8 });
-        const id = String(uploads.size + 1); const blocks: string[] = JSON.parse(body.get('block_list')!);
-        uploads.set(id, { path, chunks: new Map(), blocks, size: Number(body.get('size')) });
-        return response({ errno: 0, uploadid: id, return_type: 1, block_list: blocks.map((_, i) => i) });
-      }
-      case 'upload': {
-        assert.equal(query.get('type'), 'tmpfile'); const upload = uploads.get(query.get('uploadid')!)!;
-        assert.equal(query.get('path'), upload.path); const boundary = input.headers!['Content-Type'].split('boundary=')[1];
-        const data = Buffer.from(input.body as ArrayBuffer); const start = data.indexOf('\r\n\r\n') + 4; const end = data.length - Buffer.byteLength('\r\n--' + boundary + '--\r\n');
-        const chunk = data.subarray(start, end); const copy = Uint8Array.from(chunk).buffer; const index = Number(query.get('partseq'));
-        assert.equal(bytesToHex(md5(chunk)), upload.blocks[index]); assert.ok(chunk.byteLength <= 4 * 1024 * 1024); upload.chunks.set(index, copy);
-        return response({ md5: upload.blocks[index], request_id: 123456 });
-      }
-      case 'create': {
-        assert.equal(body.get('rtype'), '0'); const path = body.get('path')!;
-        if (body.get('isdir') === '1') { dirs.add(path); return response({ errno: 0, path, isdir: 1 }); }
-        createCalls++; if (files.has(path)) return response({ errno: -8 });
-        const upload = uploads.get(body.get('uploadid')!)!; assert.equal(upload.path, path);
-        const data = new Uint8Array(upload.size); let offset = 0;
-        for (let i = 0; i < upload.blocks.length; i++) { const chunk = new Uint8Array(upload.chunks.get(i)!); data.set(chunk, offset); offset += chunk.length; }
-        assert.equal(offset, upload.size); files.set(path, data.buffer); ids.set(path, String(ids.size + 1));
-        if (lost) { lost = false; throw new Error('private-access response lost'); }
-        return response({ errno: 0, path, size: data.byteLength, fs_id: ids.get(path), md5: bytesToHex(md5(data)), mtime: 123 });
-      }
-      case 'filemetas': {
-        const requested = String(JSON.parse(query.get('fsids')!)[0]); const path = [...ids].find(([, id]) => id === requested)![0];
-        return response({ errno: 0, list: [{ path, fs_id: requested, size: files.get(path)!.byteLength, dlink: 'https://d.pcs.baidu.com/file/' + encodeURIComponent(path) }] });
-      }
-      default: throw new Error('unexpected endpoint');
-    }
-  };
-  const provider = new BaiduProvider(root, transport, { accessToken: async force => { if (force) refreshes++; return 'private-access'; } });
-  return { provider, files, dirs, uploads, ids, transport, setLost: () => { lost = true; }, setExpired: () => { rejectToken = true; }, setPermissions: () => { permissions = true; }, counts: () => ({ refreshes, createCalls }) };
-}
+import { baiduHarness as harness } from './fixtures/baidu.ts';
+
 test('Baidu adapter performs exact multipart and verifies 0B, 1KB, 4MiB and 20MiB roundtrips', async () => {
   const h = harness(); assert.equal((await h.provider.profile()).label, '百度账号 ···3456');
   for (const size of [0, 1024, 4 * 1024 * 1024, MAX_FILE_SIZE]) {
@@ -105,6 +49,43 @@ test('verified fingerprints are invalidated by fresh changed metadata or missing
   h.files.set('/apps/中文应用/' + path, bytes('B')); const changed = (await h.provider.listAll('cache'))[0];
   assert.equal(h.provider.verifiedContentHash(changed), undefined);
   await assert.rejects(h.provider.writeImmutable(path, bytes('A')), { code: 'integrity' });
+});
+
+test('concurrent missing-file lookups share full pagination, discard failures and never retain an absence cache', async () => {
+  const h = harness(); h.dirs.add('/apps/中文应用/shared');
+  for (let i = 0; i < 135; i++) { const path = '/apps/中文应用/shared/' + i; h.files.set(path, bytes('x')); h.ids.set(path, String(i + 1)); }
+  let lists = 0, fail = false;
+  const provider = new BaiduProvider('/apps/中文应用', async input => {
+    if (new URL(input.url).searchParams.get('method') === 'list') {
+      lists++; if (fail) return { status: 403, headers: {}, json: { errno: -6 }, bytes: bytes('synthetic failure') };
+    }
+    return h.transport(input);
+  }, { accessToken: async () => 'private-access' });
+  assert.deepEqual(await Promise.all(Array.from({ length: 8 }, (_, i) => provider.exists('shared/missing-' + i))), Array(8).fill(false));
+  assert.equal(lists, 2, 'eight overlapping lookups share both pages, rather than making sixteen requests');
+  h.files.set('/apps/中文应用/shared/missing-0', bytes('new')); h.ids.set('/apps/中文应用/shared/missing-0', '500');
+  assert.equal(await provider.exists('shared/missing-0'), true, 'later lookups must see newly published files');
+  fail = true; const results = await Promise.allSettled([provider.exists('shared/new-a'), provider.exists('shared/new-b')]);
+  assert.ok(results.every(result => result.status === 'rejected')); fail = false;
+  assert.equal(await provider.exists('shared/new-a'), false, 'failed shared lookups must not poison future requests');
+});
+
+test('repeated immutable content reuses full verification only after fresh matching metadata; missing digest or corruption forces readback', async () => {
+  const h = harness(); let downloads = 0, lists = 0, omitDigest = false;
+  const provider = new BaiduProvider('/apps/中文应用', async input => {
+    const url = new URL(input.url); if (url.pathname.startsWith('/file/')) downloads++;
+    const result = await h.transport(input);
+    if (url.searchParams.get('method') === 'list') {
+      lists++; if (omitDigest) for (const entry of (result.json as { list: Record<string, unknown>[] }).list) delete entry.md5;
+    }
+    return result;
+  }, { accessToken: async () => 'private-access' });
+  await provider.writeImmutable('reuse/content', bytes('A')); assert.equal(downloads, 1);
+  const before = lists; await provider.writeImmutable('reuse/content', bytes('A'));
+  assert.ok(lists > before, 'a new server fingerprint is required'); assert.equal(downloads, 1, 'unchanged verified content needs no second download');
+  omitDigest = true; await provider.writeImmutable('reuse/content', bytes('A')); assert.equal(downloads, 2);
+  omitDigest = false; h.files.set('/apps/中文应用/reuse/content', bytes('B'));
+  await assert.rejects(provider.writeImmutable('reuse/content', bytes('A')), { code: 'integrity' }); assert.equal(downloads, 3);
 });
 test('persisted revision cache survives a provider restart but corrupt cache or changed remote metadata forces verified reads', async () => {
   const h = harness(); let saved: unknown;

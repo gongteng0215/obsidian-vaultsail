@@ -351,6 +351,11 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
     Date.now = () => clock + 4000; await new Promise(resolve => setTimeout(resolve, 650));
     assert.equal(document.querySelector('.vaultsail-progress-text'), progressNode, 'heartbeats must update in place');
     assert.equal(draft.value, 'unsaved-app-draft', 'heartbeats must not rebuild settings or discard edits');
+    assert.match(document.querySelector('.vaultsail-performance-text')!.textContent!, /传输处理 4.0 秒/);
+    assert.match(document.querySelector('.vaultsail-performance-text')!.textContent!, /令牌刷新 0 次/);
+    const timingReport = JSON.parse(plugin.diagnostics()).performance;
+    assert.equal(timingReport.stages.transfer, 4000);
+    assert.equal(JSON.stringify(timingReport).includes('pending.md'), false);
     assert.match(progressNode.textContent!, /耗时 4 秒/); assert.match(progressNode.textContent!, /已等待新进度 4 秒/);
     assert.match(progressNode.textContent!, /已处理 1\/7/); assert.match(document.querySelector('.vaultsail-status-text')!.textContent!, /上传笔记内容/);
     plugin.publishProgress({ ...plugin.progress, phase: 'failed', message: '网络请求超时，请检查网络后重试。', updatedAt: clock + 4000 });

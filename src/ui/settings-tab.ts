@@ -30,6 +30,9 @@ export class VaultSailSettingTab extends PluginSettingTab {
     const meter = this.containerEl.querySelector<HTMLProgressElement>('.vaultsail-progress-meter');
     const detail = progress ? formatProgress(progress) : '点击开始同步，或先预览文件变化。';
     if (text && text.textContent !== detail) text.setText(detail);
+    const timing = this.containerEl.querySelector<HTMLElement>('.vaultsail-performance-text');
+    const timingText = p.performanceText();
+    if (timing) { timing.hidden = !timingText; if (timing.textContent !== timingText) timing.setText(timingText); }
     if (meter) {
       meter.max = Math.max(1, progress?.totalFiles ?? 1);
       if (running && !progress!.totalFiles) meter.removeAttribute('value');
@@ -66,6 +69,7 @@ export class VaultSailSettingTab extends PluginSettingTab {
     const progressCard = el.createDiv({ cls: 'vaultsail-progress-card' });
     progressCard.createEl('span', { cls: 'vaultsail-progress-state' });
     progressCard.createEl('p', { cls: 'vaultsail-progress-text' }); progressCard.createEl('progress', { cls: 'vaultsail-progress-meter' }).setAttribute('aria-label', '文件处理进度');
+    progressCard.createEl('p', { cls: 'vaultsail-performance-text' }).setAttribute('aria-label', '同步耗时统计');
     const progressActions = progressCard.createDiv({ cls: 'vaultsail-progress-actions' });
     new Setting(progressActions)
       .addButton(button => button.setButtonText('恢复未完成任务').onClick(() => { void p.run('核验并恢复任务…', () => p.recover()); }))

@@ -14,6 +14,8 @@ import { ConfigExportModal, ConfigImportModal } from './ui/config-modals';
 import { formatBytes, progressRunning, PROGRESS_LABELS, type SyncProgress } from './sync/progress';
 import { withConfigurationLock } from './platform/configuration-lock';
 import { MAX_TRANSFER_CONCURRENCY, validConcurrency } from './core/concurrency';
+import { TransferPerformance, formatPerformance, REQUEST_LABELS } from './sync/performance';
+import type { HttpTransport } from './providers/http';
 import { decryptPairing, encryptPairing, isEncryptedPairing, PAIRING_LIFETIME_MS, validateAuthorizedPairing, validatePairingCode, type AuthorizedPairing, type PairingImportOptions } from './encrypted-pairing';
 
 const PAIRING_STEPS = {
@@ -33,6 +35,8 @@ export default class VaultSailPlugin extends Plugin {
   statusText = '请配置自己的百度应用。';
   busy = false;
   progress?: SyncProgress;
+  private performance = new TransferPerformance();
+  private timedTransport: HttpTransport = input => this.performance.transport(obsidianTransport, input);
   private progressListeners = new Set<(progress: SyncProgress) => void>();
   private progressTimer?: ReturnType<typeof setInterval>;
   private transferStartedAt?: number;
@@ -76,7 +80,7 @@ export default class VaultSailPlugin extends Plugin {
     await this.auditLocalRecovery();
   }
 
-  onunload(): void { this.alive = false; this.connectionRequests.abort(); this.pause(); this.auth?.cancel(); if (this.progressTimer) clearInterval(this.progressTimer); this.progressTimer = undefined; this.progressListeners.clear(); }
+  onunload(): void { this.alive = false; this.performance.finish(); this.connectionRequests.abort(); this.pause(); this.auth?.cancel(); if (this.progressTimer) clearInterval(this.progressTimer); this.progressTimer = undefined; this.progressListeners.clear(); }
   private invalidateConnection(): void {
     this.generation++; this.connectionRequests.abort(); this.connectionRequests = new AbortController();
   }
@@ -85,6 +89,7 @@ export default class VaultSailPlugin extends Plugin {
   }
   private publishProgress(progress: SyncProgress): void {
     if (!this.alive) return;
+    this.performance.phase(progress.phase);
     this.progress = { ...progress, startedAt: this.transferStartedAt ?? progress.startedAt };
     if (this.pauseRequested && progressRunning(progress)) this.statusText = '已请求暂停，等待当前请求结束。';
     else this.statusText = progress.message ?? PROGRESS_LABELS[progress.phase];
@@ -98,6 +103,7 @@ export default class VaultSailPlugin extends Plugin {
     else if (!this.progressTimer) this.progressTimer = setInterval(notify, 500);
   }
   private beginTransfer(): void {
+    this.performance.begin();
     this.transferStartedAt = Date.now(); this.transferPauseRequested = false;
     this.publishProgress({ phase: 'connecting', doneFiles: 0, totalFiles: 0, doneBytes: 0, totalBytes: 0,
       startedAt: this.transferStartedAt, updatedAt: this.transferStartedAt });
@@ -113,7 +119,7 @@ export default class VaultSailPlugin extends Plugin {
     return ownsCredentialReference(ref, 'session', this.deviceId) ? ref! : own;
   }
   private makeAuth(): AuthManager {
-    return new AuthManager(obsidianTransport, new ObsidianCredentials(this.app), () => ({ appKey: this.settings.appKey,
+    return new AuthManager(this.timedTransport, new ObsidianCredentials(this.app), () => ({ appKey: this.settings.appKey,
       secretRef: this.settings.secretRef, sessionRef: this.sessionReference() }));
   }
   async run(label: string, action: () => Promise<void>): Promise<void> {
@@ -124,7 +130,7 @@ export default class VaultSailPlugin extends Plugin {
       this.lastErrorCode = error instanceof VaultSailError ? error.code : 'unknown'; this.statusText = safeMessage(error); new Notice(this.statusText, 9000);
       if (this.lastErrorCode === 'binding' && this.auth.status() === 'connected') this.openCloudSetup();
     }
-    finally { this.busy = false; this.refreshUI(); }
+    finally { this.performance.finish(); this.busy = false; this.refreshUI(); }
   }
   pause(): void {
     this.engine?.pause();
@@ -154,9 +160,9 @@ export default class VaultSailPlugin extends Plugin {
   provider(): BaiduProvider {
     if (this.settings.providerId !== 'baidu') throw new VaultSailError('configuration', '请先选择百度网盘。');
     const root = appRoot(this.settings.appDirectory); const generation = this.generation;
-    return new BaiduProvider(root, obsidianTransport, this.auth, () => this.alive && generation === this.generation && !this.pauseRequested, phase => {
-      if (this.progress && this.busy && !['scanning-remote', 'scanning-local', 'preview-ready', 'completed', 'paused', 'failed'].includes(this.progress.phase)) this.publishProgress({ ...this.progress, phase, updatedAt: Date.now() });
-    }, { signal: this.connectionRequests.signal });
+    return new BaiduProvider(root, this.timedTransport, this.auth, () => this.alive && generation === this.generation && !this.pauseRequested, phase => {
+      if (this.progress && this.busy && !['scanning-remote', 'checking-remote', 'scanning-local', 'preview-ready', 'completed', 'paused', 'failed'].includes(this.progress.phase)) this.publishProgress({ ...this.progress, phase, updatedAt: Date.now() });
+    }, { signal: this.connectionRequests.signal, onRetry: waited => this.performance.retry(waited) });
   }
   async connect(): Promise<void> {
     const issue = this.auth.configurationIssue(); if (issue) throw new VaultSailError('configuration', issue);
@@ -258,11 +264,11 @@ export default class VaultSailPlugin extends Plugin {
         await engine.execute(plan, progress, true);
         const key = this.successKey(); if (key && this.progress) this.app.saveLocalStorage(key, { completedAt: Date.now(), mode: plan.mode,
           files: this.progress.doneFiles, bytes: this.progress.doneBytes, elapsedMs: this.progress.updatedAt - this.progress.startedAt });
-      } catch (error) { this.failTransfer(error); throw error; } finally { this.busy = false; this.refreshUI(); } },
+      } catch (error) { this.failTransfer(error); throw error; } finally { this.performance.finish(); this.busy = false; this.refreshUI(); } },
       async (row, choice) => { if (this.busy) throw new VaultSailError('busy', '当前有其他操作。'); this.busy = true;
         this.beginTransfer(); this.refreshUI();
         try { await engine.resolve(row.path, choice, row); } catch (error) { this.failTransfer(error); throw error; }
-        finally { this.busy = false; this.refreshUI(); } }, () => this.pause(), listener => this.subscribeProgress(listener)).open();
+        finally { this.performance.finish(); this.busy = false; this.refreshUI(); } }, () => this.pause(), listener => this.subscribeProgress(listener)).open();
   }
   async startSync(): Promise<void> {
     const startedAt = Date.now(); const engine = await this.getEngine(); let conflicts = 0; let incoming = 0; let files = 0; let contentBytes = 0;
@@ -470,9 +476,13 @@ export default class VaultSailPlugin extends Plugin {
       lastErrorCode: this.lastErrorCode ?? null, localRoundtrip: checked ? { passed: checked.passed === true, checkedAt: checked.checkedAt,
         source: checked.source === 'pairing-local-probe' ? 'pairing-local-probe' : 'full-roundtrip', results: checked.results, quota: checked.quota } : null,
       lastTransfer: this.lastSuccess() ?? null,
+      performance: this.performance.snapshot() ?? null,
+      performanceNotes: '阶段为实际经过时间；请求耗时及重试等待为并发累计，不能相加当作总耗时。pending 表示原生请求结束尚未确认；failed 仅统计网络或 HTTP 错误。统计仅保留至插件重载。',
+      requestLabels: REQUEST_LABELS,
       lastPairingStep: this.lastPairingStep ?? null,
       realDeviceValidation: '用户在本设备完成；开发者未验证真实账号或 iPad', maxFileMiB: 20, transferConcurrency: this.settings.transferConcurrency }, null, 2);
   }
+  performanceText(): string { return formatPerformance(this.performance.snapshot()); }
 
   async loadSettings(): Promise<void> {
     await withConfigurationLock(this.app, async () => {

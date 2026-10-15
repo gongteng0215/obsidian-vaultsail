@@ -7,7 +7,7 @@ import { listAll } from './provider-utils.ts';
 export { listAll } from './provider-utils.ts';
 
 export interface TokenSource { accessToken(forceRefresh?: boolean, rejectedToken?: string): Promise<string>; }
-export interface BaiduRequestPolicy { apiTimeoutMs?: number; transferTimeoutMs?: number; signal?: AbortSignal; }
+export interface BaiduRequestPolicy { apiTimeoutMs?: number; transferTimeoutMs?: number; signal?: AbortSignal; onRetry?: (waitedMs: number) => void; }
 const XPAN = 'https://pan.baidu.com/rest/2.0/xpan/';
 const CHUNK = 4 * 1024 * 1024;
 export class BaiduProvider implements CloudStorageProvider {
@@ -20,6 +20,7 @@ export class BaiduProvider implements CloudStorageProvider {
   private requestPolicy: BaiduRequestPolicy;
   private pendingDirectories = new Map<string, Promise<void>>();
   private pendingWrites = new Map<string, { hash: string; operation: Promise<void> }>();
+  private pendingLookups = new Map<string, Promise<RemoteObject[]>>();
   constructor(root: string, transport: HttpTransport, auth: TokenSource, active = () => true,
     onActivity: (phase: 'verifying' | 'downloading') => void = () => {}, requestPolicy: BaiduRequestPolicy = {}) {
     this.root = appRoot(root); this.transport = transport; this.auth = auth; this.active = active;
@@ -75,10 +76,13 @@ export class BaiduProvider implements CloudStorageProvider {
         // Respect the complete server delay, but let pause/disconnect stop a
         // backoff instead of keeping the task busy until the countdown expires.
         let remaining = Math.max(error.retryAfter, 1000 * 2 ** attempt);
-        while (remaining > 0) {
-          const interval = Math.min(remaining, 250);
-          await sleep(interval, this.requestPolicy.signal); this.guard(); remaining -= interval;
-        }
+        const started = Date.now();
+        try {
+          while (remaining > 0) {
+            const interval = Math.min(remaining, 250);
+            await sleep(interval, this.requestPolicy.signal); this.guard(); remaining -= interval;
+          }
+        } finally { try { this.requestPolicy.onRetry?.(Math.max(0, Date.now() - started)); } catch { /* Diagnostics are advisory. */ } }
       }
     }
   }
@@ -112,11 +116,19 @@ export class BaiduProvider implements CloudStorageProvider {
     return { objects, complete: objects.length < 100, ...(objects.length === 100 ? { nextCursor: String(offset + 100) } : {}) };
   }
   async listAll(directory: string): Promise<RemoteObject[]> { return listAll(this, directory); }
+  private async lookup(directory: string, fresh: boolean): Promise<RemoteObject[]> {
+    // Share only overlapping ordinary lookups, never retain an absence cache.
+    // Recovery/uncertain-write verification must start a new server listing.
+    if (fresh) return this.listAll(directory);
+    const pending = this.pendingLookups.get(directory); if (pending) return pending;
+    const operation = this.listAll(directory); this.pendingLookups.set(directory, operation);
+    try { return await operation; } finally { if (this.pendingLookups.get(directory) === operation) this.pendingLookups.delete(directory); }
+  }
   private async find(path: string, fresh = false): Promise<RemoteObject | undefined> {
     relativePath(path); const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
     const cached = this.objects.get(path); if (cached && !fresh) return cached;
     try {
-      const found = (await this.listAll(parent)).find(file => file.path === path);
+      const found = (await this.lookup(parent, fresh)).find(file => file.path === path);
       if (!found) { this.objects.delete(path); this.verified.delete(path); }
       return found;
     }
@@ -184,7 +196,11 @@ export class BaiduProvider implements CloudStorageProvider {
   }
   private async writeObject(path: string, data: ArrayBuffer, expected: string): Promise<void> {
     const verify = async (fresh = false): Promise<boolean> => {
-      if (!await this.find(path, fresh)) return false;
+      // Reuse a prior full SHA-256 verification only after fresh server metadata
+      // confirms the same object ID, digest, size and modification fingerprint.
+      const file = await this.find(path, fresh || this.verified.has(path));
+      if (!file) return false;
+      if (this.verifiedContentHash(file) === expected) return true;
       if (hash(await this.read(path, 'verifying')) !== expected) throw new VaultSailError('integrity', '不可变对象已存在但内容不同，禁止覆盖。');
       const object = this.objects.get(path); const fingerprint = object && this.fingerprint(object);
       if (fingerprint) this.verified.set(path, { fingerprint, hash: expected });
