@@ -1,5 +1,7 @@
 # VaultSail 社区目录提交资料
 
+**当前状态：社区条目已归档，暂停上架。** 2026-10-15 按维护者“先测试好再上架”的要求执行归档，管理页提供 Unarchive，公开页面显示已归档且 Add to Obsidian 禁用。保留 GitHub 测试安装包供 BRAT 和手动安装；不自动恢复社区发布。下面保留审核过程作为历史记录。
+
 仓库：`https://github.com/gongteng0215/obsidian-vaultsail`
 
 插件 ID：`vaultsail`；名称：`VaultSail`；作者：`gongteng0215`；版本：`0.1.14`；最低 Obsidian：`1.11.4`。
