@@ -17,7 +17,7 @@ Baidu Netdisk is the current provider. Transfers are manual, with a 20 MiB per-f
 
 ## Install
 
-Requires **Obsidian 1.11.4 or newer**. The [community listing](https://community.obsidian.md/plugins/vaultsail) is restored, and **0.1.16** completed the automated review with no blocking errors on October 15, 2026. Its installation link is enabled; the in-app search catalog still needs to propagate the entry. Automated review does not replace real-device validation.
+Requires **Obsidian 1.11.4 or newer**. The [community listing](https://community.obsidian.md/plugins/vaultsail) is restored, and **0.1.17** completed the automated review with no blocking errors on October 15, 2026. The in-app search catalog updates separately from the listing. Automated review does not replace real-device validation.
 
 For direct GitHub installation on iPad, install and enable [BRAT](https://github.com/TfTHacker/obsidian42-brat) through Obsidian's community plugins, then add `gongteng0215/obsidian-vaultsail` and select version `0.1.17`. Enable VaultSail in an empty test vault before importing an encrypted pairing code.
 
