@@ -206,3 +206,50 @@ test('hanging authorization request times out and cancellation does not wait for
   const pending = request(hanging, { url: 'https://example.invalid' }, true, { timeoutMs: 10000, signal: controller.signal }); controller.abort();
   await assert.rejects(pending, { code: 'cancelled' });
 });
+test('file requests have bounded waits and disconnect releases a hanging native request without accepting late results', async () => {
+  const h = harness(); const controller = new AbortController(); let started = false;
+  let release!: (value: HttpResponse) => void;
+  const provider = new BaiduProvider('/apps/中文应用', () => { started = true; return new Promise(resolve => { release = resolve; }); },
+    { accessToken: async () => 'private-access' }, () => true, undefined, { apiTimeoutMs: 1000, signal: controller.signal });
+  const pending = provider.listAll(''); const rejected = assert.rejects(pending, { code: 'cancelled' });
+  for (let i = 0; i < 20 && !started; i++) await Promise.resolve(); assert.equal(started, true); controller.abort(); await rejected;
+  release(await h.transport({ url: 'https://pan.baidu.com/rest/2.0/xpan/file?method=list&dir=%2Fapps%2F%E4%B8%AD%E6%96%87%E5%BA%94%E7%94%A8&access_token=private-access' }));
+  await assert.rejects(request(async () => new Promise(() => {}), { url: 'https://example.invalid/file' }, false, { timeoutMs: 10 }), { code: 'timeout' });
+});
+test('lost final write response times out but a verified remote result avoids duplicate submission', async () => {
+  const h = harness(); let finalWrites = 0;
+  const provider = new BaiduProvider('/apps/中文应用', async input => {
+    const body = new URLSearchParams(typeof input.body === 'string' ? input.body : '');
+    if (new URL(input.url).searchParams.get('method') === 'create' && body.get('isdir') === '0') {
+      finalWrites++; await h.transport(input); return new Promise<HttpResponse>(() => {});
+    }
+    return h.transport(input);
+  }, { accessToken: async () => 'private-access' }, () => true, undefined, { apiTimeoutMs: 15 });
+  await provider.writeImmutable('test/file.bin', bytes('A'));
+  assert.equal(finalWrites, 1); assert.equal(h.counts().createCalls, 1); assert.equal(hash(await provider.read('test/file.bin')), hash(bytes('A')));
+});
+test('unconfirmed writes stop after timeout instead of resubmitting while native writes may still be running', async () => {
+  const h = harness(); let finalWrites = 0; let lateWrite!: () => Promise<HttpResponse>;
+  const provider = new BaiduProvider('/apps/中文应用', async input => {
+    const body = new URLSearchParams(typeof input.body === 'string' ? input.body : '');
+    if (new URL(input.url).searchParams.get('method') === 'create' && body.get('isdir') === '0') {
+      finalWrites++; return new Promise<HttpResponse>(resolve => { lateWrite = async () => { const result = await h.transport(input); resolve(result); return result; }; });
+    }
+    return h.transport(input);
+  }, { accessToken: async () => 'private-access' }, () => true, undefined, { apiTimeoutMs: 15 });
+  await assert.rejects(provider.writeImmutable('test/file.bin', bytes('A')), e => e instanceof VaultSailError && e.code === 'write-timeout' && !e.retryable);
+  assert.equal(finalWrites, 1); assert.equal(h.files.size, 0); await lateWrite();
+  await provider.writeImmutable('test/file.bin', bytes('A')); assert.equal(finalWrites, 1); assert.equal(h.counts().createCalls, 1);
+});
+test('pause and disconnect interrupt long rate-limit backoff without issuing another request', async () => {
+  for (const disconnect of [false, true]) {
+    const controller = new AbortController(); let active = true; let calls = 0; let entered!: () => void;
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    const provider = new BaiduProvider('/apps/test', async () => { calls++; entered(); return { status: 429, headers: { 'retry-after': '3600' }, bytes: new ArrayBuffer(0) }; },
+      { accessToken: async () => 'private-access' }, () => active, undefined, { signal: controller.signal });
+    const rejected = assert.rejects(provider.profile(), { code: 'cancelled' });
+    await started; await new Promise(resolve => setTimeout(resolve, 5));
+    if (disconnect) controller.abort(); else active = false;
+    await rejected; assert.equal(calls, 1);
+  }
+});

@@ -30,7 +30,9 @@ export interface PlanRow {
   renameFrom?: string;
 }
 export interface SyncPlan { vaultId: string; mode: 'upload' | 'download' | 'sync'; deletionEnabled: boolean; revisionIds: string[]; rows: PlanRow[]; }
-export interface SyncResult { incomingChanges: number; preservedConflicts: number; }
+export interface SyncResult {
+  incomingChanges: number; preservedConflicts: number; uploadedFiles: number; downloadedFiles: number; deletedFiles: number;
+}
 type Snapshot = { ops: Revision[]; heads: Map<string, Revision[]>; local: Map<string, { hash: string; size: number }> };
 export function newState(deviceId = uuid()): SyncState { return { schemaVersion: 1, deviceId, bases: Object.create(null) as Record<string, Baseline>, journals: [], knownOps: [] }; }
 export function validateState(value: unknown, vaultId: string, deviceId: string): SyncState {
@@ -70,6 +72,7 @@ export class SyncEngine {
     try { this.report({ ...this.progress }); } catch { /* UI is advisory. */ }
   }
   pause(): void { this.stopped = true; }
+  get pauseRequested(): boolean { return this.running && this.stopped; }
   private guard(): void { if (this.stopped) throw new VaultSailError('paused', '任务已暂停，未完成操作保留在恢复日志中。'); }
   private async exclusive<T>(run: () => Promise<T>, successPhase: 'completed' | 'preview-ready' = 'completed'): Promise<T> {
     if (this.running) throw new VaultSailError('busy', '当前库已有任务在运行。');
@@ -179,6 +182,7 @@ export class SyncEngine {
       }
       if (actualPaths.size !== plan.rows.length || plan.rows.some(row => !actualPaths.has(row.path) || (snapshot.local.get(row.path)?.hash ?? null) !== row.localHash)) throw new VaultSailError('changed', '预览后本地已变化，请重新预览。');
       let done = 0; let doneBytes = 0; let preservedConflicts = 0;
+      let uploadedFiles = 0; let downloadedFiles = 0; let deletedFiles = 0;
       const published = new Set<string>();
       const startIds = new Set(plan.revisionIds);
       const conflictBytes = (row: PlanRow) => row.heads.reduce((sum, head) => sum + (head.kind === 'update' ? head.size : 0), 0) + (row.localHash ? row.size : 0);
@@ -227,6 +231,9 @@ export class SyncEngine {
           }
         }
         if (row.action === 'upload' || row.action === 'download') doneBytes += row.size;
+        if (row.action === 'upload') uploadedFiles++;
+        if (row.action === 'download') downloadedFiles++;
+        if (row.action === 'delete-local' || row.action === 'delete-remote') deletedFiles++;
         onProgress(++done, plan.rows.length); this.emit('checking', { doneFiles: done, doneBytes });
       }
       // Immutable parent-linked publications preserve concurrent writers as branches.
@@ -234,7 +241,8 @@ export class SyncEngine {
       const finalOps = await this.remote.revisions(this.vaultId); const found = new Set(finalOps.map(op => op.opId));
       if ([...state.knownOps, ...snapshot.ops.map(op => op.opId), ...published].some(id => !found.has(id))) throw new VaultSailError('visibility', '批次结束时已验证版本不可见，任务状态保留，请重试。');
       state.knownOps = [...new Set([...state.knownOps, ...found])]; await this.store.save(state);
-      return { incomingChanges: finalOps.filter(op => !startIds.has(op.opId) && !published.has(op.opId)).length, preservedConflicts };
+      return { incomingChanges: finalOps.filter(op => !startIds.has(op.opId) && !published.has(op.opId)).length,
+        preservedConflicts, uploadedFiles, downloadedFiles, deletedFiles };
     });
   }
   private async ensureConflictCopy(path: string, key: string, expected: string, load: () => Promise<ArrayBuffer>): Promise<string> {

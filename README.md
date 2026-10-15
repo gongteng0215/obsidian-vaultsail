@@ -19,6 +19,8 @@ Baidu Netdisk is the current provider. Transfers are manual, with a 20 MiB per-f
 
 Requires **Obsidian 1.11.4 or newer**. The [community listing](https://community.obsidian.md/plugins/vaultsail) is restored, and **0.1.17** completed the automated review with no blocking errors on October 15, 2026. The in-app search catalog updates separately from the listing. Automated review does not replace real-device validation.
 
+**[0.1.18 is a GitHub test release](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.1.18) awaiting device validation.** It fixes import cancellation, reload during saving and unbounded network waits. Select 0.1.18 in BRAT to test it; the community version remains 0.1.17. See the [test-build notes](docs/releases/0.1.18.md).
+
 For direct GitHub installation on iPad, install and enable [BRAT](https://github.com/TfTHacker/obsidian42-brat) through Obsidian's community plugins, then add `gongteng0215/obsidian-vaultsail` and select version `0.1.17`. Enable VaultSail in an empty test vault before importing an encrypted pairing code.
 
 For manual installation, download the ZIP or the three individual files from the [0.1.17 release](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.1.17). Place `main.js`, `manifest.json` and `styles.css` in `plugins/vaultsail/` under the current vault's configuration directory, then enable VaultSail. The default directory is `.obsidian`; custom configuration directories are supported.

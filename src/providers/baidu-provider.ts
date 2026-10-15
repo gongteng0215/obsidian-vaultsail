@@ -7,6 +7,7 @@ import { listAll } from './provider-utils.ts';
 export { listAll } from './provider-utils.ts';
 
 export interface TokenSource { accessToken(forceRefresh?: boolean): Promise<string>; }
+export interface BaiduRequestPolicy { apiTimeoutMs?: number; transferTimeoutMs?: number; signal?: AbortSignal; }
 const XPAN = 'https://pan.baidu.com/rest/2.0/xpan/';
 const CHUNK = 4 * 1024 * 1024;
 export class BaiduProvider implements CloudStorageProvider {
@@ -16,13 +17,15 @@ export class BaiduProvider implements CloudStorageProvider {
   private objects = new Map<string, RemoteObject>();
   private verified = new Map<string, { fingerprint: string; hash: string }>();
   private onActivity: (phase: 'verifying' | 'downloading') => void;
+  private requestPolicy: BaiduRequestPolicy;
   constructor(root: string, transport: HttpTransport, auth: TokenSource, active = () => true,
-    onActivity: (phase: 'verifying' | 'downloading') => void = () => {}) {
+    onActivity: (phase: 'verifying' | 'downloading') => void = () => {}, requestPolicy: BaiduRequestPolicy = {}) {
     this.root = appRoot(root); this.transport = transport; this.auth = auth; this.active = active;
+    this.requestPolicy = requestPolicy;
     this.onActivity = phase => { try { onActivity(phase); } catch { /* A progress view cannot affect transfer integrity. */ } };
   }
   isConfigured(): boolean { return this.active(); }
-  private guard(): void { if (!this.active()) throw new VaultSailError('cancelled', '任务已暂停，或账号及目录配置已更改。'); }
+  private guard(): void { if (!this.active() || this.requestPolicy.signal?.aborted) throw new VaultSailError('cancelled', '任务已暂停，或账号及目录配置已更改。'); }
   private absolute(path: string): string { return path ? this.root + '/' + relativePath(path) : this.root; }
   private etag(value: Record<string, unknown>, size: number): string | undefined {
     if (typeof value.md5 !== 'string' || !/^[a-fA-F0-9]{32}$/.test(value.md5)) return undefined;
@@ -45,7 +48,10 @@ export class BaiduProvider implements CloudStorageProvider {
       try {
         const response = await request(this.transport, { url: urlWith(endpoint, { ...params, access_token: token }),
           method: form || body ? 'POST' : 'GET', headers: form || body ? { 'Content-Type': contentType ?? 'application/x-www-form-urlencoded' } : {},
-          body: form ? new URLSearchParams(form).toString() : body }, true);
+          body: form ? new URLSearchParams(form).toString() : body }, true, {
+          timeoutMs: sliceUpload ? this.requestPolicy.transferTimeoutMs ?? 120_000 : this.requestPolicy.apiTimeoutMs ?? 30_000,
+          signal: this.requestPolicy.signal,
+        });
         this.guard(); const value = apiSuccess(response.json, sliceUpload ? 'pcs-upload' : 'xpan');
         if (response.status >= 400) throw new VaultSailError('http', `接口请求未通过（HTTP ${response.status}）。`);
         return value;
@@ -62,7 +68,14 @@ export class BaiduProvider implements CloudStorageProvider {
       this.guard(); try { return await operation(); }
       catch (error) {
         if (!(error instanceof VaultSailError) || !error.retryable || attempt >= 3) throw error;
-        await sleep(Math.max(error.retryAfter, 1000 * 2 ** attempt)); this.guard();
+        this.guard();
+        // Respect the complete server delay, but let pause/disconnect stop a
+        // backoff instead of keeping the task busy until the countdown expires.
+        let remaining = Math.max(error.retryAfter, 1000 * 2 ** attempt);
+        while (remaining > 0) {
+          const interval = Math.min(remaining, 250);
+          await sleep(interval, this.requestPolicy.signal); this.guard(); remaining -= interval;
+        }
       }
     }
   }
@@ -117,6 +130,10 @@ export class BaiduProvider implements CloudStorageProvider {
           if (result.path !== this.absolute(path) || result.isdir !== 1) throw new VaultSailError('response', '目录创建结果不符合请求。');
           this.objects.set(path, { path, size: 0, isDirectory: true }); }
         catch (error) {
+          if (error instanceof VaultSailError && error.code === 'write-timeout') {
+            try { if ((await this.find(path, true))?.isDirectory) return; } catch { /* Keep the unknown write non-retryable. */ }
+            throw error;
+          }
           if (error instanceof VaultSailError && (error.retryable || error.code === 'exists')) {
             const found = await this.find(path, true); if (found?.isDirectory) return;
           }
@@ -140,7 +157,8 @@ export class BaiduProvider implements CloudStorageProvider {
       const link = new URL(entry.dlink);
       if (link.protocol !== 'https:' || link.username || link.password || !['baidu.com', 'baidupcs.com'].some(host => link.hostname === host || link.hostname.endsWith('.' + host))) throw new VaultSailError('response', '下载地址不属于百度官方 HTTPS 服务。');
       this.guard(); link.searchParams.set('access_token', await this.auth.accessToken()); this.guard();
-      const response = await request(this.transport, { url: link.toString(), headers: { 'User-Agent': 'pan.baidu.com' } });
+      const response = await request(this.transport, { url: link.toString(), headers: { 'User-Agent': 'pan.baidu.com' } }, false,
+        { timeoutMs: this.requestPolicy.transferTimeoutMs ?? 120_000, signal: this.requestPolicy.signal });
       this.guard(); if (response.bytes.byteLength !== file.size) throw new VaultSailError('integrity', '下载长度校验失败，未应用文件。');
       return response.bytes;
     });
@@ -185,6 +203,12 @@ export class BaiduProvider implements CloudStorageProvider {
         if (id) this.objects.set(path, { path, size: data.byteLength, id, isDirectory: false, etag: this.etag(result, data.byteLength) });
         if (!await verify()) throw new VaultSailError('visibility', '已提交对象尚不可见，结果未确认。', true);
       } catch (error) {
+        if (error instanceof VaultSailError && error.code === 'write-timeout') {
+          // A timeout cannot stop Obsidian's native write. Only accept a verified
+          // result; an absent or unreadable object must not trigger a second write.
+          try { if (await verify(true)) return; } catch { /* Preserve the original uncertain-write result. */ }
+          throw error;
+        }
         if (error instanceof VaultSailError && (error.retryable || error.code === 'exists')) { if (await verify(true)) return; }
         throw error;
       }

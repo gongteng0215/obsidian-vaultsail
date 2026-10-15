@@ -11,7 +11,10 @@ export interface AuthorizedPairing {
   format: 'vaultsail-authorized'; version: 1; createdAt: number; expiresAt: number;
   config: PortableConfig; accountHash: string; secretKey: string; session: AuthSession;
 }
-export interface PairingImportOptions { bindRemoteVault?: boolean; report?: (message: string) => void; }
+export interface PairingImportOptions {
+  bindRemoteVault?: boolean; report?: (message: string) => void;
+  signal?: AbortSignal; onCommit?: () => void;
+}
 const invalid = () => new VaultSailError('configuration', '加密配对码无效、已损坏或版本不支持，请重新导出。');
 function passwordBytes(password: string): Uint8Array {
   if (typeof password !== 'string' || [...password].length < 10 || password.length > 256 || !password.trim())

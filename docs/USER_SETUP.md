@@ -6,6 +6,8 @@
 
 ## 安装或升级
 
+0.1.18 当前是 [GitHub 测试版](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.1.18)，修复导入取消、保存时重载和网络长时间等待问题。iPad 可在 BRAT 中选择 0.1.18；社区版本继续保留 0.1.17，待真实设备验证后再更新。测试版安装完成后关闭再启用插件；原连接保留，有效期内的旧配对码仍可使用。
+
 社区条目当前版本为 0.1.17，自动检查完成且无阻断错误；应用内搜索清单以实际同步为准。iPad 也可在 BRAT 中添加 `gongteng0215/obsidian-vaultsail`，选择 `0.1.17` 安装或更新；更新后关闭再启用 VaultSail，无需卸载。该版本默认只迁移账号，不自动绑定旧库，并保留此前配对码粘贴与密钥标识长度修复。
 
 需要 Obsidian **1.11.4 或更新版本**。关闭 VaultSail，把发布 ZIP 解压至测试 Vault 的 `.obsidian/plugins/`，确认三个文件位于 `.obsidian/plugins/vaultsail/`，然后重新启用插件。

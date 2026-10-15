@@ -1,5 +1,5 @@
 import { Modal, Setting, type App } from 'obsidian';
-import { safeMessage } from '../core/safety';
+import { safeMessage, VaultSailError } from '../core/safety';
 import type { SyncPlan, PlanRow } from '../sync/engine';
 import type { RemoteVault } from '../sync/remote-vault';
 import { formatProgress, type SyncProgress } from '../sync/progress';
@@ -50,15 +50,36 @@ export class CloudVaultSetupModal extends Modal {
 
 const LABELS: Record<PlanRow['action'], string> = { upload: '上传', download: '下载', conflict: '冲突', skip: '跳过', noop: '无变化', 'delete-local': '移入本地回收区', 'delete-remote': '发布删除记录' };
 export class ConfirmModal extends Modal {
-  constructor(app: App, private title: string, private description: string, private confirm: (report: (message: string) => void) => Promise<void>) { super(app); }
+  private controller = new AbortController();
+  private pending = false;
+  private committing = false;
+  get saving(): boolean { return this.pending && this.committing; }
+  constructor(app: App, private title: string, private description: string,
+    private confirm: (report: (message: string) => void, control: { signal: AbortSignal; beginCommit: () => void }) => Promise<void>,
+    private cancellable = false) { super(app); }
+  close(): void { if (!this.saving) super.close(); }
+  onClose(): void { this.controller.abort(); }
   onOpen(): void {
     this.titleEl.setText(this.title); this.contentEl.createEl('p', { text: this.description });
     const error = this.contentEl.createEl('p');
     error.setAttribute('role', 'status');
-    new Setting(this.contentEl).addButton(button => button.setButtonText('取消').onClick(() => this.close()))
+    let cancel: { setDisabled(value: boolean): unknown; setButtonText(value: string): unknown };
+    const beginCommit = () => {
+      if (this.controller.signal.aborted) throw new VaultSailError('cancelled', '操作已取消。');
+      this.committing = true; cancel.setDisabled(true); cancel.setButtonText(this.cancellable ? '正在保存，请稍候' : '正在处理，请稍候');
+    };
+    new Setting(this.contentEl).addButton(button => { cancel = button; button.setButtonText('取消').onClick(() => this.close()); })
       .addButton(button => button.setButtonText('确认').setCta().onClick(async () => {
-        button.setDisabled(true); error.setText('正在处理…');
-        try { await this.confirm(message => error.setText(message)); this.close(); } catch (e) { error.setText(safeMessage(e)); button.setDisabled(false); }
+        if (this.pending) return;
+        this.pending = true; button.setDisabled(true); error.setText('正在处理…');
+        try {
+          if (!this.cancellable) beginCommit();
+          await this.confirm(message => error.setText(message), { signal: this.controller.signal, beginCommit });
+          this.pending = false; this.committing = false; this.close();
+        } catch (e) {
+          error.setText(safeMessage(e)); this.pending = false; this.committing = false;
+          button.setDisabled(false); cancel.setDisabled(false); cancel.setButtonText('取消');
+        }
       }));
   }
 }

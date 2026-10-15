@@ -297,7 +297,8 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
     target.provider = () => fakeProvider;
     const sourceObjects = [...remoteObjects].filter(([path]) => path.startsWith('vaultsail/vaults/' + existingId + '/')).map(([path, data]) => [path, hash(data)]);
     await target.createVault('另一个 Vault'); const independentId = target.settings.remoteVaultId; assert.notEqual(independentId, existingId);
-    await target.startSync(); assert.ok([...remoteObjects.keys()].some(path => path.startsWith('vaultsail/vaults/' + independentId + '/ops/')));
+    await target.run('正在同步…', () => target.startSync()); assert.ok([...remoteObjects.keys()].some(path => path.startsWith('vaultsail/vaults/' + independentId + '/ops/')));
+    assert.match(target.statusText, /同步完成：上传 \d+ 个，下载 \d+ 个，失败 0 项/);
     assert.deepEqual([...remoteObjects].filter(([path]) => path.startsWith('vaultsail/vaults/' + existingId + '/')).map(([path, data]) => [path, hash(data)]), sourceObjects);
     const targetRestarted = new module.Plugin(targetApp); targetRestarted.saved = target.saved; await targetRestarted.onload();
     assert.equal(targetRestarted.auth.status(), 'connected'); assert.equal(targetRestarted.settings.remoteVaultId, independentId);

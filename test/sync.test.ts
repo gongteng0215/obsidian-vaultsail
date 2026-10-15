@@ -63,10 +63,27 @@ test('100 mixed files roundtrip, zero bytes and Chinese paths; repeat produces n
   const { a, b, ea, eb, cloud } = await setup();
   for (let i = 0; i < 100; i++) a.files.set(`中文/目录/文件${i}.${i % 3 === 0 ? 'md' : i % 3 === 1 ? 'png' : 'pdf'}`, i ? bytes('mixed-content-' + i) : new ArrayBuffer(0));
   a.files.set('.obsidian/private.json', bytes('secret')); a.files.set('.vaultsail-state/private.json', bytes('state'));
-  const upload = await ea.preview('upload'); assert.equal(upload.rows.length, 100); await ea.execute(upload);
-  const download = await eb.preview('download'); assert.equal(download.rows.filter(row => row.action === 'download').length, 100); await eb.execute(download);
+  const upload = await ea.preview('upload'); assert.equal(upload.rows.length, 100); const uploaded = await ea.execute(upload);
+  assert.equal(uploaded.uploadedFiles, 100); assert.equal(uploaded.downloadedFiles, 0);
+  const download = await eb.preview('download'); assert.equal(download.rows.filter(row => row.action === 'download').length, 100); const downloaded = await eb.execute(download);
+  assert.equal(downloaded.downloadedFiles, 100); assert.equal(downloaded.uploadedFiles, 0);
   for (const [path, data] of a.files) if (included(path)) assert.equal(hash(b.files.get(path)!), hash(data));
   assert.equal(b.files.size, 100); const count = cloud.published; await ea.execute(await ea.preview('sync')); await eb.execute(await eb.preview('sync')); assert.equal(cloud.published, count);
+});
+test('pause waits for the current publication and recovery completes it without duplicate operations', async () => {
+  const { remote, vault, a, sa, cloud } = await setup(); const events: SyncProgress[] = [];
+  const engine = new SyncEngine(remote, a, sa, vault.vaultId, '.obsidian', event => events.push(event));
+  a.files.set('note.md', bytes('content')); const publish = remote.publish.bind(remote);
+  let release!: () => void; let entered!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  remote.publish = async (...args: Parameters<typeof publish>) => { entered(); await gate; return publish(...args); };
+  let settled = false; const rejected = assert.rejects(engine.sync().finally(() => { settled = true; }), { code: 'paused' });
+  await started; engine.pause(); assert.equal(engine.pauseRequested, true); assert.equal(settled, false); release(); await rejected;
+  assert.equal(events.at(-1)!.phase, 'paused'); assert.equal(engine.pauseRequested, false);
+  assert.equal(sa.value.journals.length, 1); assert.equal(cloud.published, 1);
+  await engine.recover(); assert.equal(sa.value.journals.length, 0); assert.equal(cloud.published, 1);
+  const repeated = await engine.sync(); assert.equal(repeated.uploadedFiles, 0); assert.equal(repeated.downloadedFiles, 0);
 });
 test('progress reports real stages and verified bytes; failure never advances completion and observer errors do not interrupt writes', async () => {
   const { remote, vault, a, b, sa, sb, cloud } = await setup(); const events: SyncProgress[] = [];

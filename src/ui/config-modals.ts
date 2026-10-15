@@ -61,6 +61,8 @@ export class ConfigExportModal extends Modal {
 }
 export class ConfigImportModal extends Modal {
   private generation = 0;
+  private confirmation?: ConfirmModal;
+  close(): void { if (!this.confirmation?.saving) super.close(); }
   constructor(app: App, private apply: (text: string, password?: string, options?: PairingImportOptions) => Promise<void>) { super(app); }
   onOpen(): void {
     this.titleEl.setText('导入账号连接');
@@ -105,20 +107,22 @@ export class ConfigImportModal extends Modal {
           if (requestedBinding && !config.remoteVault) throw new VaultSailError('configuration', '此配置只包含账号连接。请关闭云端库绑定选项，导入后为当前 Vault 创建或选择云端库。');
           if (generation !== this.generation) return;
           summary.setText(requestedBinding ? `云端库：${config.remoteVault!.displayName}` : '仅导入账号连接，不绑定导出设备的云端库。');
-          new ConfirmModal(this.app, '确认导入连接', encrypted
+          this.confirmation = new ConfirmModal(this.app, '确认导入连接', encrypted
             ? requestedBinding
               ? `连接到「${config.remoteVault!.displayName}」。将自动验证账号、云端库并上传下载 1 KB 隔离校验文件；通过后替换原连接，可直接同步。现有笔记保留，删除同步关闭。`
               : '仅导入应用配置和百度授权，将验证账号、应用目录并上传下载 1 KB 隔离校验文件。通过后替换当前账号连接，清除当前云端目标设置；本地笔记保留。之后请为当前 Vault 单独创建或选择云端库。'
             : '将替换当前应用配置并清除原云端目标设置。旧版文件未包含授权，需在本设备重新登录。' + (requestedBinding ? `将待验证的目标设置为「${config.remoteVault!.displayName}」。` : '之后为当前 Vault 创建或选择云端库。'),
-          async report => {
+          async (report, control) => {
             if (generation !== this.generation) throw new VaultSailError('cancelled', '输入已更改，请重新检查后导入。');
-            await this.apply(text, encrypted ? pass : undefined, { report, bindRemoteVault: requestedBinding }); this.close();
-          }).open();
+            await this.apply(text, encrypted ? pass : undefined, { report, bindRemoteVault: requestedBinding, signal: control.signal, onCommit: control.beginCommit });
+            this.confirmation = undefined; this.close();
+          }, true);
+          this.confirmation.open();
         } catch (error) { if (generation === this.generation) summary.setText(safeMessage(error)); }
         finally { pending = false; if (generation === this.generation) control.setDisabled(false); }
       });
     });
     new Setting(this.contentEl).addButton(button => button.setButtonText('关闭').onClick(() => this.close()));
   }
-  onClose(): void { this.generation++; this.contentEl.empty(); }
+  onClose(): void { this.confirmation?.close(); this.generation++; this.contentEl.empty(); }
 }

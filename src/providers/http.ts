@@ -3,6 +3,7 @@ export interface HttpRequest { url: string; method?: string; headers?: Record<st
 export interface HttpResponse { status: number; headers: Record<string, string>; json?: unknown; bytes: ArrayBuffer; }
 export type HttpTransport = (request: HttpRequest) => Promise<HttpResponse>;
 export interface RequestPolicy { timeoutMs?: number; signal?: AbortSignal; }
+export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 export function urlWith(base: string, params: Record<string, string>): string {
   const url = new URL(base); for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value); return url.toString();
 }
@@ -14,7 +15,10 @@ export async function request(transport: HttpTransport, input: HttpRequest, allo
   let result: HttpResponse;
   try {
     result = await Promise.race([pending, new Promise<never>((_, reject) => {
-      if (policy.timeoutMs) timer = setTimeout(() => reject(new VaultSailError('timeout', '百度授权请求超时，请检查网络后重新连接。', true)), policy.timeoutMs);
+      const write = !['GET', 'HEAD'].includes((input.method ?? 'GET').toUpperCase());
+      timer = setTimeout(() => reject(new VaultSailError(write ? 'write-timeout' : 'timeout', write
+        ? '写入请求超时，远端结果尚未确认；任务已保留，请先核验后恢复。'
+        : '网络请求超时，请检查网络后重试。', !write)), policy.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS);
       if (policy.signal) {
         abort = () => reject(new VaultSailError('cancelled', '请求已取消。'));
         policy.signal.addEventListener('abort', abort, { once: true });
