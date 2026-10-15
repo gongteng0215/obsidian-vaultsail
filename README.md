@@ -17,7 +17,7 @@ Baidu Netdisk is the current provider. Transfers are manual, with a 20 MiB per-f
 
 ## Install
 
-Requires **Obsidian 1.11.4 or newer**. The [community listing](https://community.obsidian.md/plugins/vaultsail) has been submitted; installation through the directory depends on completing its review.
+Requires **Obsidian 1.11.4 or newer**. Open the [community listing](https://community.obsidian.md/plugins/vaultsail) and choose **Add to Obsidian** to install. Version 0.1.14 completed the directory's automated checks with no blocking errors; non-blocking warnings and recommendations remain visible on its scorecard.
 
 For manual installation, download the latest ZIP or the three individual files from [GitHub Releases](https://github.com/gongteng0215/obsidian-vaultsail/releases/latest). Place `main.js`, `manifest.json` and `styles.css` in `plugins/vaultsail/` under the current vault's configuration directory, then enable VaultSail. The default directory is `.obsidian`; custom configuration directories are supported.
 
