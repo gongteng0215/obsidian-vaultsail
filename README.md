@@ -4,9 +4,9 @@ Sync Obsidian notes and attachments through your own Baidu Netdisk account, with
 
 **English** | [简体中文](README.zh-CN.md)
 
-[Community plugin](https://community.obsidian.md/plugins/vaultsail) · [Download 0.2.0](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.0) · [Release notes](docs/releases/0.2.0.md) · [Report an issue](https://github.com/gongteng0215/obsidian-vaultsail/issues)
+[Community plugin](https://community.obsidian.md/plugins/vaultsail) · [Download 0.2.0](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.0) · [Release notes](docs/releases/0.2.0.md) · [Version roadmap](docs/ROADMAP.md) · [Report an issue](https://github.com/gongteng0215/obsidian-vaultsail/issues)
 
-**Contents:** [Install](#install-or-update) · [First connection](#connect-your-first-vault) · [Device pairing](#pair-a-computer-ipad-or-another-vault) · [Automatic sync](#automatic-sync-and-the-queue) · [Conflicts](#versions-and-conflict-resolution) · [Cloud location](#where-the-cloud-data-goes) · [Recovery](#file-scope-deletion-and-recovery) · [FAQ](#performance-and-troubleshooting) · [Privacy](#privacy-and-network-access)
+**Contents:** [All features](#feature-inventory) · [Roadmap](#version-roadmap) · [Install](#install-or-update) · [First connection](#connect-your-first-vault) · [Device pairing](#pair-a-computer-ipad-or-another-vault) · [Automatic sync](#automatic-sync-and-the-queue) · [Conflicts](#versions-and-conflict-resolution) · [Cloud location](#where-the-cloud-data-goes) · [Recovery](#file-scope-deletion-and-recovery) · [FAQ](#performance-and-troubleshooting) · [Privacy](#privacy-and-network-access)
 
 ## Features
 
@@ -19,6 +19,87 @@ Sync Obsidian notes and attachments through your own Baidu Netdisk account, with
 - View live progress, scan/transfer timings, request counts, and token refresh counts.
 
 **0.2.0 supports Baidu Netdisk.** Requests go directly to Baidu, without a developer-operated authorization or sync server. Current settings and messages are primarily in Chinese; this guide includes their UI labels.
+
+## Feature inventory
+
+This inventory describes **0.2.0**, not future releases. **Implemented** means code and automated coverage exist, not complete real-device certification. **Limited** means the listed restrictions apply. **Experimental** requires a separate opt-in.
+
+| Area | Capability | Status and scope |
+| --- | --- | --- |
+| Connection | User-owned AppKey, SecretKey, and application directory | Implemented; explicit save controls and default `/apps/VaultSail` |
+| Connection | Device-code authorization and browser guidance | Implemented; cancellation, expiry, and stale-session protection |
+| Connection | Browser authorization-code fallback | Limited; offered only after explicit device-flow rejection |
+| Connection | Persistent tokens and automatic refresh | Implemented; expiry-aware reuse and single-flight refresh |
+| Connection | Disconnect and remote revocation guidance | Implemented; local disconnect does not revoke at Baidu |
+| Connection | SecretStorage and account/application isolation | Implemented; settings keep references, changed connection requires rebinding |
+| Access checks | Account, paged directory enumeration, isolated transfer test | Implemented; 0 B / 1 KB / 4 MiB / 20 MiB and hash comparison |
+| Cloud vaults | Create, discover, validate, and bind a cloud vault | Implemented; UUID identity independent of display/local names |
+| Cloud vaults | Multiple vaults using one account | Implemented; one primary cloud destination per local vault |
+| Cloud vaults | Cloud path copy, file/version listing, last successful transfer | Implemented; version storage rather than a filename mirror |
+| Pairing | Encrypted code and `.vaultsail` file import/export | Implemented; password required, 24-hour import window |
+| Pairing | Account-only migration or explicit same-vault pairing | Implemented; account-only is the default on both ends |
+| Pairing | Verified import with rollback and progress | Implemented; account/directory/1 KB roundtrip before activation |
+| Pairing | Legacy JSON and encrypted-code compatibility | Limited; old JSON requires login, expired codes need a new export |
+| Manual transfer | Upload, download, and bidirectional previews | Implemented; actions/reasons shown and execution basis rechecked |
+| Manual transfer | One-click bidirectional sync and command/toolbar entry points | Implemented; manual requests share the queue |
+| File scope | Markdown, attachments, Unicode paths, zero-byte files | Limited; 20 MiB per file and cross-platform path validation |
+| File scope | Internal/configuration/credential/recovery exclusions | Implemented; fixed safety exclusions, not user-defined rules |
+| Scheduling | File create/modify/delete/rename listeners | Implemented; debounce, coalescing, and startup readiness guard |
+| Scheduling | Remote polling and periodic full reconciliation | Implemented; remote checks 30–300 seconds, full check every 10 minutes |
+| Scheduling | Persistent queue, deduplication, pause, and backoff | Implemented; edits during a task remain queued, server wait respected |
+| Scheduling | Reload-safe per-vault task serialization | Implemented; preview, recovery, and connection changes are coordinated |
+| Scheduling | Foreground resume and background suspension | Limited; no continuous mobile background execution |
+| Performance | Configurable concurrent file transfers | Implemented; default 8, range 1–32, bounded large-file batches |
+| Performance | Incremental local scans and own-write suppression | Implemented; no re-upload loop, full reconciliation fallback |
+| Performance | Verified metadata/record caches across restarts | Limited; enumeration remains, missing fingerprints require more reads |
+| Integrity | Immutable SHA-256 blobs and parent-linked operations | Implemented; content verified before record publication |
+| Integrity | Staged downloads and execution-time revalidation | Implemented; changed inputs stop stale execution |
+| Integrity | Incomplete pagination, unknown formats, altered records, path collisions | Implemented; unsafe writes are blocked rather than treated as empty state |
+| Versions | Baseline comparison and version ancestry | Implemented; device timestamps do not decide overwrite |
+| Versions | Preserve independent branches and avoid duplicate versions | Implemented; identical-content branches can converge |
+| Versions | Automatic three-way Markdown merge | Limited; unique base, UTF-8, 256 KiB and line/diff budgets |
+| Conflicts | Conflict inbox, base/local/cloud comparison, block choices | Implemented; unresolved overlaps remain for user review |
+| Conflicts | Full-text editing, persistent drafts, stale-result protection | Implemented; drafts stay local and are excluded from diagnostics |
+| Conflicts | Adopt a version, keep two synced notes, publish a resolution | Implemented; resolution links competing branches |
+| Conflicts | Rename conflicts and deletion-versus-edit choices | Limited; final path selection, deletion requires opt-in, ambiguous cases stop safely |
+| Recovery | Operation journals and unfinished-task recovery | Implemented; verify actual outcomes and reuse operation IDs |
+| Recovery | Local recovery points, restore, and end stale tasks | Implemented; current content preserved, no automatic cleanup |
+| Deletion | Propagate explicit versioned deletion | Experimental; off by default, recovery retained, no permanent cloud cleanup |
+| Interface | Three-tab settings, live progress, phase/request/cache statistics | Implemented; Chinese UI, English documentation |
+| Diagnostics | Redacted report and safe failure-step messages | Implemented; no account identifiers, filenames, note bodies, or credentials |
+| Privacy | Direct Baidu access, no telemetry/server, encrypted credential migration | Implemented; cloud notes themselves are not end-to-end encrypted |
+| Distribution | Community updates, GitHub files/ZIP/checksums, BRAT | Implemented; min Obsidian 1.11.4, plugin installed per vault |
+
+### Features not available yet
+
+| Capability | Planning status |
+| --- | --- |
+| Complete native Windows/iPad and long-running multi-device validation | Next: 0.2.x stabilization and 0.3.0 mobile acceptance |
+| Indexed cloud history discovery and adaptive transfer tuning | Planned for 0.4.0; existing caching/concurrency already work |
+| Searchable history timeline, cloud-version restore, batch restore | Planned for 0.5.0; current recovery UI covers local recovery points |
+| User-defined include/exclude rules and dry-run filtering | Planned for 0.6.0; fixed safety exclusions remain mandatory |
+| Full English UI, language selection, and accessible mobile refinements | Planned for 0.6.0 |
+| QR/fragmented pairing and configurable pairing profiles | Backlog; existing encrypted code/file pairing remains available |
+| WebDAV, S3-compatible storage, OneDrive, or other providers | Post-1.0 candidates; only Baidu has a working adapter today |
+| Files larger than 20 MiB and streaming/resumable large-file transfer | Research backlog; no new size limit promised |
+| End-to-end note encryption and safe permanent cloud cleanup | Separate design/migration work; no implementation commitment yet |
+| Live collaborative editing, semantic/AI merges, continuous iPad background sync | Outside the current roadmap |
+
+## Version roadmap
+
+We will deliver one reviewable milestone at a time. These are proposed scopes, not release dates or completed features; patch releases may be used to finish a milestone.
+
+| Version | Focus | Main result |
+| --- | --- | --- |
+| **0.2.0 — released** | Automatic sync and merge foundation | Queue, file events, remote checks, conflict editor, and drafts |
+| **0.2.1 / 0.2.x — next** | Stabilization | Reproduce real failures, clarify queue/error states, verify recovery and repeat sync |
+| **0.3.0** | iPad and multi-vault reliability | Native pairing, foreground recovery, vault/account isolation acceptance |
+| **0.4.0** | Scan and transfer performance | Benchmarked cold/warm scans, optional verified discovery index, bounded tuning |
+| **0.5.0** | History and recovery experience | Searchable history, previews, cloud-version restore, safe batch recovery |
+| **0.6.0** | Sync scope and language/accessibility | Exclusion rules, path preview, English/Chinese UI, mobile usability |
+| **0.9.0 RC → 1.0.0** | Compatibility and stable release | Migration rehearsal, end-to-end acceptance, documented support and recovery |
+
+See the **[full roadmap and acceptance criteria](docs/ROADMAP.md)**. Our next implementation scope is **0.2.1 stabilization**, not all planned features at once. This documentation update does not change the installed plugin or its version.
 
 ## Requirements and defaults
 
