@@ -17,9 +17,9 @@ Baidu Netdisk is the current provider. Transfers are manual, with a 20 MiB per-f
 
 ## Install
 
-Requires **Obsidian 1.11.4 or newer**. Community distribution is paused while real-device testing is completed. The community entry was archived on October 15, 2026; GitHub test releases remain available. Version 0.1.14 completed the directory's automated checks with no blocking errors, but this does not replace real-device validation.
+Requires **Obsidian 1.11.4 or newer**. The [community listing](https://community.obsidian.md/plugins/vaultsail) is restored, and **0.1.16** completed the automated review with no blocking errors on October 15, 2026. Its installation link is enabled; the in-app search catalog still needs to propagate the entry. Automated review does not replace real-device validation.
 
-For iPad testing, install and enable [BRAT](https://github.com/TfTHacker/obsidian42-brat) through Obsidian's community plugins, then add `gongteng0215/obsidian-vaultsail` and select preview version `0.1.16`. Enable VaultSail in an empty test vault before importing an encrypted pairing code. Community publication will resume only after testing is completed and the maintainer authorizes it.
+For direct GitHub installation on iPad, install and enable [BRAT](https://github.com/TfTHacker/obsidian42-brat) through Obsidian's community plugins, then add `gongteng0215/obsidian-vaultsail` and select version `0.1.16`. Enable VaultSail in an empty test vault before importing an encrypted pairing code.
 
 For manual installation, download the ZIP or the three individual files from the [0.1.16 preview release](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.1.16). Place `main.js`, `manifest.json` and `styles.css` in `plugins/vaultsail/` under the current vault's configuration directory, then enable VaultSail. The default directory is `.obsidian`; custom configuration directories are supported.
 

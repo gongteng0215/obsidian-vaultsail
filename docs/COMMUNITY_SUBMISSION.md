@@ -1,10 +1,10 @@
 # VaultSail 社区目录提交资料
 
-**当前状态：社区条目已归档，暂停上架。** 2026-10-15 按维护者“先测试好再上架”的要求执行归档，管理页提供 Unarchive，公开页面显示已归档且 Add to Obsidian 禁用。保留 GitHub 测试安装包供 BRAT 和手动安装；不自动恢复社区发布。下面保留审核过程作为历史记录。
+**当前状态：社区条目已恢复，0.1.16 自动检查 Completed。** 2026-10-15 按维护者最新授权，将已有 0.1.16 GitHub Release 改为普通公开发布，保持 tag、代码和五个附件不变；恢复社区条目并主动检查新版。`e1cf4e8` 官方检查无阻断错误，依赖漏洞检查通过，main.js 从源码逐字节复现。公开页面显示当前 0.1.16，Add to Obsidian 安装链接已开放；仍有非阻断警告和建议。完成时社区导出清单与 GitHub 应用清单均尚无 vaultsail，不能声称应用内搜索已可用。此前归档和审核过程保留为历史记录。
 
 仓库：`https://github.com/gongteng0215/obsidian-vaultsail`
 
-插件 ID：`vaultsail`；名称：`VaultSail`；作者：`gongteng0215`；版本：`0.1.14`；最低 Obsidian：`1.11.4`。
+插件 ID：`vaultsail`；名称：`VaultSail`；作者：`gongteng0215`；本次提交版本：`0.1.16`；最低 Obsidian：`1.11.4`。
 
 短描述：Sync notes and attachments through Baidu Netdisk with version preservation and encrypted device pairing.
 

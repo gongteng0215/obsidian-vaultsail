@@ -6,7 +6,7 @@
 
 ## 安装或升级
 
-社区目录暂停分发，先完成双端实测。iPad 在 BRAT 中添加 `gongteng0215/obsidian-vaultsail`，选择 `0.1.16` 预览版并安装或更新；更新后关闭再启用 VaultSail，无需卸载。该版本修复小写配对码前缀和换行粘贴的识别问题，兼容仍在有效期内的旧加密配对码。
+社区条目已恢复，0.1.16 自动检查完成且无阻断错误，公开页面的安装入口已开放；应用内搜索清单尚待官方同步。等待期间，iPad 可在 BRAT 中添加 `gongteng0215/obsidian-vaultsail`，选择 `0.1.16` 安装或更新；更新后关闭再启用 VaultSail，无需卸载。该版本修复配对码粘贴识别及本机密钥标识超长问题，兼容仍在有效期内的旧加密配对码。
 
 需要 Obsidian **1.11.4 或更新版本**。关闭 VaultSail，把发布 ZIP 解压至测试 Vault 的 `.obsidian/plugins/`，确认三个文件位于 `.obsidian/plugins/vaultsail/`，然后重新启用插件。
 
