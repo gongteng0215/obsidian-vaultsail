@@ -9,6 +9,57 @@ import { apiSuccess, request, type HttpRequest, type HttpResponse } from '../src
 
 import { baiduHarness as harness } from './fixtures/baidu.ts';
 
+test('missing listing digests use batched fresh metadata and survive restart without downloading unchanged history', async () => {
+  const h = harness(), remote = new RemoteVaultStore(h.provider), vault = await remote.create('缺少列表摘要'), deviceId = uuid();
+  for (let i = 0; i < 107; i++) {
+    const data = bytes('data-' + i);
+    const op: Revision = { schemaVersion: 1, vaultId: vault.vaultId, opId: uuid(), deviceId, fileId: uuid(), path: `note-${i}.md`,
+      parents: [], kind: 'update', hash: hash(data), size: data.byteLength, createdAt: 1 };
+    await remote.publish(vault.vaultId, op, data);
+  }
+  let saved: unknown, reads = 0; const batches: number[] = [];
+  const disk = { load: async () => structuredClone(saved), save: async (value: unknown) => { saved = structuredClone(value); } };
+  const transport = async (input: HttpRequest) => {
+    const url = new URL(input.url), result = await h.transport(input);
+    if (url.searchParams.get('method') === 'list') for (const entry of (result.json as { list: Record<string, unknown>[] }).list) delete entry.md5;
+    if (url.searchParams.get('method') === 'filemetas') batches.push(JSON.parse(url.searchParams.get('fsids')!).length);
+    if (url.pathname.startsWith('/file/') && decodeURIComponent(url.pathname).includes('/ops/')) reads++;
+    return result;
+  };
+  const fresh = () => new RemoteVaultStore(new BaiduProvider('/apps/中文应用', transport, { accessToken: async () => 'private-access' }), disk);
+  await fresh().revisions(vault.vaultId); assert.equal(reads, 107); assert.deepEqual(batches, [1, 100, 7]);
+  assert.equal((saved as { entries: unknown[] }).entries.length, 107);
+  reads = 0; batches.length = 0; await fresh().revisions(vault.vaultId);
+  assert.equal(reads, 0, 'restart reuses cached records after fresh batch fingerprints'); assert.deepEqual(batches, [1, 100, 7]);
+});
+
+test('incomplete, duplicate, mismatched or failed metadata batches stop scanning; absent digests safely reread records', async () => {
+  for (const fault of ['missing', 'duplicate', 'path', 'size', 'permission', 'no-digest'] as const) {
+    const h = harness(); await h.provider.writeImmutable('records/a', bytes('A')); await h.provider.writeImmutable('records/b', bytes('B'));
+    let downloads = 0;
+    const provider = new BaiduProvider('/apps/中文应用', async input => {
+      const url = new URL(input.url); if (url.pathname.startsWith('/file/')) downloads++;
+      const result = await h.transport(input);
+      if (url.searchParams.get('method') === 'list') for (const entry of (result.json as { list: Record<string, unknown>[] }).list) delete entry.md5;
+      if (url.searchParams.get('method') === 'filemetas') {
+        const list = (result.json as { list: Record<string, unknown>[] }).list;
+        if (fault === 'missing') list.pop();
+        if (fault === 'duplicate') list[1] = list[0];
+        if (fault === 'path') list[0].path = '/apps/中文应用/outside';
+        if (fault === 'size') list[0].size = 123;
+        if (fault === 'permission') result.json = { errno: -6 };
+        if (fault === 'no-digest') for (const entry of list) delete entry.md5;
+      }
+      return result;
+    }, { accessToken: async () => 'private-access' });
+    const entries = (await provider.listAll('records'));
+    if (fault === 'no-digest') {
+      const inspected = await provider.inspect(entries); assert.ok(inspected.every(entry => entry.etag === undefined));
+      await provider.read('records/a'); assert.equal(downloads, 1);
+    } else { await assert.rejects(provider.inspect(entries), { code: fault === 'permission' ? 'permission' : 'response' }); assert.equal(downloads, 0); }
+  }
+});
+
 test('Baidu adapter performs exact multipart and verifies 0B, 1KB, 4MiB and 20MiB roundtrips', async () => {
   const h = harness(); assert.equal((await h.provider.profile()).label, '百度账号 ···3456');
   for (const size of [0, 1024, 4 * 1024 * 1024, MAX_FILE_SIZE]) {

@@ -5,6 +5,8 @@ import { RemoteVaultStore, buildHeads, validateRevision, type Revision } from '.
 import { SyncEngine, newState, type LocalFiles, type StateStore, type SyncState } from '../src/sync/engine.ts';
 import type { CloudStorageProvider, RemotePage } from '../src/providers/cloud-storage-provider.ts';
 import type { SyncProgress } from '../src/sync/progress.ts';
+import { BaiduProvider } from '../src/providers/baidu-provider.ts';
+import { baiduHarness } from './fixtures/baidu.ts';
 
 class MemoryCloud implements CloudStorageProvider {
   readonly id = 'mock'; readonly displayName = 'mock'; readonly root = '/apps/test';
@@ -59,6 +61,33 @@ async function setup(concurrency = 3) {
   const ea = new SyncEngine(remote, a, sa, vault.vaultId, '.obsidian', () => {}, concurrency); const eb = new SyncEngine(remote, b, sb, vault.vaultId, '.obsidian', () => {}, concurrency);
   return { cloud, remote, vault, a, b, sa, sb, ea, eb };
 }
+
+test('seven unchanged notes scan once, batch missing fingerprints and use persisted cache on later scans', async () => {
+  const h = baiduHarness(), writer = new RemoteVaultStore(h.provider), vault = await writer.create('七篇笔记'), deviceId = uuid();
+  const local = new MemoryLocal(), state = new MemoryState(); let saved: unknown;
+  for (let i = 0; i < 7; i++) {
+    const data = bytes('note-content-' + i), path = `note-${i}.md`; local.files.set(path, data);
+    await writer.publish(vault.vaultId, { schemaVersion: 1, vaultId: vault.vaultId, opId: uuid(), deviceId, fileId: uuid(), path,
+      parents: [], kind: 'update', hash: hash(data), size: data.byteLength, createdAt: 1 }, data);
+  }
+  let requests = 0, downloads = 0; const scans: { listed: number; cacheHits: number; read: number }[] = [];
+  const disk = { load: async () => structuredClone(saved), save: async (value: unknown) => { saved = structuredClone(value); } };
+  const provider = () => new BaiduProvider('/apps/中文应用', async input => {
+    requests++; const url = new URL(input.url); if (url.pathname.startsWith('/file/')) downloads++;
+    const result = await h.transport(input);
+    if (url.searchParams.get('method') === 'list') for (const entry of (result.json as { list?: Record<string, unknown>[] }).list ?? []) delete entry.md5;
+    return result;
+  }, { accessToken: async () => 'private-access' });
+  const fresh = () => new SyncEngine(new RemoteVaultStore(provider(), disk, 8, stats => scans.push(stats)), local, state, vault.vaultId);
+  const engine = fresh(); const initialPublished = h.counts().createCalls;
+  await engine.sync(); assert.equal(scans.length, 1); assert.equal(requests, 13); assert.equal(downloads, 8);
+  assert.equal(scans[0].read, 7); assert.equal(state.value.knownOps.length, 7);
+  requests = downloads = 0; await engine.sync(); assert.equal(requests, 5); assert.equal(downloads, 0); assert.equal(scans[1].cacheHits, 7);
+  requests = downloads = 0; await fresh().sync(); assert.equal(requests, 6); assert.equal(downloads, 1); assert.equal(scans[2].cacheHits, 7);
+  assert.equal(h.counts().createCalls, initialPublished, 'no-change scans never publish records or content');
+  local.files.set('note-0.md', bytes('local edit')); await engine.sync();
+  assert.equal((await writer.revisions(vault.vaultId)).length, 8);
+});
 test('default engines transfer and read history with eight concurrent jobs and preserve all file hashes', async () => {
   const cloud = new MemoryCloud(); const remote = new RemoteVaultStore(cloud); const vault = await remote.create('默认并发');
   const a = new MemoryLocal(), b = new MemoryLocal(), sa = new MemoryState(), sb = new MemoryState();

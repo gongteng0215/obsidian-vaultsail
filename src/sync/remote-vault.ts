@@ -5,6 +5,7 @@ import type { CloudStorageProvider } from '../providers/cloud-storage-provider';
 
 export interface RemoteVault { schemaVersion: 1; vaultId: string; displayName: string; createdAt: number; }
 export interface RevisionCache { load(): Promise<unknown>; save(value: unknown): Promise<void>; }
+export interface RevisionScanStats { listed: number; cacheHits: number; read: number; missingFingerprints: number; }
 export interface Revision {
   schemaVersion: 1; vaultId: string; opId: string; deviceId: string; fileId: string;
   path: string; parents: string[]; kind: 'update' | 'delete'; hash?: string; size: number; createdAt: number;
@@ -70,7 +71,10 @@ export class RemoteVaultStore {
   private cachedVaults = new Map<string, { etag?: string; contentHash: string; size: number; vault: RemoteVault }>();
   private diskLoaded = false; private disk?: RevisionCache;
   private readConcurrency: number;
-  constructor(provider: CloudStorageProvider, cache?: RevisionCache, concurrency = DEFAULT_TRANSFER_CONCURRENCY) { this.provider = provider; this.disk = cache; this.readConcurrency = concurrency; }
+  private onScan: (stats: RevisionScanStats) => void;
+  constructor(provider: CloudStorageProvider, cache?: RevisionCache, concurrency = DEFAULT_TRANSFER_CONCURRENCY, onScan: (stats: RevisionScanStats) => void = () => {}) {
+    this.provider = provider; this.disk = cache; this.readConcurrency = concurrency; this.onScan = onScan;
+  }
   setReadConcurrency(value: number): void {
     if (!validConcurrency(value)) throw new VaultSailError('configuration', `读取并发数必须为 1–${MAX_TRANSFER_CONCURRENCY} 之间的整数。`);
     this.readConcurrency = value;
@@ -114,8 +118,14 @@ export class RemoteVaultStore {
   }
   async get(id: string): Promise<RemoteVault> {
     const path = this.base(id) + '/vault.json';
-    const entry = (await listAll(this.provider, this.base(id))).find(object => object.path === path);
+    let entry = (await listAll(this.provider, this.base(id))).find(object => object.path === path);
     if (!entry || entry.isDirectory) throw new VaultSailError('not-found', '云端库元数据不存在。');
+    if (!entry.etag && this.provider.inspect) {
+      const inspected = await this.provider.inspect([entry]);
+      if (inspected.length !== 1 || inspected[0].path !== entry.path || inspected[0].id !== entry.id || inspected[0].size !== entry.size || inspected[0].isDirectory)
+        throw new VaultSailError('response', '云端库元数据与目录不一致。');
+      entry = inspected[0];
+    }
     const cached = this.cachedVaults.get(id);
     if (cached && entry.size === cached.size && ((entry.etag !== undefined && cached.etag === entry.etag)
       || this.provider.verifiedContentHash?.(entry) === cached.contentHash)) {
@@ -149,7 +159,14 @@ export class RemoteVaultStore {
         entries.push({ deviceId, entry });
       }
     }
+    if (this.provider.inspect) {
+      const inspected = await this.provider.inspect(entries.map(row => row.entry));
+      if (inspected.length !== entries.length || inspected.some((entry, index) => entry.path !== entries[index].entry.path
+        || entry.id !== entries[index].entry.id || entry.size !== entries[index].entry.size || entry.isDirectory)) throw new VaultSailError('response', '批量元数据与目录不一致。');
+      entries.forEach((row, index) => { row.entry = inspected[index]; });
+    }
     let completed = 0;
+    const stats: RevisionScanStats = { listed: entries.length, cacheHits: 0, read: 0, missingFingerprints: entries.filter(row => !row.entry.etag).length };
     const report = () => { try { onProgress(completed, entries.length); } catch { /* Inventory callbacks are advisory. */ } };
     report();
     const records = await mapConcurrent(entries, this.readConcurrency, async ({ deviceId, entry }) => {
@@ -157,6 +174,7 @@ export class RemoteVaultStore {
         const reusable = cached && cached.size === entry.size && ((entry.etag !== undefined && cached.etag === entry.etag)
           || (cached.contentHash !== undefined && this.provider.verifiedContentHash?.(entry) === cached.contentHash));
         const data = reusable ? undefined : await this.provider.read(entry.path);
+        if (reusable) stats.cacheHits++; else stats.read++;
         const op = reusable ? cached.revision : validateRevision(parseJson(data!), id);
         if (op.deviceId !== deviceId || entry.path !== base + '/' + deviceId + '/' + op.opId + '.json') throw new VaultSailError('schema', '操作文件与记录标识不一致。');
         this.cachedRevisions.set(entry.path, { etag: entry.etag, contentHash: data ? hash(data) : cached?.contentHash, size: entry.size, revision: op });
@@ -165,7 +183,9 @@ export class RemoteVaultStore {
         return op;
     });
     result.push(...records);
-    buildHeads(result); await this.saveCache(id, active); return result;
+    buildHeads(result); await this.saveCache(id, active);
+    try { this.onScan({ ...stats }); } catch { /* Reporting cannot affect validation. */ }
+    return result;
   }
   async blob(id: string, op: Revision, onVerify: () => void = () => {}): Promise<ArrayBuffer> {
     validateRevision(op, id);

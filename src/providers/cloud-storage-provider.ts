@@ -32,6 +32,8 @@ export interface CloudStorageProvider {
   writeImmutable(path: string, data: ArrayBuffer): Promise<void>;
   mkdir(directory: string): Promise<void>;
   exists(path: string): Promise<boolean>;
+  /** Fresh metadata for listed files whose listing omitted a content fingerprint. */
+  inspect?(objects: RemoteObject[]): Promise<RemoteObject[]>;
   /** SHA-256 from a completed readback, only when this freshly listed object has the same server fingerprint. */
   verifiedContentHash?(object: RemoteObject): string | undefined;
 }

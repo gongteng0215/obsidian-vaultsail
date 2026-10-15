@@ -306,8 +306,12 @@ export class SyncEngine {
       await flush();
       // Immutable parent-linked publications preserve concurrent writers as branches.
       // Verify the complete inventory at batch boundaries instead of for every file.
-      this.emit('checking-remote', { path: undefined });
-      const finalOps = await this.remote.revisions(this.vaultId); const found = new Set(finalOps.map(op => op.opId));
+      const readOnly = plan.rows.every(row => row.action === 'noop' || row.action === 'skip');
+      if (!readOnly) this.emit('checking-remote', { path: undefined });
+      // A no-change plan applies no remote content or local file writes. Its
+      // baseline remains at the verified initial snapshot; later publications
+      // are discovered on the next sync, without repeating this entire scan.
+      const finalOps = readOnly ? snapshot.ops : await this.remote.revisions(this.vaultId); const found = new Set(finalOps.map(op => op.opId));
       this.emit('checking');
       if ([...state.knownOps, ...snapshot.ops.map(op => op.opId), ...published].some(id => !found.has(id))) throw new VaultSailError('visibility', '批次结束时已验证版本不可见，任务状态保留，请重试。');
       state.knownOps = [...new Set([...state.knownOps, ...found])]; await this.store.save(state);

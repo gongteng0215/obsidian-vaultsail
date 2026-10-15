@@ -54,8 +54,12 @@ export function baiduHarness() {
         return response({ errno: 0, path, size: data.byteLength, fs_id: ids.get(path), md5: bytesToHex(md5(data)), mtime: 123 });
       }
       case 'filemetas': {
-        const requested = String(JSON.parse(query.get('fsids')!)[0]); const path = [...ids].find(([, id]) => id === requested)![0];
-        return response({ errno: 0, list: [{ path, fs_id: requested, size: files.get(path)!.byteLength, dlink: 'https://d.pcs.baidu.com/file/' + encodeURIComponent(path) }] });
+        const requested: (string | number)[] = JSON.parse(query.get('fsids')!);
+        return response({ errno: 0, list: requested.map(id => {
+          const key = String(id), path = [...ids].find(([, id]) => id === key)![0], data = files.get(path)!;
+          return { path, fs_id: key, size: data.byteLength, md5: bytesToHex(md5(new Uint8Array(data))), server_mtime: 123,
+            dlink: 'https://d.pcs.baidu.com/file/' + encodeURIComponent(path) };
+        }) });
       }
       default: throw new Error('unexpected endpoint');
     }

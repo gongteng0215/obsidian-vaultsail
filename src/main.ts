@@ -250,7 +250,7 @@ export default class VaultSailPlugin extends Plugin {
       if (!validation?.passed) throw new VaultSailError('permission', '请先运行本设备的文件传输权限验证，确认上传下载权限。');
       if (this.engine) return this.engine;
       const context = hash(bytes(b.appKey + '|' + b.root + '|' + accountHash + '|' + b.vaultId));
-      this.engine = new SyncEngine(new RemoteVaultStore(provider, new ObsidianRevisionCache(this.app, this.deviceId, context), this.settings.transferConcurrency), this.local,
+      this.engine = new SyncEngine(new RemoteVaultStore(provider, new ObsidianRevisionCache(this.app, this.deviceId, context), this.settings.transferConcurrency, stats => this.performance.scan(stats)), this.local,
         new ObsidianStateStore(this.app, this.deviceId, b.vaultId, context), b.vaultId, this.app.vault.configDir, event => this.publishProgress(event), this.settings.transferConcurrency);
       return this.engine;
     } catch (error) { this.failTransfer(error); throw error; }

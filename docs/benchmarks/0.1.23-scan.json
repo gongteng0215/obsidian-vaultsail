@@ -1,0 +1,225 @@
+{
+  "version": "0.1.23",
+  "baselineRef": "9b9e6ba997877d2c73db8c0a947582689e23d0a6",
+  "measuredAt": "2026-10-15T13:36:07.581Z",
+  "simulated": true,
+  "scenario": "7 unchanged notes; list omits MD5, filemetas returns MD5; account check included",
+  "latencyMs": 10,
+  "repeats": 3,
+  "before": {
+    "cold": {
+      "elapsedMs": 233,
+      "requests": 39,
+      "downloads": 16,
+      "metadata": 16,
+      "lists": 6,
+      "cachedRecords": 0
+    },
+    "warm": {
+      "elapsedMs": 236,
+      "requests": 39,
+      "downloads": 16,
+      "metadata": 16,
+      "lists": 6,
+      "cachedRecords": 0
+    },
+    "restart": {
+      "elapsedMs": 234,
+      "requests": 39,
+      "downloads": 16,
+      "metadata": 16,
+      "lists": 6,
+      "cachedRecords": 0
+    }
+  },
+  "after": {
+    "cold": {
+      "elapsedMs": 129,
+      "requests": 14,
+      "downloads": 8,
+      "metadata": 2,
+      "lists": 3,
+      "cachedRecords": 7
+    },
+    "warm": {
+      "elapsedMs": 95,
+      "requests": 6,
+      "downloads": 0,
+      "metadata": 2,
+      "lists": 3,
+      "cachedRecords": 7
+    },
+    "restart": {
+      "elapsedMs": 109,
+      "requests": 7,
+      "downloads": 1,
+      "metadata": 2,
+      "lists": 3,
+      "cachedRecords": 7
+    }
+  },
+  "rows": [
+    {
+      "before": {
+        "cold": {
+          "elapsedMs": 245,
+          "requests": 39,
+          "downloads": 16,
+          "metadata": 16,
+          "lists": 6,
+          "cachedRecords": 0
+        },
+        "warm": {
+          "elapsedMs": 234,
+          "requests": 39,
+          "downloads": 16,
+          "metadata": 16,
+          "lists": 6,
+          "cachedRecords": 0
+        },
+        "restart": {
+          "elapsedMs": 233,
+          "requests": 39,
+          "downloads": 16,
+          "metadata": 16,
+          "lists": 6,
+          "cachedRecords": 0
+        }
+      },
+      "after": {
+        "cold": {
+          "elapsedMs": 132,
+          "requests": 14,
+          "downloads": 8,
+          "metadata": 2,
+          "lists": 3,
+          "cachedRecords": 7
+        },
+        "warm": {
+          "elapsedMs": 94,
+          "requests": 6,
+          "downloads": 0,
+          "metadata": 2,
+          "lists": 3,
+          "cachedRecords": 7
+        },
+        "restart": {
+          "elapsedMs": 109,
+          "requests": 7,
+          "downloads": 1,
+          "metadata": 2,
+          "lists": 3,
+          "cachedRecords": 7
+        }
+      }
+    },
+    {
+      "before": {
+        "cold": {
+          "elapsedMs": 224,
+          "requests": 39,
+          "downloads": 16,
+          "metadata": 16,
+          "lists": 6,
+          "cachedRecords": 0
+        },
+        "warm": {
+          "elapsedMs": 240,
+          "requests": 39,
+          "downloads": 16,
+          "metadata": 16,
+          "lists": 6,
+          "cachedRecords": 0
+        },
+        "restart": {
+          "elapsedMs": 234,
+          "requests": 39,
+          "downloads": 16,
+          "metadata": 16,
+          "lists": 6,
+          "cachedRecords": 0
+        }
+      },
+      "after": {
+        "cold": {
+          "elapsedMs": 136,
+          "requests": 14,
+          "downloads": 8,
+          "metadata": 2,
+          "lists": 3,
+          "cachedRecords": 7
+        },
+        "warm": {
+          "elapsedMs": 92,
+          "requests": 6,
+          "downloads": 0,
+          "metadata": 2,
+          "lists": 3,
+          "cachedRecords": 7
+        },
+        "restart": {
+          "elapsedMs": 109,
+          "requests": 7,
+          "downloads": 1,
+          "metadata": 2,
+          "lists": 3,
+          "cachedRecords": 7
+        }
+      }
+    },
+    {
+      "before": {
+        "cold": {
+          "elapsedMs": 229,
+          "requests": 39,
+          "downloads": 16,
+          "metadata": 16,
+          "lists": 6,
+          "cachedRecords": 0
+        },
+        "warm": {
+          "elapsedMs": 234,
+          "requests": 39,
+          "downloads": 16,
+          "metadata": 16,
+          "lists": 6,
+          "cachedRecords": 0
+        },
+        "restart": {
+          "elapsedMs": 234,
+          "requests": 39,
+          "downloads": 16,
+          "metadata": 16,
+          "lists": 6,
+          "cachedRecords": 0
+        }
+      },
+      "after": {
+        "cold": {
+          "elapsedMs": 120,
+          "requests": 14,
+          "downloads": 8,
+          "metadata": 2,
+          "lists": 3,
+          "cachedRecords": 7
+        },
+        "warm": {
+          "elapsedMs": 99,
+          "requests": 6,
+          "downloads": 0,
+          "metadata": 2,
+          "lists": 3,
+          "cachedRecords": 7
+        },
+        "restart": {
+          "elapsedMs": 109,
+          "requests": 7,
+          "downloads": 1,
+          "metadata": 2,
+          "lists": 3,
+          "cachedRecords": 7
+        }
+      }
+    }
+  ]
+}

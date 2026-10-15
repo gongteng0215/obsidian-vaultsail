@@ -1,5 +1,6 @@
 import type { HttpRequest, HttpResponse, HttpTransport } from '../providers/http.ts';
 import type { ProgressPhase } from './progress.ts';
+import type { RevisionScanStats } from './remote-vault.ts';
 
 const STAGES = { connecting: '连接检查', remote: '云端扫描', local: '本地扫描', transfer: '传输处理' } as const;
 const REQUESTS = {
@@ -12,6 +13,7 @@ interface RequestStats { count: number; failed: number; elapsedMs: number; maxMs
 export interface PerformanceSnapshot {
   elapsedMs: number; stages: Record<Stage, number>; requests: Partial<Record<RequestKind, RequestStats>>;
   requestCount: number; refreshCount: number; retryCount: number; retryWaitMs: number;
+  scans: number; versions: RevisionScanStats;
 }
 // Only fixed categories and numbers enter the report. No URL, path, response,
 // token, error text or request body is retained, even for failed requests.
@@ -31,12 +33,14 @@ function kind(input: HttpRequest): RequestKind {
 }
 export class TransferPerformance {
   private state?: { started: number; ended?: number; stage?: Stage; since: number; stages: Record<Stage, number>;
-    requests: Partial<Record<RequestKind, RequestStats>>; pending: Map<object, { kind: RequestKind; started: number }>; retryCount: number; retryWaitMs: number };
+    requests: Partial<Record<RequestKind, RequestStats>>; pending: Map<object, { kind: RequestKind; started: number }>; retryCount: number; retryWaitMs: number;
+    scans: number; versions: RevisionScanStats };
   private now: () => number;
   constructor(now = () => Date.now()) { this.now = now; }
   begin(): void {
     const now = this.now();
-    this.state = { started: now, since: now, stages: { connecting: 0, remote: 0, local: 0, transfer: 0 }, requests: {}, pending: new Map(), retryCount: 0, retryWaitMs: 0 };
+    this.state = { started: now, since: now, stages: { connecting: 0, remote: 0, local: 0, transfer: 0 }, requests: {}, pending: new Map(), retryCount: 0, retryWaitMs: 0,
+      scans: 0, versions: { listed: 0, cacheHits: 0, read: 0, missingFingerprints: 0 } };
   }
   phase(phase: ProgressPhase): void {
     const state = this.state; if (!state || state.ended !== undefined) return;
@@ -53,6 +57,11 @@ export class TransferPerformance {
   retry(waitedMs: number): void {
     const state = this.state; if (!state || state.ended !== undefined) return;
     state.retryCount++; state.retryWaitMs += Math.max(0, waitedMs);
+  }
+  scan(stats: RevisionScanStats): void {
+    const state = this.state; if (!state || state.ended !== undefined) return;
+    state.scans++;
+    for (const key of ['listed', 'cacheHits', 'read', 'missingFingerprints'] as const) state.versions[key] += stats[key];
   }
   async transport(transport: HttpTransport, input: HttpRequest): Promise<HttpResponse> {
     const state = this.state;
@@ -84,7 +93,7 @@ export class TransferPerformance {
     }
     return { elapsedMs: Math.max(0, now - state.started), stages, requests,
       requestCount: Object.values(requests).reduce((sum, stat) => sum + stat.count, 0), refreshCount: requests.refresh?.count ?? 0,
-      retryCount: state.retryCount, retryWaitMs: state.retryWaitMs };
+      retryCount: state.retryCount, retryWaitMs: state.retryWaitMs, scans: state.scans, versions: { ...state.versions } };
   }
 }
 export function formatPerformance(value?: PerformanceSnapshot): string {
@@ -93,6 +102,8 @@ export function formatPerformance(value?: PerformanceSnapshot): string {
   return Object.entries(STAGES).map(([key, label]) => `${label} ${(value.stages[key as Stage] / 1000).toFixed(1)} 秒`).join(' · ')
     + `\n请求耗时（并发累计）：上传相关 ${(uploadMs / 1000).toFixed(1)} 秒 · 下载/回读 ${((value.requests.download?.elapsedMs ?? 0) / 1000).toFixed(1)} 秒`
     + `\n网络请求 ${value.requestCount} 次 · 令牌刷新 ${value.refreshCount} 次`
-    + (value.retryCount ? ` · 失败/限流等待 ${value.retryCount} 次（累计 ${(value.retryWaitMs / 1000).toFixed(1)} 秒）` : '');
+    + (value.retryCount ? ` · 失败/限流等待 ${value.retryCount} 次（累计 ${(value.retryWaitMs / 1000).toFixed(1)} 秒）` : '')
+    + `\n云端扫描 ${value.scans} 轮 · 版本缓存命中 ${value.versions.cacheHits}/${value.versions.listed} 条 · 实际读取 ${value.versions.read} 条`
+    + (value.versions.missingFingerprints ? `（${value.versions.missingFingerprints} 条缺少云端指纹）` : '');
 }
 export const REQUEST_LABELS = REQUESTS;

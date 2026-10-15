@@ -45,6 +45,15 @@ test('ordinary token reuse issues zero authorization requests; eight concurrent 
   assert.equal(JSON.stringify(report).includes('private'), false);
 });
 
+test('cache hit reporting accumulates scans without retaining version paths and resets for a new transfer', () => {
+  const trace = new TransferPerformance(); trace.begin();
+  trace.scan({ listed: 7, cacheHits: 0, read: 7, missingFingerprints: 0 });
+  trace.scan({ listed: 7, cacheHits: 7, read: 0, missingFingerprints: 0 });
+  assert.equal(trace.snapshot()!.scans, 2); assert.match(formatPerformance(trace.snapshot()), /版本缓存命中 7\/14 条 · 实际读取 7 条/);
+  trace.finish(); trace.scan({ listed: 100, cacheHits: 0, read: 100, missingFingerprints: 100 }); assert.equal(trace.snapshot()!.scans, 2);
+  trace.begin(); assert.equal(trace.snapshot()!.versions.listed, 0);
+});
+
 test('failed and pending native requests remain safe and late completions cannot alter frozen reports or the next transfer', async () => {
   let now = 0; const trace = new TransferPerformance(() => now); trace.begin(); trace.phase('uploading');
   let finish!: (value: HttpResponse) => void;

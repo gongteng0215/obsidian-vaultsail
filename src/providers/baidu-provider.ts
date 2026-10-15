@@ -21,6 +21,7 @@ export class BaiduProvider implements CloudStorageProvider {
   private pendingDirectories = new Map<string, Promise<void>>();
   private pendingWrites = new Map<string, { hash: string; operation: Promise<void> }>();
   private pendingLookups = new Map<string, Promise<RemoteObject[]>>();
+  private downloadLinks = new Map<string, { id: string; size: number; etag?: string; url: string; expiresAt: number }>();
   constructor(root: string, transport: HttpTransport, auth: TokenSource, active = () => true,
     onActivity: (phase: 'verifying' | 'downloading') => void = () => {}, requestPolicy: BaiduRequestPolicy = {}) {
     this.root = appRoot(root); this.transport = transport; this.auth = auth; this.active = active;
@@ -32,7 +33,7 @@ export class BaiduProvider implements CloudStorageProvider {
   private absolute(path: string): string { return path ? this.root + '/' + relativePath(path) : this.root; }
   private etag(value: Record<string, unknown>, size: number): string | undefined {
     if (typeof value.md5 !== 'string' || !/^[a-fA-F0-9]{32}$/.test(value.md5)) return undefined;
-    return `${value.md5.toLowerCase()}:${String(value.server_mtime ?? value.mtime ?? '')}:${size}`;
+    return `${String(value.fs_id ?? '')}:${value.md5.toLowerCase()}:${String(value.server_mtime ?? value.mtime ?? '')}:${size}`;
   }
   private fingerprint(object: RemoteObject): string | undefined {
     return object.id && object.etag ? `${object.id}:${object.etag}:${object.size}` : undefined;
@@ -116,6 +117,54 @@ export class BaiduProvider implements CloudStorageProvider {
     return { objects, complete: objects.length < 100, ...(objects.length === 100 ? { nextCursor: String(offset + 100) } : {}) };
   }
   async listAll(directory: string): Promise<RemoteObject[]> { return listAll(this, directory); }
+  private downloadUrl(value: unknown): string {
+    if (typeof value !== 'string') throw new VaultSailError('response', '下载地址缺失。');
+    let link: URL; try { link = new URL(value); } catch { throw new VaultSailError('response', '下载地址无效。'); }
+    if (link.protocol !== 'https:' || link.username || link.password || !['baidu.com', 'baidupcs.com'].some(host => link.hostname === host || link.hostname.endsWith('.' + host))) throw new VaultSailError('response', '下载地址不属于百度官方 HTTPS 服务。');
+    return link.toString();
+  }
+  private async metadata(files: RemoteObject[]): Promise<RemoteObject[]> {
+    if (!files.length || files.length > 100 || files.some(file => file.isDirectory || !file.id) || new Set(files.map(file => file.id)).size !== files.length)
+      throw new VaultSailError('response', '批量元数据请求无效。');
+    const response = await this.retry(() => this.api(XPAN + 'multimedia', { method: 'filemetas', fsids: '[' + files.map(file => file.id).join(',') + ']', dlink: '1' }));
+    if (!Array.isArray(response.list) || response.list.length !== files.length) throw new VaultSailError('response', '下载元数据不完整。');
+    const byId = new Map<string, Record<string, unknown>>();
+    for (const raw of response.list) {
+      const entry = record(raw); const id = typeof entry.fs_id === 'string' && /^\d+$/.test(entry.fs_id) ? entry.fs_id
+        : typeof entry.fs_id === 'number' && Number.isSafeInteger(entry.fs_id) ? String(entry.fs_id) : undefined;
+      if (!id || byId.has(id)) throw new VaultSailError('response', '元数据包含无效或重复文件标识。');
+      byId.set(id, entry);
+    }
+    // Validate the complete batch before publishing any cache entries.
+    const verified = files.map(file => {
+      const entry = byId.get(file.id!);
+      if (!entry || typeof entry.size !== 'number') throw new VaultSailError('response', '下载大小元数据缺失。');
+      checkSize(entry.size);
+      if (!entry || entry.path !== this.absolute(file.path) || entry.size !== file.size || (entry.isdir !== undefined && entry.isdir !== 0)) throw new VaultSailError('response', '下载元数据与目标文件不一致。');
+      checkSize(file.size);
+      const inspectedTag = this.etag(entry, file.size);
+      const prefix = typeof entry.md5 === 'string' ? `${file.id}:${entry.md5.toLowerCase()}:` : undefined;
+      const etag = prefix && file.etag?.startsWith(prefix) ? file.etag : inspectedTag ?? file.etag;
+      return { file: { ...file, etag }, url: this.downloadUrl(entry.dlink) };
+    });
+    this.guard();
+    for (const { file, url } of verified) {
+      this.objects.set(file.path, file);
+      // A short lifetime, scoped to this provider/connection, avoids persisting
+      // token-bearing links and lets cold scans share a batch's download links.
+      this.downloadLinks.set(file.path, { id: file.id!, size: file.size, etag: file.etag, url, expiresAt: Date.now() + 60_000 });
+    }
+    return verified.map(entry => entry.file);
+  }
+  async inspect(objects: RemoteObject[]): Promise<RemoteObject[]> {
+    const result = objects.map(object => ({ ...object }));
+    const missing = result.flatMap((file, index) => !file.isDirectory && file.etag === undefined ? [{ file, index }] : []);
+    for (let start = 0; start < missing.length; start += 100) {
+      const batch = missing.slice(start, start + 100), inspected = await this.metadata(batch.map(row => row.file));
+      batch.forEach((row, index) => { result[row.index] = inspected[index]; });
+    }
+    return result;
+  }
   private async lookup(directory: string, fresh: boolean): Promise<RemoteObject[]> {
     // Share only overlapping ordinary lookups, never retain an absence cache.
     // Recovery/uncertain-write verification must start a new server listing.
@@ -169,17 +218,17 @@ export class BaiduProvider implements CloudStorageProvider {
       const file = await this.find(path);
       if (!file || file.isDirectory || !file.id) throw new VaultSailError('not-found', '远端内容对象不存在。');
       checkSize(file.size);
-      const metadata = await this.api(XPAN + 'multimedia', { method: 'filemetas', fsids: '[' + file.id + ']', dlink: '1' });
-      if (!Array.isArray(metadata.list) || metadata.list.length !== 1) throw new VaultSailError('response', '下载元数据不完整。');
-      const entry = record(metadata.list[0]);
-      if (typeof entry.size !== 'number') throw new VaultSailError('response', '下载大小元数据缺失。');
-      checkSize(entry.size);
-      if (entry.path !== this.absolute(path) || String(entry.fs_id) !== file.id || entry.size !== file.size || typeof entry.dlink !== 'string') throw new VaultSailError('response', '下载元数据与目标文件不一致。');
-      const link = new URL(entry.dlink);
-      if (link.protocol !== 'https:' || link.username || link.password || !['baidu.com', 'baidupcs.com'].some(host => link.hostname === host || link.hostname.endsWith('.' + host))) throw new VaultSailError('response', '下载地址不属于百度官方 HTTPS 服务。');
+      let cached = this.downloadLinks.get(path);
+      if (!cached || cached.id !== file.id || cached.size !== file.size || cached.etag !== file.etag || cached.expiresAt <= Date.now()) {
+        await this.metadata([file]); cached = this.downloadLinks.get(path)!;
+      }
+      const link = new URL(cached.url);
+      this.downloadLinks.delete(path);
       this.guard(); link.searchParams.set('access_token', await this.auth.accessToken()); this.guard();
-      const response = await request(this.transport, { url: link.toString(), headers: { 'User-Agent': 'pan.baidu.com' } }, false,
-        { timeoutMs: this.requestPolicy.transferTimeoutMs ?? 120_000, signal: this.requestPolicy.signal });
+      let response;
+      try { response = await request(this.transport, { url: link.toString(), headers: { 'User-Agent': 'pan.baidu.com' } }, false,
+        { timeoutMs: this.requestPolicy.transferTimeoutMs ?? 120_000, signal: this.requestPolicy.signal }); }
+      catch (error) { this.downloadLinks.delete(path); throw error; }
       this.guard(); if (response.bytes.byteLength !== file.size) throw new VaultSailError('integrity', '下载长度校验失败，未应用文件。');
       return response.bytes;
     });
