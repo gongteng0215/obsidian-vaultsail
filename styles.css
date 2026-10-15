@@ -34,7 +34,7 @@
 .vaultsail-tab[aria-selected=true] span { color: var(--vs-accent); opacity: 1; }
 .vaultsail-connect-grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 18px; align-items: start; }
 .vaultsail-card { padding: 22px; border: 1px solid var(--background-modifier-border); border-radius: 13px; background: var(--background-primary); margin-bottom: 18px; }
-.vaultsail-workspace .vaultsail-card .vaultsail-card-heading { padding: 0; margin: 8px 0; border: 0; }
+.vaultsail-workspace .vaultsail-card .setting-item.vaultsail-card-heading { padding: 0; margin: 8px 0; border: 0; }
 .vaultsail-workspace .vaultsail-card-heading .setting-item-name { font-size: 17px; font-weight: 600; }
 .vaultsail-card-intro { color: var(--text-muted); margin: 0 0 18px; line-height: 1.65; font-size: 12px; }
 .vaultsail-workspace .vaultsail-card .setting-item { display: block; padding: 14px 0; border: 0; border-top: 1px solid var(--background-modifier-border); background: transparent; border-radius: 0; }
