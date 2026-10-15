@@ -1,4 +1,6 @@
-# 0.1.17：迁移账号连接，每个 Vault 独立选库
+# 迁移账号连接，每个 Vault 独立选库
+
+当前完整操作说明见 [中文 README](../README.zh-CN.md#电脑ipad-与其他-vault-配对) / [English README](../README.md#pair-a-computer-ipad-or-another-vault)。两端建议使用 0.2.0；下文的 0.1.x 版本号用于说明配对格式及历史修复的兼容边界。
 
 默认加密导出自己的 AppKey、SecretKey、访问令牌、刷新令牌、到期时间、应用目录及账号指纹；不包含云端库 ID、名称或笔记。导入后复用百度连接，当前 Vault 单独创建或选择云端库。
 
