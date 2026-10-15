@@ -11,6 +11,7 @@ import { CloudVaultSetupModal, PlanModal } from './ui/modals';
 import { CONFIG_EXPORT_DIRECTORY, exportPortableConfig, parsePortableConfig } from './portable-config';
 import { ConfigExportModal, ConfigImportModal } from './ui/config-modals';
 import { formatBytes, type SyncProgress } from './sync/progress';
+import { decryptPairing, encryptPairing, isEncryptedPairing, PAIRING_LIFETIME_MS, validateAuthorizedPairing, validatePairingCode, type AuthorizedPairing } from './encrypted-pairing';
 
 export default class VaultSailPlugin extends Plugin {
   settings: VaultSailSettings = { ...DEFAULT_SETTINGS };
@@ -35,8 +36,7 @@ export default class VaultSailPlugin extends Plugin {
     await this.loadSettings();
     if (!requireApiVersion('1.11.4') || !this.app.secretStorage) { new Notice('VaultSail 需要 Obsidian 1.11.4 或更新版本。'); return; }
     this.deviceId = deviceIdentity(this.app); this.local = new ObsidianLocalFiles(this.app, this.deviceId);
-    this.auth = new AuthManager(obsidianTransport, new ObsidianCredentials(this.app), () => ({ appKey: this.settings.appKey,
-      secretRef: this.settings.secretRef, sessionRef: 'vaultsail-session-' + this.deviceId }));
+    this.auth = this.makeAuth();
     this.settingTab = new VaultSailSettingTab(this.app, this); this.addSettingTab(this.settingTab);
 
     this.addCommand({
@@ -78,6 +78,14 @@ export default class VaultSailPlugin extends Plugin {
     else if (!this.progressTimer) this.progressTimer = setInterval(notify, 1000);
   }
   refreshUI(): void { if (this.alive && this.settingTab?.containerEl.isConnected) this.settingTab.display(); }
+  private sessionReference(): string {
+    const own = 'vaultsail-session-' + this.deviceId; const ref = this.settings.sessionRef;
+    return ref === own || ref?.startsWith(own + '-') ? ref : own;
+  }
+  private makeAuth(): AuthManager {
+    return new AuthManager(obsidianTransport, new ObsidianCredentials(this.app), () => ({ appKey: this.settings.appKey,
+      secretRef: this.settings.secretRef, sessionRef: this.sessionReference() }));
+  }
   async run(label: string, action: () => Promise<void>): Promise<void> {
     if (this.busy) { new Notice('已有操作在运行，请先暂停或等待结束。'); return; }
     this.busy = true; this.statusText = label; this.refreshUI();
@@ -249,18 +257,43 @@ export default class VaultSailPlugin extends Plugin {
     modal.open();
   }
   openConfigExport(): void {
-    try { const text = exportPortableConfig(this.settings); new ConfigExportModal(this.app, text, () => this.saveConfigExport(text)).open(); }
-    catch (error) { new Notice(safeMessage(error)); }
+    new ConfigExportModal(this.app, password => this.exportAuthorizedConfiguration(password), text => this.saveConfigExport(text)).open();
   }
-  openConfigImport(): void { new ConfigImportModal(this.app, text => this.importConfiguration(text)).open(); }
+  openConfigImport(): void { new ConfigImportModal(this.app, (text, password) => this.importConfiguration(text, password)).open(); }
+  async exportAuthorizedConfiguration(password: string): Promise<string> {
+    if (this.busy) throw new VaultSailError('busy', '请等待当前操作完成，再生成配对码。');
+    this.busy = true; const generation = this.generation; this.refreshUI();
+    try {
+      const { binding } = await this.boundProvider(); const credentials = this.auth.exportCredentials(); const now = Date.now();
+      const code = await encryptPairing({ format: 'vaultsail-authorized', version: 1, createdAt: now, expiresAt: now + PAIRING_LIFETIME_MS,
+        config: parsePortableConfig(exportPortableConfig(this.settings)), accountHash: binding.accountHash, ...credentials }, password);
+      if (!this.alive || generation !== this.generation) throw new VaultSailError('cancelled', '连接已变更，请重新生成配对码。');
+      return code;
+    } finally { this.busy = false; this.refreshUI(); }
+  }
   private async saveConfigExport(text: string): Promise<string> {
-    parsePortableConfig(text);
+    validatePairingCode(text); // Only ciphertext may be written to the vault.
     const stat = await this.app.vault.adapter.stat(CONFIG_EXPORT_DIRECTORY);
     if (stat && stat.type !== 'folder') throw new VaultSailError('collision', '配置导出目录被同名文件占用。');
     if (!stat) await this.app.vault.createFolder(CONFIG_EXPORT_DIRECTORY);
-    const path = CONFIG_EXPORT_DIRECTORY + '/vaultsail-配对-' + uuid() + '.json'; await this.app.vault.createBinary(path, bytes(text)); return path;
+    const path = CONFIG_EXPORT_DIRECTORY + '/vaultsail-配对-' + uuid() + '.vaultsail'; await this.app.vault.createBinary(path, bytes(text)); return path;
   }
-  async importConfiguration(text: string): Promise<void> {
+  // A staged provider never reads or changes the currently connected account.
+  pairingProvider(root: string, auth: AuthManager, active: () => boolean): BaiduProvider {
+    return new BaiduProvider(root, obsidianTransport, auth, active);
+  }
+  async importConfiguration(text: string, password?: string): Promise<void> {
+    if (isEncryptedPairing(text)) {
+      if (this.busy) throw new VaultSailError('busy', '请等待当前操作完成，再导入配对码。');
+      this.busy = true; const generation = this.generation; this.refreshUI();
+      try { await this.applyAuthorizedPairing(await decryptPairing(text, password ?? ''), generation); }
+      catch (error) {
+        if (this.alive && generation === this.generation) { this.statusText = safeMessage(error); this.lastErrorCode = error instanceof VaultSailError ? error.code : 'unknown'; }
+        throw error;
+      }
+      finally { this.busy = false; this.refreshUI(); }
+      return;
+    }
     const config = parsePortableConfig(text); // Validate everything before touching authorization or stored settings.
     if (this.busy) throw new VaultSailError('busy', '请先完成或暂停当前操作，再导入配置。');
     this.busy = true;
@@ -270,6 +303,64 @@ export default class VaultSailPlugin extends Plugin {
         pendingVaultName: config.remoteVault?.displayName, experimentalSync: false, deletionEnabled: false });
       this.progress = undefined; this.lastErrorCode = undefined; this.statusText = '配置已导入。请在本设备保存 SecretKey、独立授权，然后验证并绑定导入的云端库。';
     } finally { this.busy = false; this.refreshUI(); }
+  }
+  private async applyAuthorizedPairing(value: AuthorizedPairing, generation: number): Promise<void> {
+    const payload = validateAuthorizedPairing(value); const config = payload.config;
+    const active = () => this.alive && generation === this.generation;
+    const guard = () => { if (!active()) throw new VaultSailError('cancelled', '配置已变更或插件已关闭，本次导入已停止。'); };
+    guard(); this.statusText = '正在验证导入的百度连接与云端库…'; this.refreshUI();
+    const secretRef = 'vaultsail-app-secret-' + this.deviceId + '-' + uuid();
+    const sessionRef = 'vaultsail-session-' + this.deviceId + '-' + uuid();
+    const staged = new Map<string, string>([[secretRef, payload.secretKey]]);
+    const auth = new AuthManager(obsidianTransport, { get: id => staged.get(id) ?? null, set: (id, data) => { staged.set(id, data); }, remove: id => { staged.delete(id); } },
+      () => ({ appKey: config.appKey, secretRef, sessionRef }));
+    try {
+      auth.restoreSession(payload.session);
+      const provider = this.pairingProvider(config.appDirectory, auth, active);
+      const profile = await provider.profile(); guard(); const accountHash = hash(bytes(profile.accountId));
+      if (accountHash !== payload.accountHash) throw new VaultSailError('binding', '配对码的账号与实际百度账号不一致，未替换原连接。');
+      const vault = await new RemoteVaultStore(provider).get(config.remoteVault!.id); guard();
+      await provider.listAll(''); guard();
+      // This device performs its own small roundtrip, never imports another device's test result.
+      this.statusText = '正在自动检查本设备的文件传输权限…'; this.refreshUI();
+      const probe = new Uint8Array(1024); crypto.getRandomValues(probe);
+      const probePath = 'vaultsail-probes/' + uuid() + '/pairing.bin';
+      await provider.writeImmutable(probePath, probe.buffer); guard();
+      const received = await provider.read(probePath); guard();
+      if (hash(received) !== hash(probe.buffer)) throw new VaultSailError('integrity', '导入连接的文件校验未通过，原连接已保留。');
+      const next: VaultSailSettings = { ...DEFAULT_SETTINGS, providerId: 'baidu', appKey: config.appKey, appDirectory: provider.root,
+        secretRef, sessionRef, remoteVaultId: vault.vaultId,
+        binding: { vaultId: vault.vaultId, displayName: vault.displayName, appKey: config.appKey, root: provider.root, accountHash } };
+      const credentials = new ObsidianCredentials(this.app); const previous = this.settings;
+      const oldAuth = this.auth; const oldSessionRef = this.sessionReference();
+      let attemptedSave = false;
+      try {
+        guard(); credentials.set(secretRef, staged.get(secretRef)!); credentials.set(sessionRef, staged.get(sessionRef)!);
+        if (credentials.get(secretRef) !== staged.get(secretRef) || credentials.get(sessionRef) !== staged.get(sessionRef))
+          throw new VaultSailError('credentials', '本设备密钥存储未成功，原连接已保留。');
+        guard();
+        validateAuthorizedPairing(payload); attemptedSave = true; await this.saveData(next); guard();
+        const key = 'vaultsail-validation-' + hash(bytes(next.appKey + '|' + next.appDirectory + '|' + accountHash));
+        this.app.saveLocalStorage(key, { passed: true, checkedAt: Date.now(), source: 'pairing-local-probe', results: [{ size: 1024, passed: true }], quota: '未验证' });
+        guard(); this.engine?.pause(); oldAuth.cancel(); this.generation++; this.engine = undefined;
+        this.settings = next; this.auth = this.makeAuth(); this.deviceSession = undefined; this.authPhase = 'idle';
+        this.progress = undefined; this.lastErrorCode = undefined; this.statusText = '配对成功，已连接并绑定云端库：' + vault.displayName + '。可以直接同步，无需再次网页登录。';
+      } catch (error) {
+        // New credential references make rollback possible without overwriting the old session.
+        if (attemptedSave) {
+          try { await this.saveData(previous); }
+          catch { throw new VaultSailError('state', '导入保存失败，旧配置恢复未完成。两份凭据均已保留，请重新加载插件后检查连接。'); }
+        }
+        try { credentials.remove(secretRef); credentials.remove(sessionRef); } catch { /* Old credential references remain intact. */ }
+        throw error;
+      }
+      // Delete only credentials owned by this device's plugin, never a user-selected shared secret.
+      try {
+        credentials.remove(oldSessionRef);
+        if (previous.secretRef.startsWith('vaultsail-app-secret-' + this.deviceId) && previous.secretRef !== secretRef) credentials.remove(previous.secretRef);
+      } catch { /* Successful migration must not be undone by obsolete credential cleanup. */ }
+      new Notice(this.statusText, 9000);
+    } finally { auth.cancel(); staged.clear(); }
   }
   async recover(): Promise<void> { await (await this.getEngine()).recover(); }
   async abandonPending(): Promise<void> { await (await this.getEngine()).abandonPending(); }
@@ -287,7 +378,8 @@ export default class VaultSailPlugin extends Plugin {
     const checked = b ? this.app.loadLocalStorage(this.validationKey(b.accountHash)) : null;
     return JSON.stringify({ pluginVersion: this.manifest.version, authorized: this.auth.status() === 'connected', bound: Boolean(this.settings.binding),
       experimentalSync: this.settings.experimentalSync, deletionEnabled: this.settings.deletionEnabled,
-      lastErrorCode: this.lastErrorCode ?? null, localRoundtrip: checked ? { passed: checked.passed === true, checkedAt: checked.checkedAt, results: checked.results, quota: checked.quota } : null,
+      lastErrorCode: this.lastErrorCode ?? null, localRoundtrip: checked ? { passed: checked.passed === true, checkedAt: checked.checkedAt,
+        source: checked.source === 'pairing-local-probe' ? 'pairing-local-probe' : 'full-roundtrip', results: checked.results, quota: checked.quota } : null,
       lastTransfer: this.lastSuccess() ?? null,
       realDeviceValidation: '用户在本设备完成；开发者未验证真实账号或 iPad', maxFileMiB: 20 }, null, 2);
   }

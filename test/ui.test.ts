@@ -57,6 +57,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   assert.equal(document.body.innerHTML.includes('private-access'), false); assert.equal(JSON.stringify(plugin.saved).includes('private-refresh'), false);
   const originalProvider = plugin.provider; const remoteObjects = new Map<string, ArrayBuffer>(); let providerCalls = 0;
   const fakeProvider = { root: '/apps/test', profile: async () => ({ accountId: '1234', label: 'test' }),
+    listAll: async () => [],
     mkdir: async () => {}, writeImmutable: async (key: string, data: ArrayBuffer) => { remoteObjects.set(key, data.slice(0)); },
     read: async (key: string) => { assert.ok(remoteObjects.has(key)); return remoteObjects.get(key)!.slice(0); },
     exists: async () => true,
@@ -131,14 +132,26 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   plugin.settings.binding = { vaultId: existingId, appKey: plugin.settings.appKey, root: '/apps/test', accountHash: hash(new TextEncoder().encode('1234').buffer), displayName: '测试笔记库' };
   plugin.settings.remoteVaultId = existingId; plugin.provider = () => fakeProvider; plugin.tabs[0].display();
   assert.ok(document.body.textContent!.includes('我的应用数据/test/vaultsail/vaults/' + existingId));
-  findButton('导出配对配置').click();
-  const exported = (document.querySelector('textarea[aria-label="可复制的配对配置"]') as HTMLTextAreaElement).value;
+  const { exportPortableConfig } = await import('../src/portable-config.ts');
+  const exported = exportPortableConfig(plugin.settings);
   assert.equal(JSON.parse(exported).remoteVault.id, existingId); assert.equal(exported.includes(plugin.settings.secretRef), false);
   for (const secret of ['replacement-private-secret', 'private-access', 'private-refresh']) assert.equal(exported.includes(secret), false);
-  findButton('保存配置文件到库').click();
+  plugin.auth.restoreSession({ accessToken: 'private-access', refreshToken: 'private-refresh', expiresAt: Date.now() + 3600000 });
+  findButton('导出配对配置').click();
+  const pairingPassword = 'test-pairing-password';
+  const enter = (label: string, text: string) => { const input = document.querySelector('input[aria-label="' + label + '"]') as HTMLInputElement; input.value = text; input.dispatchEvent(new window.Event('input')); };
+  const until = async (condition: () => boolean) => { for (let i = 0; i < 300 && !condition(); i++) await new Promise(resolve => setTimeout(resolve, 10)); assert.ok(condition(), 'async operation must complete'); };
+  enter('设置配对密码', pairingPassword); enter('确认配对密码', 'different-password'); findButton('生成加密配对码').click();
+  assert.ok(document.body.textContent!.includes('两次输入的密码不一致'));
+  enter('确认配对密码', pairingPassword); findButton('生成加密配对码').click();
+  const codeInput = document.querySelector('textarea[aria-label="加密配对码"]') as HTMLTextAreaElement;
+  await until(() => codeInput.value.startsWith('VSAIL:1:')); const encrypted = codeInput.value;
+  for (const secret of ['replacement-private-secret', 'private-access', 'private-refresh', pairingPassword]) assert.equal(encrypted.includes(secret), false);
+  findButton('保存加密文件到库').click();
   for (let i = 0; i < 100 && ![...files.keys()].some(p => p.startsWith('VaultSail-配置/')); i++) await Promise.resolve();
   const exportPath = [...files.keys()].find(p => p.startsWith('VaultSail-配置/'))!; assert.ok(exportPath);
-  assert.equal(new TextDecoder().decode(files.get(exportPath)!), exported);
+  assert.ok(exportPath.endsWith('.vaultsail')); assert.equal(new TextDecoder().decode(files.get(exportPath)!), encrypted);
+  setupButton('关闭').click();
   const sourceSnapshot = JSON.stringify(plugin.saved); await assert.rejects(plugin.importConfiguration('{"access_token":"private"}'), { code: 'configuration' });
   assert.equal(JSON.stringify(plugin.saved), sourceSnapshot);
   const ipadStorage = new Map<string, unknown>(); const ipadApp = { ...app, loadLocalStorage: (key: string) => ipadStorage.get(key) ?? null,
@@ -161,7 +174,39 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   await ipad.run('connect', () => ipad.connect()); assert.equal(ipad.auth.status(), 'connected'); ipad.provider = () => fakeProvider;
   await ipad.bind(ipad.settings.remoteVaultId); assert.equal(ipad.settings.binding.vaultId, existingId);
   await ipad.run('preview', () => ipad.preview('download')); assert.match(ipad.statusText, /文件往返测试/);
-  assert.equal(ipad.lastSuccess(), undefined); ipad.onunload(); ipad.tabs[0].containerEl.remove();
+  assert.equal(ipad.lastSuccess(), undefined);
+  const beforeImport = JSON.stringify(ipad.saved); const beforeSecret = secretMap.get(ipad.settings.secretRef); const oldSessionRef = 'vaultsail-session-' + ipad.deviceId;
+  await assert.rejects(ipad.importConfiguration(encrypted, 'incorrect-password'), { code: 'decrypt' }); assert.equal(JSON.stringify(ipad.saved), beforeImport); assert.equal(ipad.auth.status(), 'connected');
+  ipad.pairingProvider = () => ({ ...fakeProvider, profile: async () => ({ accountId: 'other-account' }) });
+  await assert.rejects(ipad.importConfiguration(encrypted, pairingPassword), { code: 'binding' }); assert.equal(JSON.stringify(ipad.saved), beforeImport);
+  ipad.pairingProvider = () => ({ ...fakeProvider, read: async (p: string) => p.endsWith('pairing.bin') ? new ArrayBuffer(0) : fakeProvider.read(p) });
+  await assert.rejects(ipad.importConfiguration(encrypted, pairingPassword), { code: 'integrity' }); assert.equal(JSON.stringify(ipad.saved), beforeImport);
+  ipad.pairingProvider = (_root: string, auth: any) => ({ ...fakeProvider, profile: async () => { assert.equal(await auth.accessToken(), 'private-access'); return fakeProvider.profile(); } });
+  const originalSave = ipad.saveData.bind(ipad); let failSave = true;
+  ipad.saveData = async (value: unknown) => { await originalSave(value); if (failSave) { failSave = false; throw new Error('simulated partial disk failure'); } };
+  await assert.rejects(ipad.importConfiguration(encrypted, pairingPassword)); assert.equal(JSON.stringify(ipad.saved), beforeImport);
+  assert.equal(secretMap.get(ipad.settings.secretRef), beforeSecret); assert.ok(secretMap.get(oldSessionRef)); assert.equal(ipad.auth.status(), 'connected');
+  ipad.saveData = originalSave;
+  const browserCalls = openedUrls.length;
+  setupButton('导入配对配置').click();
+  const encryptedFile = [...document.querySelectorAll('input[aria-label="选择配对配置文件"]')].at(-1)! as HTMLInputElement;
+  Object.defineProperty(encryptedFile, 'files', { value: [{ size: encrypted.length, text: async () => encrypted }], configurable: true }); encryptedFile.dispatchEvent(new window.Event('change'));
+  await until(() => ([...document.querySelectorAll('textarea[aria-label="粘贴配对配置"]')].at(-1) as HTMLTextAreaElement).value === encrypted);
+  enter('输入配对密码', pairingPassword); setupButton('检查并导入').click(); await until(() => document.body.textContent!.includes('上传下载 1 KB'));
+  setupButton('确认').click(); await until(() => !!ipad.settings.sessionRef && !ipad.busy);
+  assert.equal(ipad.auth.status(), 'connected'); assert.equal(ipad.settings.binding.vaultId, existingId); assert.notEqual(ipad.settings.secretRef, plugin.settings.secretRef);
+  assert.notEqual(ipad.deviceId, plugin.deviceId); assert.equal(openedUrls.length, browserCalls); assert.equal(ipad.settings.deletionEnabled, false);
+  for (const secret of ['replacement-private-secret', 'private-access', 'private-refresh', pairingPassword]) assert.equal(JSON.stringify(ipad.saved).includes(secret), false);
+  assert.equal(ipad.auth.exportCredentials().session.accessToken, 'private-access'); assert.equal(plugin.auth.status(), 'connected');
+  await ipad.run('preview', () => ipad.preview('download')); assert.equal(ipad.progress?.phase, 'preview-ready', 'successful pairing automatically verifies this device for transfer');
+  const restarted = new module.Plugin(ipadApp); restarted.saved = ipad.saved; await restarted.onload(); assert.equal(restarted.auth.status(), 'connected');
+  assert.equal(restarted.deviceId, ipad.deviceId); assert.equal(restarted.auth.exportCredentials().session.accessToken, 'private-access'); restarted.onunload(); restarted.tabs[0].containerEl.remove();
+  const copiedStorage = new Map<string, unknown>(); const copiedApp = { ...app, loadLocalStorage: (key: string) => copiedStorage.get(key) ?? null,
+    saveLocalStorage: (key: string, value: unknown) => { copiedStorage.set(key, value); } };
+  const copied = new module.Plugin(copiedApp); copied.saved = ipad.saved; await copied.onload();
+  assert.notEqual(copied.deviceId, ipad.deviceId); assert.equal(copied.auth.status(), 'disconnected', 'copying settings must not reuse another device session reference');
+  assert.equal(ipad.auth.status(), 'connected'); copied.onunload(); copied.tabs[0].containerEl.remove();
+  ipad.onunload(); ipad.tabs[0].containerEl.remove();
   // Execute a real engine plan through its UI and check progress plus local success metadata.
   localMap.set('vaultsail-validation-' + hash(new TextEncoder().encode(plugin.settings.appKey + '|' + plugin.settings.appDirectory + '|' + plugin.settings.binding.accountHash).buffer), { passed: true });
   plugin.tabs[0].display(); await plugin.run('preview', () => plugin.preview('upload'));

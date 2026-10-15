@@ -3,6 +3,14 @@ import { request, urlWith, type HttpTransport } from '../providers/http.ts';
 
 export interface CredentialStore { get(id: string): string | null; set(id: string, value: string): void; remove(id: string): void; }
 export interface AuthConfig { appKey: string; secretRef: string; sessionRef: string; }
+export interface AuthSession { accessToken: string; refreshToken: string; expiresAt: number; }
+export function validateAuthSession(value: unknown): AuthSession {
+  const v = record(value);
+  if (Object.keys(v).some(key => !['accessToken', 'refreshToken', 'expiresAt'].includes(key))
+    || !['accessToken', 'refreshToken'].every(key => typeof v[key] === 'string' && (v[key] as string).length > 0 && (v[key] as string).length <= 4096 && !/\s/.test(v[key] as string))
+    || !Number.isSafeInteger(v.expiresAt) || (v.expiresAt as number) <= 0) throw new VaultSailError('configuration', '迁移授权信息无效，请重新导出。');
+  return { accessToken: v.accessToken as string, refreshToken: v.refreshToken as string, expiresAt: v.expiresAt as number };
+}
 interface TokenSet { appKey: string; secretRef: string; accessToken: string; refreshToken: string; expiresAt: number; }
 export interface DeviceSession { userCode: string; verificationUrl: string; expiresAt: number; }
 export type AuthStatus = 'unconfigured' | 'disconnected' | 'pending' | 'connected' | 'reauthorize';
@@ -83,6 +91,16 @@ export class AuthManager {
     if (cfg.secretRef !== cfg.sessionRef) this.store.remove(cfg.sessionRef);
     this.fallbackAllowed = false;
   }
+  exportCredentials(): { secretKey: string; session: AuthSession } {
+    const { secret } = this.credentials(); const tokens = this.token();
+    if (!tokens || this.status() !== 'connected') throw new VaultSailError('authentication', '请先在电脑完成连接，再导出加密配对码。');
+    return { secretKey: secret, session: validateAuthSession({ accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, expiresAt: tokens.expiresAt }) };
+  }
+  restoreSession(value: AuthSession): void {
+    const session = validateAuthSession(value); const { cfg } = this.credentials();
+    this.cancel(); this.store.set(cfg.sessionRef, JSON.stringify({ ...session, appKey: cfg.appKey, secretRef: cfg.secretRef }));
+    this.statusValue = 'connected'; this.fallbackAllowed = false;
+  }
   async connect(onDevice: (session: DeviceSession) => void): Promise<void> {
     const { cfg, secret } = this.credentials();
     this.disconnect(); this.fallbackAllowed = false; const generation = this.generation;
@@ -138,7 +156,13 @@ export class AuthManager {
     const task = (async () => {
       try { return this.save(await this.oauth('token', { grant_type: 'refresh_token', refresh_token: current.refreshToken,
         client_id: cfg.appKey, client_secret: secret }), cfg, generation); }
-      catch (error) { if (generation === this.generation) { this.statusValue = 'reauthorize'; this.store.remove(cfg.sessionRef); } throw error; }
+      catch (error) {
+        // A transient network failure must not destroy a portable, still-refreshable session.
+        if (generation === this.generation && error instanceof VaultSailError && ['invalid_grant', 'access_denied', 'invalid_client'].includes(error.code)) {
+          this.statusValue = 'reauthorize'; if (error.code === 'invalid_grant') this.store.remove(cfg.sessionRef);
+        }
+        throw error;
+      }
       finally { if (generation === this.generation) this.refreshTask = undefined; }
     })();
     this.refreshTask = task; return task;

@@ -95,3 +95,17 @@ test('missing AppKey, missing reference and empty secret have distinct actionabl
   config.secretRef = 'own-secret'; map.set(config.secretRef, ''); assert.match(auth.configurationIssue()!, /存储项为空/);
   map.set(config.secretRef, 'saved-secret'); assert.equal(auth.configurationIssue(), null);
 });
+
+test('imported authorization remaps local references and refreshes without device/code requests; transient refresh failures retain session', async () => {
+  const requests: string[] = []; let fail = true;
+  const { auth, map, config } = setup(async request => {
+    requests.push(request.url); if (fail) throw new Error('secret network detail');
+    return response({ ...tokens, access_token: 'imported-refreshed' });
+  });
+  auth.restoreSession({ accessToken: 'imported-access', refreshToken: 'imported-refresh', expiresAt: 1 });
+  await assert.rejects(auth.accessToken(), { code: 'network' }); assert.ok(map.has(config.sessionRef)); assert.equal(auth.status(), 'connected');
+  fail = false; assert.equal(await auth.accessToken(), 'imported-refreshed'); assert.ok(requests.every(url => url.includes('grant_type=refresh_token')));
+  const exported = auth.exportCredentials(); assert.equal(exported.secretKey, 'private-secret'); assert.equal(exported.session.accessToken, 'imported-refreshed');
+  assert.equal('secretRef' in exported.session, false); assert.equal('sessionRef' in exported.session, false);
+  const before = map.get(config.sessionRef); assert.throws(() => auth.restoreSession({ accessToken: '', refreshToken: 'x', expiresAt: 1 })); assert.equal(map.get(config.sessionRef), before);
+});

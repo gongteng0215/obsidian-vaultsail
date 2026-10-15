@@ -61,5 +61,10 @@
 .vaultsail-progress-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
 .vaultsail-progress-meter { width: 100%; height: 8px; accent-color: #43b6ad; }
 .vaultsail-config-text { display: block; width: 100%; resize: vertical; font-family: var(--font-monospace); margin: 12px 0; }
+.vaultsail-pairing label { display: block; margin: 14px 0; font-size: 13px; }
+.vaultsail-pairing input[type=password] { display: block; width: 100%; min-height: 38px; margin: 8px 0; }
+.vaultsail-pairing p { line-height: 1.65; overflow-wrap: anywhere; }
+.vaultsail-pairing textarea { overflow-wrap: anywhere; word-break: break-all; }
+.vaultsail-pairing button.mod-cta { background: #25897f; color: #fff; }
 .vaultsail-file-row { padding: 12px 0; border-bottom: 1px solid var(--background-modifier-border); }
 .vaultsail-file-row code { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
