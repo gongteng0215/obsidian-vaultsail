@@ -28,12 +28,12 @@ export function parsePortableConfig(text: string): PortableConfig {
   }
   return result;
 }
-export function exportPortableConfig(settings: VaultSailSettings): string {
+export function exportPortableConfig(settings: VaultSailSettings, includeVault = false): string {
   if (settings.providerId !== 'baidu') throw new VaultSailError('configuration', '请先配置百度应用，再导出配对配置。');
   const b = settings.binding;
   const remoteVault = b && b.appKey === settings.appKey && b.root === appRoot(settings.appDirectory)
     ? { id: b.vaultId, displayName: b.displayName }
     : validId(settings.remoteVaultId) ? { id: settings.remoteVaultId, displayName: settings.pendingVaultName ?? '' } : undefined;
   return JSON.stringify(parsePortableConfig(JSON.stringify({ format: 'vaultsail-pairing', version: 1, provider: 'baidu', appKey: settings.appKey,
-    appDirectory: settings.appDirectory, ...(remoteVault ? { remoteVault } : {}) })), null, 2);
+    appDirectory: settings.appDirectory, ...(includeVault && remoteVault ? { remoteVault } : {}) })), null, 2);
 }

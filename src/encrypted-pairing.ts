@@ -11,6 +11,7 @@ export interface AuthorizedPairing {
   format: 'vaultsail-authorized'; version: 1; createdAt: number; expiresAt: number;
   config: PortableConfig; accountHash: string; secretKey: string; session: AuthSession;
 }
+export interface PairingImportOptions { bindRemoteVault?: boolean; report?: (message: string) => void; }
 const invalid = () => new VaultSailError('configuration', '加密配对码无效、已损坏或版本不支持，请重新导出。');
 function passwordBytes(password: string): Uint8Array {
   if (typeof password !== 'string' || [...password].length < 10 || password.length > 256 || !password.trim())
@@ -54,7 +55,7 @@ export function validateAuthorizedPairing(value: unknown, now = Date.now()): Aut
     || typeof v.accountHash !== 'string' || !/^[a-f0-9]{64}$/.test(v.accountHash)
     || typeof v.secretKey !== 'string' || !v.secretKey || v.secretKey.length > 4096 || /\s/.test(v.secretKey)) throw invalid();
   if ((v.expiresAt as number) <= now) throw new VaultSailError('expired-pairing', '配对码已超过 24 小时有效期，请在电脑重新导出。');
-  const config = parsePortableConfig(JSON.stringify(v.config)); if (!config.remoteVault) throw invalid();
+  const config = parsePortableConfig(JSON.stringify(v.config));
   return { format: 'vaultsail-authorized', version: 1, createdAt: v.createdAt as number, expiresAt: v.expiresAt as number,
     config, accountHash: v.accountHash, secretKey: v.secretKey, session: validateAuthSession(v.session) };
 }

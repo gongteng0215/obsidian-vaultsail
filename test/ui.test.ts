@@ -137,7 +137,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   plugin.settings.remoteVaultId = existingId; plugin.provider = () => fakeProvider; plugin.tabs[0].display();
   assert.ok(document.body.textContent!.includes('我的应用数据/test/vaultsail/vaults/' + existingId));
   const { exportPortableConfig } = await import('../src/portable-config.ts');
-  const exported = exportPortableConfig(plugin.settings);
+  const exported = exportPortableConfig(plugin.settings, true);
   assert.equal(JSON.parse(exported).remoteVault.id, existingId); assert.equal(exported.includes(plugin.settings.secretRef), false);
   for (const secret of ['replacement-private-secret', 'private-access', 'private-refresh']) assert.equal(exported.includes(secret), false);
   plugin.auth.restoreSession({ accessToken: 'private-access', refreshToken: 'private-refresh', expiresAt: Date.now() + 3600000 });
@@ -145,11 +145,23 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   const pairingPassword = 'test-pairing-password';
   const enter = (label: string, text: string) => { const input = document.querySelector('input[aria-label="' + label + '"]') as HTMLInputElement; input.value = text; input.dispatchEvent(new window.Event('input')); };
   const until = async (condition: () => boolean) => { for (let i = 0; i < 300 && !condition(); i++) await new Promise(resolve => setTimeout(resolve, 10)); assert.ok(condition(), 'async operation must complete'); };
+  const toggleSetting = (label: string, checked?: boolean) => {
+    const row = [...document.querySelectorAll('.setting-item')].filter(row => row.querySelector('label')?.textContent === label).at(-1)!;
+    const input = row.querySelector('input[type=checkbox]') as HTMLInputElement;
+    if (checked !== undefined) { input.checked = checked; input.dispatchEvent(new window.Event('change')); }
+    return input;
+  };
   enter('设置配对密码', pairingPassword); enter('确认配对密码', 'different-password'); findButton('生成加密配对码').click();
   assert.ok(document.body.textContent!.includes('两次输入的密码不一致'));
   enter('确认配对密码', pairingPassword); findButton('生成加密配对码').click();
   const codeInput = document.querySelector('textarea[aria-label="加密配对码"]') as HTMLTextAreaElement;
-  await until(() => codeInput.value.startsWith('VSAIL:1:')); const encrypted = codeInput.value;
+  await until(() => codeInput.value.startsWith('VSAIL:1:')); const accountOnlyCode = codeInput.value;
+  const { decryptPairing } = await import('../src/encrypted-pairing.ts');
+  assert.equal((await decryptPairing(accountOnlyCode, pairingPassword)).config.remoteVault, undefined);
+  assert.equal(toggleSetting('同时导出当前云端库').checked, false);
+  toggleSetting('同时导出当前云端库', true); assert.equal(codeInput.value, '', 'changing export scope invalidates the previous code');
+  findButton('生成加密配对码').click(); await until(() => codeInput.value.startsWith('VSAIL:1:'));
+  const encrypted = codeInput.value; assert.equal((await decryptPairing(encrypted, pairingPassword)).config.remoteVault!.id, existingId);
   for (const field of [codeInput, document.querySelector('input[aria-label="设置配对密码"]')!, document.querySelector('input[aria-label="确认配对密码"]')!]) {
     assert.equal(field.getAttribute('autocapitalize'), 'none'); assert.equal(field.getAttribute('autocorrect'), 'off'); assert.equal(field.getAttribute('spellcheck'), 'false');
   }
@@ -159,6 +171,12 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   const exportPath = [...files.keys()].find(p => p.startsWith('VaultSail-配置/'))!; assert.ok(exportPath);
   assert.ok(exportPath.endsWith('.vaultsail')); assert.equal(new TextDecoder().decode(files.get(exportPath)!), encrypted);
   setupButton('关闭').click();
+  const sourceBinding = plugin.settings.binding; const sourceRemoteId = plugin.settings.remoteVaultId;
+  plugin.settings.binding = undefined; plugin.settings.remoteVaultId = '';
+  const unboundAccountCode = await plugin.exportAuthorizedConfiguration(pairingPassword);
+  assert.equal((await decryptPairing(unboundAccountCode, pairingPassword)).config.remoteVault, undefined);
+  await assert.rejects(plugin.exportAuthorizedConfiguration(pairingPassword, true), { code: 'binding' });
+  plugin.settings.binding = sourceBinding; plugin.settings.remoteVaultId = sourceRemoteId;
   const sourceSnapshot = JSON.stringify(plugin.saved); await assert.rejects(plugin.importConfiguration('{"access_token":"private"}'), { code: 'configuration' });
   assert.equal(JSON.stringify(plugin.saved), sourceSnapshot);
   const ipadStorage = new Map<string, unknown>(); const ipadApp = { ...app, loadLocalStorage: (key: string) => ipadStorage.get(key) ?? null,
@@ -170,6 +188,8 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   Object.defineProperty(fileInput, 'files', { value: [{ size: exported.length, text: async () => exported }], configurable: true });
   fileInput.dispatchEvent(new window.Event('change'));
   for (let i = 0; i < 80 && setupButton('检查并导入').disabled; i++) await Promise.resolve();
+  assert.equal(toggleSetting('绑定配对码中的同一个云端库').checked, false);
+  toggleSetting('绑定配对码中的同一个云端库', true);
   assert.equal(ipad.settings.appKey, ''); setupButton('检查并导入').click(); assert.equal(ipad.settings.appKey, '');
   setupButton('确认').click(); for (let i = 0; i < 100 && !ipad.settings.remoteVaultId; i++) await Promise.resolve();
   for (let i = 0; i < 100 && ipad.busy; i++) await Promise.resolve();
@@ -213,7 +233,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   ipad.saveData = originalSave;
   const browserCalls = openedUrls.length;
   const pairingReports: string[] = []; const originalImport = ipad.importConfiguration.bind(ipad);
-  ipad.importConfiguration = (text: string, pass?: string, report?: (message: string) => void) => originalImport(text, pass, (message: string) => { pairingReports.push(message); report?.(message); });
+  ipad.importConfiguration = (text: string, pass?: string, options: { bindRemoteVault?: boolean; report?: (message: string) => void } = {}) => originalImport(text, pass, { ...options, report: (message: string) => { pairingReports.push(message); options.report?.(message); } });
   setupButton('导入配对配置').click();
   const encryptedFile = [...document.querySelectorAll('input[aria-label="选择配对配置文件"]')].at(-1)! as HTMLInputElement;
   Object.defineProperty(encryptedFile, 'files', { value: [{ size: encrypted.length, text: async () => encrypted }], configurable: true }); encryptedFile.dispatchEvent(new window.Event('change'));
@@ -225,6 +245,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   mobileInput.value = 'vsail:2:AAAA'; mobileInput.dispatchEvent(new window.Event('input'));
   assert.equal(setupButton('检查并导入').disabled, true); assert.match(document.body.textContent!, /加密配对码无效/);
   mobileInput.value = 'vsail:1:' + encrypted.slice('VSAIL:1:'.length).match(/.{1,64}/g)!.join('\r\n'); mobileInput.dispatchEvent(new window.Event('input'));
+  toggleSetting('绑定配对码中的同一个云端库', true);
   enter('输入配对密码', pairingPassword); assert.equal(setupButton('检查并导入').disabled, false);
   setupButton('检查并导入').click(); await until(() => document.body.textContent!.includes('上传下载 1 KB'));
   setupButton('确认').click(); await until(() => !!ipad.settings.sessionRef && !ipad.busy);
@@ -236,7 +257,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   assert.equal(ipad.auth.exportCredentials().session.accessToken, 'private-access'); assert.equal(plugin.auth.status(), 'connected');
   await ipad.run('preview', () => ipad.preview('download')); assert.equal(ipad.progress?.phase, 'preview-ready', 'successful pairing automatically verifies this device for transfer');
   const previousPairingRefs = [ipad.settings.secretRef, ipad.settings.sessionRef];
-  await ipad.importConfiguration(encrypted, pairingPassword);
+  await ipad.importConfiguration(encrypted, pairingPassword, { bindRemoteVault: true });
   assert.notEqual(ipad.settings.secretRef, previousPairingRefs[0]); assert.notEqual(ipad.settings.sessionRef, previousPairingRefs[1]);
   for (const ref of previousPairingRefs) assert.equal(Boolean(secretMap.get(ref)), false, 're-pairing removes only obsolete device-owned compact references');
   assert.equal(plugin.auth.status(), 'connected', 're-pairing must preserve the source device authorization');
@@ -248,6 +269,40 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   assert.notEqual(copied.deviceId, ipad.deviceId); assert.equal(copied.auth.status(), 'disconnected', 'copying settings must not reuse another device session reference');
   assert.equal(ipad.auth.status(), 'connected'); copied.onunload(); copied.tabs[0].containerEl.remove();
   ipad.onunload(); ipad.tabs[0].containerEl.remove();
+  // Another vault can reuse the account without adopting the source vault, even with an old full pairing code.
+  for (const code of [accountOnlyCode, unboundAccountCode, encrypted]) {
+    const targetStorage = new Map<string, unknown>(); const targetApp = { ...app, loadLocalStorage: (key: string) => targetStorage.get(key) ?? null,
+      saveLocalStorage: (key: string, value: unknown) => { targetStorage.set(key, value); } };
+    const target = new module.Plugin(targetApp); await target.onload(); target.tabs[0].display();
+    await target.importConfiguration(exported);
+    assert.equal(target.settings.remoteVaultId, ''); assert.equal(target.settings.pendingVaultName, undefined);
+    const targetBefore = JSON.stringify(target.saved);
+    if (code !== encrypted) await assert.rejects(target.importConfiguration(code, pairingPassword, { bindRemoteVault: true }), { code: 'configuration' });
+    assert.equal(JSON.stringify(target.saved), targetBefore);
+    const importedReads: string[] = [];
+    target.pairingProvider = () => ({ ...fakeProvider, read: async (path: string) => { importedReads.push(path); return fakeProvider.read(path); },
+      list: async (path: string) => { importedReads.push(path); return fakeProvider.list(path); } });
+    const localBefore = [...files].map(([path, data]) => [path, hash(data)]);
+    const browserBefore = openedUrls.length;
+    target.openConfigImport(); assert.equal(toggleSetting('绑定配对码中的同一个云端库').checked, false);
+    const targetInput = [...document.querySelectorAll('textarea[aria-label="粘贴配对配置"]')].at(-1)! as HTMLTextAreaElement;
+    targetInput.value = code; targetInput.dispatchEvent(new window.Event('input')); enter('输入配对密码', pairingPassword);
+    setupButton('检查并导入').click(); await until(() => document.body.textContent!.includes('清除当前云端目标设置'));
+    setupButton('确认').click(); await until(() => !!target.settings.sessionRef && !target.busy);
+    assert.equal(target.auth.status(), 'connected'); assert.equal(target.settings.remoteVaultId, ''); assert.equal(target.settings.binding, undefined);
+    assert.equal(target.settings.pendingVaultName, undefined); assert.equal(JSON.stringify(target.saved).includes(existingId), false);
+    assert.equal(openedUrls.length, browserBefore); assert.deepEqual([...files].map(([path, data]) => [path, hash(data)]), localBefore);
+    assert.ok(importedReads.every(path => !path.startsWith('vaultsail/vaults/')), 'account-only import must not inspect the source vault');
+    await assert.rejects(target.preview('upload'), { code: 'binding' });
+    target.provider = () => fakeProvider;
+    const sourceObjects = [...remoteObjects].filter(([path]) => path.startsWith('vaultsail/vaults/' + existingId + '/')).map(([path, data]) => [path, hash(data)]);
+    await target.createVault('另一个 Vault'); const independentId = target.settings.remoteVaultId; assert.notEqual(independentId, existingId);
+    await target.startSync(); assert.ok([...remoteObjects.keys()].some(path => path.startsWith('vaultsail/vaults/' + independentId + '/ops/')));
+    assert.deepEqual([...remoteObjects].filter(([path]) => path.startsWith('vaultsail/vaults/' + existingId + '/')).map(([path, data]) => [path, hash(data)]), sourceObjects);
+    const targetRestarted = new module.Plugin(targetApp); targetRestarted.saved = target.saved; await targetRestarted.onload();
+    assert.equal(targetRestarted.auth.status(), 'connected'); assert.equal(targetRestarted.settings.remoteVaultId, independentId);
+    targetRestarted.onunload(); targetRestarted.tabs[0].containerEl.remove(); target.onunload(); target.tabs[0].containerEl.remove();
+  }
   // Execute a real engine plan through its UI and check progress plus local success metadata.
   localMap.set('vaultsail-validation-' + hash(new TextEncoder().encode(plugin.settings.appKey + '|' + plugin.settings.appDirectory + '|' + plugin.settings.binding.accountHash).buffer), { passed: true });
   plugin.tabs[0].display(); await plugin.run('preview', () => plugin.preview('upload'));

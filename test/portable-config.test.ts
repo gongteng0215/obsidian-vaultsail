@@ -8,7 +8,7 @@ test('portable configuration exports only application and pending vault pairing,
   const vaultId = uuid();
   const text = exportPortableConfig({ ...DEFAULT_SETTINGS, providerId: 'baidu', appKey: 'public-app', secretRef: 'private-secret-reference',
     experimentalSync: true, deletionEnabled: true, binding: { vaultId, appKey: 'public-app', root: DEFAULT_SETTINGS.appDirectory, accountHash: 'private-account', displayName: '配对库' },
-    ...{ access_token: 'private-token', deviceId: uuid(), journals: ['private-state'] } });
+    ...{ access_token: 'private-token', deviceId: uuid(), journals: ['private-state'] } }, true);
   const config = parsePortableConfig(text); assert.equal(config.remoteVault?.id, vaultId); assert.equal(config.remoteVault?.displayName, '配对库');
   assert.deepEqual(Object.keys(config).sort(), ['appDirectory', 'appKey', 'format', 'provider', 'remoteVault', 'version']);
   for (const privateValue of ['private-secret-reference', 'private-account', 'private-token', 'private-state', 'experimentalSync', 'deletionEnabled']) assert.equal(text.includes(privateValue), false);
@@ -23,4 +23,13 @@ test('portable import rejects credentials, unknown versions, malformed IDs and u
   }
   assert.throws(() => parsePortableConfig('x'.repeat(64 * 1024 + 1)), { code: 'configuration' });
   assert.equal(parsePortableConfig(JSON.stringify(valid)).appDirectory, '/apps/中文应用');
+});
+
+test('configuration export omits the vault destination by default even when this vault has a binding or pending target', () => {
+  const remoteVaultId = uuid();
+  const settings = { ...DEFAULT_SETTINGS, providerId: 'baidu' as const, appKey: 'public-app', remoteVaultId, pendingVaultName: 'source-vault',
+    binding: { vaultId: remoteVaultId, appKey: 'public-app', root: DEFAULT_SETTINGS.appDirectory, accountHash: 'source-account', displayName: 'source-vault' } };
+  const exported = exportPortableConfig(settings);
+  assert.equal(parsePortableConfig(exported).remoteVault, undefined);
+  assert.equal(exported.includes(remoteVaultId), false); assert.equal(exported.includes('source-vault'), false);
 });

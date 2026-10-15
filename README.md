@@ -9,7 +9,7 @@ Sync notes and attachments through Baidu Netdisk with version preservation and p
 - Start bidirectional sync with one click, or preview upload, download and sync changes first.
 - Compare files against a verified baseline. Concurrent edits preserve every valid version and create visible conflict copies.
 - Verify transferred content with SHA-256. Recover unfinished operations and restore local recovery copies.
-- Export a password-encrypted pairing code or file containing your application credentials and authorization. Import it on another device to verify the account, remote vault and a small file roundtrip automatically, without repeating browser login.
+- Export a password-encrypted code or file containing your application credentials and authorization. Account-only export and import are the default: each vault chooses its own cloud destination. Sharing an existing remote vault requires an explicit choice at both ends.
 - See scan, transfer and verification progress, elapsed time, last completion and remote version locations.
 - Keep deletion propagation off by default. Exclude Obsidian configuration, credentials, internal state and recovery folders from note sync.
 
@@ -19,9 +19,9 @@ Baidu Netdisk is the current provider. Transfers are manual, with a 20 MiB per-f
 
 Requires **Obsidian 1.11.4 or newer**. The [community listing](https://community.obsidian.md/plugins/vaultsail) is restored, and **0.1.16** completed the automated review with no blocking errors on October 15, 2026. Its installation link is enabled; the in-app search catalog still needs to propagate the entry. Automated review does not replace real-device validation.
 
-For direct GitHub installation on iPad, install and enable [BRAT](https://github.com/TfTHacker/obsidian42-brat) through Obsidian's community plugins, then add `gongteng0215/obsidian-vaultsail` and select version `0.1.16`. Enable VaultSail in an empty test vault before importing an encrypted pairing code.
+For direct GitHub installation on iPad, install and enable [BRAT](https://github.com/TfTHacker/obsidian42-brat) through Obsidian's community plugins, then add `gongteng0215/obsidian-vaultsail` and select version `0.1.17`. Enable VaultSail in an empty test vault before importing an encrypted pairing code.
 
-For manual installation, download the ZIP or the three individual files from the [0.1.16 preview release](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.1.16). Place `main.js`, `manifest.json` and `styles.css` in `plugins/vaultsail/` under the current vault's configuration directory, then enable VaultSail. The default directory is `.obsidian`; custom configuration directories are supported.
+For manual installation, download the ZIP or the three individual files from the [0.1.17 release](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.1.17). Place `main.js`, `manifest.json` and `styles.css` in `plugins/vaultsail/` under the current vault's configuration directory, then enable VaultSail. The default directory is `.obsidian`; custom configuration directories are supported.
 
 ## Connect your first device
 
@@ -35,7 +35,7 @@ The remote vault stores `vault.json`, immutable content under `blobs`, and versi
 
 ## Pair another device
 
-Export a pairing code on the connected computer using a password of at least ten characters. Install the same version on the target device, import the code or encrypted file, and enter that password. After automatic account, vault and local transfer validation, the device can sync without another browser login. Codes can be imported for 24 hours. Device identity, baselines and task queues remain independent.
+Export an account connection on the connected computer using a password of at least ten characters. Install version 0.1.17 or newer on the target device, import the code or encrypted file, and enter that password. Account and small file transfer checks run automatically, without repeating browser login. The current vault then creates or selects its own remote vault. To sync the same vault across devices, explicitly include its destination when exporting and explicitly bind it when importing. Old codes may still contain a destination; 0.1.17 ignores it unless you opt in. Codes can be imported for 24 hours. Device identity, baselines and task queues remain independent.
 
 Revoked authorization or an invalid refresh token cannot be restored by encryption. Re-export from a connected device or authorize again when required. Legacy non-secret JSON configuration still requires a separate login. See the [pairing guide](docs/PAIRING.md).
 
@@ -49,7 +49,7 @@ Anyone holding both a pairing code and its password can reuse its authorization.
 
 ## Verification and development
 
-90 automated tests cover authorization, encrypted pairing, file APIs, pagination, concurrent changes, recovery, path safety and configuration privacy. Real iPad import, device storage/Web Crypto, large real-world transfers and long-term shared-token refresh remain unverified by the developer. Simulated checks are not real-device certification. See [implementation status](docs/IMPLEMENTATION_STATUS.md) and [performance measurements](docs/PERFORMANCE.md).
+92 automated tests cover authorization, encrypted pairing, file APIs, pagination, concurrent changes, recovery, path safety and configuration privacy. Real iPad import, device storage/Web Crypto, large real-world transfers and long-term shared-token refresh remain unverified by the developer. Simulated checks are not real-device certification. See [implementation status](docs/IMPLEMENTATION_STATUS.md) and [performance measurements](docs/PERFORMANCE.md).
 
 Use Node.js 22+, then run `npm ci`, `npm test`, `npm run build` and `pwsh ./scripts/package-release.ps1`. The installation ZIP contains only the three plugin files, never tests, user settings, credentials or notes.
 

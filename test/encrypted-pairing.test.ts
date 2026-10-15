@@ -58,9 +58,17 @@ test('password whitespace is preserved; weak passwords, plaintext downgrade and 
 test('payload schema rejects unknown/private device state and expired migration codes, while expired access tokens can refresh', () => {
   const original = payload();
   const invalid = [{ ...original, deviceId: uuid() }, { ...original, version: 2 }, { ...original, accountHash: 'wrong' }, { ...original, secretKey: '' },
-    { ...original, config: { ...original.config, remoteVault: undefined } }, { ...original, session: { ...original.session, secretRef: 'source-reference' } },
+    { ...original, config: { ...original.config, remoteVault: { id: 'invalid', displayName: 'bad' } } }, { ...original, session: { ...original.session, secretRef: 'source-reference' } },
     { ...original, expiresAt: original.createdAt + 1000 }, { ...original, createdAt: Date.now() + 1000000, expiresAt: Date.now() + 1000000 + PAIRING_LIFETIME_MS }];
   for (const value of invalid) assert.throws(() => validateAuthorizedPairing(value));
   assert.throws(() => validateAuthorizedPairing(original, original.expiresAt), { code: 'expired-pairing' });
   assert.equal(validateAuthorizedPairing({ ...original, session: { ...original.session, expiresAt: 1 } }).session.expiresAt, 1);
+});
+
+test('authorized account-only exports can be encrypted and imported without any remote vault identity', async () => {
+  const data = payload(); delete data.config.remoteVault;
+  const code = await encryptPairing(data, password);
+  const decoded = await decryptPairing(code, password);
+  assert.equal(decoded.config.remoteVault, undefined);
+  assert.deepEqual(decoded, data);
 });

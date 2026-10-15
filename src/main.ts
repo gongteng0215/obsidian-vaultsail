@@ -6,13 +6,13 @@ import { ownsCredentialReference, pairingCredentialReferences } from './auth/cre
 import { appRoot, bytes, hash, MAX_FILE_SIZE, safeMessage, uuid, VaultSailError } from './core/safety';
 import { BaiduProvider } from './providers/baidu-provider';
 import { ObsidianCredentials, ObsidianLocalFiles, ObsidianRevisionCache, ObsidianStateStore, deviceIdentity, obsidianTransport } from './platform/obsidian-adapters';
-import { buildHeads, RemoteVaultStore } from './sync/remote-vault';
+import { buildHeads, RemoteVaultStore, type RemoteVault } from './sync/remote-vault';
 import { SyncEngine, type SyncPlan } from './sync/engine';
 import { CloudVaultSetupModal, PlanModal } from './ui/modals';
 import { CONFIG_EXPORT_DIRECTORY, exportPortableConfig, parsePortableConfig } from './portable-config';
 import { ConfigExportModal, ConfigImportModal } from './ui/config-modals';
 import { formatBytes, type SyncProgress } from './sync/progress';
-import { decryptPairing, encryptPairing, isEncryptedPairing, PAIRING_LIFETIME_MS, validateAuthorizedPairing, validatePairingCode, type AuthorizedPairing } from './encrypted-pairing';
+import { decryptPairing, encryptPairing, isEncryptedPairing, PAIRING_LIFETIME_MS, validateAuthorizedPairing, validatePairingCode, type AuthorizedPairing, type PairingImportOptions } from './encrypted-pairing';
 
 const PAIRING_STEPS = {
   session: '准备授权', account: '验证百度账号', vault: '读取云端库', listing: '验证目录权限',
@@ -265,16 +265,17 @@ export default class VaultSailPlugin extends Plugin {
     modal.open();
   }
   openConfigExport(): void {
-    new ConfigExportModal(this.app, password => this.exportAuthorizedConfiguration(password), text => this.saveConfigExport(text)).open();
+    new ConfigExportModal(this.app, (password, includeVault) => this.exportAuthorizedConfiguration(password, includeVault), text => this.saveConfigExport(text), Boolean(this.settings.binding)).open();
   }
-  openConfigImport(): void { new ConfigImportModal(this.app, (text, password, report) => this.importConfiguration(text, password, report)).open(); }
-  async exportAuthorizedConfiguration(password: string): Promise<string> {
+  openConfigImport(): void { new ConfigImportModal(this.app, (text, password, options) => this.importConfiguration(text, password, options)).open(); }
+  async exportAuthorizedConfiguration(password: string, includeVault = false): Promise<string> {
     if (this.busy) throw new VaultSailError('busy', '请等待当前操作完成，再生成配对码。');
     this.busy = true; const generation = this.generation; this.refreshUI();
     try {
-      const { binding } = await this.boundProvider(); const credentials = this.auth.exportCredentials(); const now = Date.now();
+      const accountHash = includeVault ? (await this.boundProvider()).accountHash : hash(bytes((await this.provider().profile()).accountId));
+      const credentials = this.auth.exportCredentials(); const now = Date.now();
       const code = await encryptPairing({ format: 'vaultsail-authorized', version: 1, createdAt: now, expiresAt: now + PAIRING_LIFETIME_MS,
-        config: parsePortableConfig(exportPortableConfig(this.settings)), accountHash: binding.accountHash, ...credentials }, password);
+        config: parsePortableConfig(exportPortableConfig(this.settings, includeVault)), accountHash, ...credentials }, password);
       if (!this.alive || generation !== this.generation) throw new VaultSailError('cancelled', '连接已变更，请重新生成配对码。');
       return code;
     } finally { this.busy = false; this.refreshUI(); }
@@ -290,11 +291,11 @@ export default class VaultSailPlugin extends Plugin {
   pairingProvider(root: string, auth: AuthManager, active: () => boolean): BaiduProvider {
     return new BaiduProvider(root, obsidianTransport, auth, active);
   }
-  async importConfiguration(text: string, password?: string, report?: (message: string) => void): Promise<void> {
+  async importConfiguration(text: string, password?: string, options: PairingImportOptions = {}): Promise<void> {
     if (isEncryptedPairing(text)) {
       if (this.busy) throw new VaultSailError('busy', '请等待当前操作完成，再导入配对码。');
       this.busy = true; const generation = this.generation; this.refreshUI();
-      try { await this.applyAuthorizedPairing(await decryptPairing(text, password ?? ''), generation, report); }
+      try { await this.applyAuthorizedPairing(await decryptPairing(text, password ?? ''), generation, options); }
       catch (error) {
         if (this.alive && generation === this.generation) { this.statusText = safeMessage(error); this.lastErrorCode = error instanceof VaultSailError ? error.code : 'unknown'; }
         throw error;
@@ -303,17 +304,22 @@ export default class VaultSailPlugin extends Plugin {
       return;
     }
     const config = parsePortableConfig(text); // Validate everything before touching authorization or stored settings.
+    const target = options.bindRemoteVault ? config.remoteVault : undefined;
+    if (options.bindRemoteVault && !target) throw new VaultSailError('configuration', '此配置没有云端库信息，请仅导入账号配置，之后再选择云端库。');
     if (this.busy) throw new VaultSailError('busy', '请先完成或暂停当前操作，再导入配置。');
     this.busy = true;
     try {
       await this.changeConfiguration({ providerId: 'baidu', appKey: config.appKey, appDirectory: config.appDirectory,
-        secretRef: this.settings.appKey === config.appKey ? this.settings.secretRef : '', remoteVaultId: config.remoteVault?.id ?? '',
-        pendingVaultName: config.remoteVault?.displayName, experimentalSync: false, deletionEnabled: false });
+        secretRef: this.settings.appKey === config.appKey ? this.settings.secretRef : '', remoteVaultId: target?.id ?? '',
+        pendingVaultName: target?.displayName, experimentalSync: false, deletionEnabled: false });
       this.progress = undefined; this.lastErrorCode = undefined; this.statusText = '配置已导入。请在本设备保存 SecretKey、独立授权，然后验证并绑定导入的云端库。';
     } finally { this.busy = false; this.refreshUI(); }
   }
-  private async applyAuthorizedPairing(value: AuthorizedPairing, generation: number, report?: (message: string) => void): Promise<void> {
+  private async applyAuthorizedPairing(value: AuthorizedPairing, generation: number, options: PairingImportOptions): Promise<void> {
     const payload = validateAuthorizedPairing(value); const config = payload.config;
+    const { report } = options;
+    const target = options.bindRemoteVault ? config.remoteVault : undefined;
+    if (options.bindRemoteVault && !target) throw new VaultSailError('configuration', '此配对码只包含账号连接，请仅导入账号，再为当前 Vault 创建或选择云端库。');
     const active = () => this.alive && generation === this.generation;
     const guard = () => { if (!active()) throw new VaultSailError('cancelled', '配置已变更或插件已关闭，本次导入已停止。'); };
     let step: keyof typeof PAIRING_STEPS = 'session';
@@ -334,8 +340,8 @@ export default class VaultSailPlugin extends Plugin {
       advance('account');
       const profile = await provider.profile(); guard(); const accountHash = hash(bytes(profile.accountId));
       if (accountHash !== payload.accountHash) throw new VaultSailError('binding', '配对码的账号与实际百度账号不一致，未替换原连接。');
-      advance('vault');
-      const vault = await new RemoteVaultStore(provider).get(config.remoteVault!.id); guard();
+      let vault: RemoteVault | undefined;
+      if (target) { advance('vault'); vault = await new RemoteVaultStore(provider).get(target.id); guard(); }
       advance('listing');
       await provider.listAll(''); guard();
       // This device performs its own small roundtrip, never imports another device's test result.
@@ -349,8 +355,8 @@ export default class VaultSailPlugin extends Plugin {
       advance('integrity');
       if (hash(received) !== hash(probe.buffer)) throw new VaultSailError('integrity', '导入连接的文件校验未通过，原连接已保留。');
       const next: VaultSailSettings = { ...DEFAULT_SETTINGS, providerId: 'baidu', appKey: config.appKey, appDirectory: provider.root,
-        secretRef, sessionRef, remoteVaultId: vault.vaultId,
-        binding: { vaultId: vault.vaultId, displayName: vault.displayName, appKey: config.appKey, root: provider.root, accountHash } };
+        secretRef, sessionRef, ...(vault ? { remoteVaultId: vault.vaultId,
+        binding: { vaultId: vault.vaultId, displayName: vault.displayName, appKey: config.appKey, root: provider.root, accountHash } } : {}) };
       const credentials = new ObsidianCredentials(this.app); const previous = this.settings;
       const oldAuth = this.auth; const oldSessionRef = this.sessionReference();
       let attemptedSave = false;
@@ -368,7 +374,9 @@ export default class VaultSailPlugin extends Plugin {
         advance('activation');
         guard(); this.engine?.pause(); oldAuth.cancel(); this.generation++; this.engine = undefined;
         this.settings = next; this.auth = this.makeAuth(); this.deviceSession = undefined; this.authPhase = 'idle';
-        this.progress = undefined; this.lastErrorCode = undefined; this.statusText = '配对成功，已连接并绑定云端库：' + vault.displayName + '。可以直接同步，无需再次网页登录。';
+        this.progress = undefined; this.lastErrorCode = undefined; this.statusText = vault
+          ? '配对成功，已连接并绑定云端库：' + vault.displayName + '。可以直接同步，无需再次网页登录。'
+          : '账号连接已导入，无需再次网页登录。请为当前 Vault 创建或选择云端库；尚未绑定云端库，也未传输笔记。';
       } catch (error) {
         // New credential references make rollback possible without overwriting the old session.
         if (attemptedSave) {
