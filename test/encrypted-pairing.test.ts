@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createDecipheriv, pbkdf2Sync } from 'node:crypto';
 import test from 'node:test';
-import { decryptPairing, encryptPairing, PAIRING_LIFETIME_MS, PAIRING_PREFIX, validateAuthorizedPairing, validatePairingCode, type AuthorizedPairing } from '../src/encrypted-pairing.ts';
+import { decryptPairing, encryptPairing, isEncryptedPairing, PAIRING_LIFETIME_MS, PAIRING_PREFIX, validateAuthorizedPairing, validatePairingCode, type AuthorizedPairing } from '../src/encrypted-pairing.ts';
 import { hash, bytes, uuid } from '../src/core/safety.ts';
 function payload(): AuthorizedPairing {
   const now = Date.now();
@@ -27,6 +27,27 @@ test('wrong passwords and modifications to salt, IV and ciphertext fail authenti
     const bytes = Buffer.from(code.slice(PAIRING_PREFIX.length), 'base64url'); bytes[offset] ^= 1;
     await assert.rejects(decryptPairing(PAIRING_PREFIX + bytes.toString('base64url'), password), { code: 'decrypt' });
   }
+});
+
+test('mobile paste accepts a case-insensitive prefix and wrapped text without changing encrypted data', async () => {
+  const data = payload(); const code = await encryptPairing(data, password);
+  const encoded = code.slice(PAIRING_PREFIX.length);
+  const wrapped = ' \r\nvsail:1:' + encoded.match(/.{1,64}/g)!.join(' \t\r\n') + '\n ';
+  assert.equal(isEncryptedPairing(wrapped), true);
+  validatePairingCode(wrapped);
+  assert.deepEqual(await decryptPairing(wrapped, password), data);
+  assert.deepEqual(await decryptPairing('VsAiL:1:' + encoded, password), data);
+  const index = [...encoded].findIndex(char => /[A-Za-z]/.test(char));
+  const original = encoded[index]; const changed = original === original.toLowerCase() ? original.toUpperCase() : original.toLowerCase();
+  const tampered = encoded.slice(0, index) + changed + encoded.slice(index + 1);
+  await assert.rejects(decryptPairing('vsail:1:' + tampered, password));
+});
+
+test('encrypted format detection keeps unsupported versions out of the legacy JSON parser', () => {
+  assert.equal(isEncryptedPairing('vsail:2:AAAA'), true);
+  assert.equal(isEncryptedPairing('{"format":"vaultsail-pairing"}'), false);
+  for (const code of ['vsail:2:AAAA', 'vsail:1:AAAA\u200b', 'vsail:1:AAAA!', ' '.repeat(65536) + 'vsail:1:AAAA'])
+    assert.throws(() => validatePairingCode(code), { code: 'configuration' });
 });
 test('password whitespace is preserved; weak passwords, plaintext downgrade and oversized/unknown envelopes are rejected', async () => {
   const pass = '  secret-123456  '; const code = await encryptPairing(payload(), pass);

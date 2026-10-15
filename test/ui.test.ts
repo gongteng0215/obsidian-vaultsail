@@ -146,6 +146,9 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   enter('确认配对密码', pairingPassword); findButton('生成加密配对码').click();
   const codeInput = document.querySelector('textarea[aria-label="加密配对码"]') as HTMLTextAreaElement;
   await until(() => codeInput.value.startsWith('VSAIL:1:')); const encrypted = codeInput.value;
+  for (const field of [codeInput, document.querySelector('input[aria-label="设置配对密码"]')!, document.querySelector('input[aria-label="确认配对密码"]')!]) {
+    assert.equal(field.getAttribute('autocapitalize'), 'none'); assert.equal(field.getAttribute('autocorrect'), 'off'); assert.equal(field.getAttribute('spellcheck'), 'false');
+  }
   for (const secret of ['replacement-private-secret', 'private-access', 'private-refresh', pairingPassword]) assert.equal(encrypted.includes(secret), false);
   findButton('保存加密文件到库').click();
   for (let i = 0; i < 100 && ![...files.keys()].some(p => p.startsWith('VaultSail-配置/')); i++) await Promise.resolve();
@@ -192,7 +195,15 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   const encryptedFile = [...document.querySelectorAll('input[aria-label="选择配对配置文件"]')].at(-1)! as HTMLInputElement;
   Object.defineProperty(encryptedFile, 'files', { value: [{ size: encrypted.length, text: async () => encrypted }], configurable: true }); encryptedFile.dispatchEvent(new window.Event('change'));
   await until(() => ([...document.querySelectorAll('textarea[aria-label="粘贴配对配置"]')].at(-1) as HTMLTextAreaElement).value === encrypted);
-  enter('输入配对密码', pairingPassword); setupButton('检查并导入').click(); await until(() => document.body.textContent!.includes('上传下载 1 KB'));
+  const mobileInput = [...document.querySelectorAll('textarea[aria-label="粘贴配对配置"]')].at(-1)! as HTMLTextAreaElement;
+  for (const field of [mobileInput, document.querySelector('input[aria-label="输入配对密码"]')!]) {
+    assert.equal(field.getAttribute('autocapitalize'), 'none'); assert.equal(field.getAttribute('autocorrect'), 'off'); assert.equal(field.getAttribute('spellcheck'), 'false');
+  }
+  mobileInput.value = 'vsail:2:AAAA'; mobileInput.dispatchEvent(new window.Event('input'));
+  assert.equal(setupButton('检查并导入').disabled, true); assert.match(document.body.textContent!, /加密配对码无效/);
+  mobileInput.value = 'vsail:1:' + encrypted.slice('VSAIL:1:'.length).match(/.{1,64}/g)!.join('\r\n'); mobileInput.dispatchEvent(new window.Event('input'));
+  enter('输入配对密码', pairingPassword); assert.equal(setupButton('检查并导入').disabled, false);
+  setupButton('检查并导入').click(); await until(() => document.body.textContent!.includes('上传下载 1 KB'));
   setupButton('确认').click(); await until(() => !!ipad.settings.sessionRef && !ipad.busy);
   assert.equal(ipad.auth.status(), 'connected'); assert.equal(ipad.settings.binding.vaultId, existingId); assert.notEqual(ipad.settings.secretRef, plugin.settings.secretRef);
   assert.notEqual(ipad.deviceId, plugin.deviceId); assert.equal(openedUrls.length, browserCalls); assert.equal(ipad.settings.deletionEnabled, false);

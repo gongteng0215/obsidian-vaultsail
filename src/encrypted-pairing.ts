@@ -26,9 +26,14 @@ function base64url(data: Uint8Array): string {
   let s = ''; for (const byte of data) s += String.fromCharCode(byte);
   return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
+function pairingText(text: string): string {
+  if (text.length > PAIRING_MAX_BYTES) throw invalid();
+  // Only transport whitespace is removable. Preserve case in the authenticated payload.
+  return text.trim().replace(/[ \t\r\n]/g, '');
+}
 function decode(text: string): Uint8Array {
-  const clean = text.trim();
-  if (clean.length > PAIRING_MAX_BYTES || !clean.startsWith(PAIRING_PREFIX)) throw invalid();
+  const clean = pairingText(text);
+  if (clean.slice(0, PAIRING_PREFIX.length).toUpperCase() !== PAIRING_PREFIX) throw invalid();
   const encoded = clean.slice(PAIRING_PREFIX.length);
   if (!/^[A-Za-z0-9_-]+$/.test(encoded) || encoded.length % 4 === 1) throw invalid();
   try {
@@ -38,7 +43,7 @@ function decode(text: string): Uint8Array {
     return data;
   } catch { throw invalid(); }
 }
-export function isEncryptedPairing(text: string): boolean { return text.trim().startsWith(PAIRING_PREFIX); }
+export function isEncryptedPairing(text: string): boolean { return /^VSAIL:/i.test(pairingText(text)); }
 export function validatePairingCode(text: string): void { decode(text); }
 export function validateAuthorizedPairing(value: unknown, now = Date.now()): AuthorizedPairing {
   const v = record(value);

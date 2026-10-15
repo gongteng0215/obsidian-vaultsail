@@ -4,6 +4,12 @@ import { decryptPairing, isEncryptedPairing, PAIRING_MAX_BYTES, validatePairingC
 import { safeMessage, VaultSailError } from '../core/safety';
 import { ConfirmModal } from './modals';
 
+function disableTextCorrections(input: HTMLInputElement | HTMLTextAreaElement): void {
+  input.setAttribute('autocapitalize', 'none');
+  input.setAttribute('autocorrect', 'off');
+  input.setAttribute('spellcheck', 'false');
+}
+
 export async function copyText(text: string, input?: HTMLTextAreaElement): Promise<void> {
   try { await navigator.clipboard.writeText(text); new Notice('已复制。'); }
   catch { input?.focus(); input?.select(); new Notice('无法自动复制，请长按文本选择并复制。'); }
@@ -19,8 +25,10 @@ export class ConfigExportModal extends Modal {
     const password = this.contentEl.createEl('input'); password.type = 'password'; password.autocomplete = 'new-password'; password.setAttribute('aria-label', '设置配对密码'); label.appendChild(password);
     const repeatLabel = this.contentEl.createEl('label', { text: '再次输入密码' });
     const repeat = this.contentEl.createEl('input'); repeat.type = 'password'; repeat.autocomplete = 'new-password'; repeat.setAttribute('aria-label', '确认配对密码'); repeatLabel.appendChild(repeat);
+    disableTextCorrections(password); disableTextCorrections(repeat);
     this.contentEl.createEl('p', { text: '密码不写入配置或文件。拿到配对码和密码的人可以使用其中的网盘授权，请只交给你自己的设备。' });
     const input = this.contentEl.createEl('textarea', { cls: 'vaultsail-config-text' }); input.readOnly = true; input.rows = 6; input.placeholder = '生成后在这里显示加密配对码'; input.setAttribute('aria-label', '加密配对码');
+    disableTextCorrections(input);
     const result = this.contentEl.createEl('p'); result.setAttribute('role', 'status');
     let code = ''; let pending = false; let copy!: { setDisabled(value: boolean): unknown }; let save!: { setDisabled(value: boolean): unknown };
     const invalidate = () => { this.generation++; code = ''; input.value = ''; copy.setDisabled(true); save.setDisabled(true); result.setText('密码已更改，请重新生成配对码。'); };
@@ -59,6 +67,7 @@ export class ConfigImportModal extends Modal {
     const file = this.contentEl.createEl('input'); file.type = 'file'; file.accept = '.vaultsail,.txt,.json,text/plain,application/json'; file.setAttribute('aria-label', '选择配对配置文件');
     const input = this.contentEl.createEl('textarea', { cls: 'vaultsail-config-text' }); input.rows = 6; input.placeholder = 'VSAIL:1:…（也支持旧版 JSON 配对配置）'; input.setAttribute('aria-label', '粘贴配对配置');
     const password = this.contentEl.createEl('input'); password.type = 'password'; password.autocomplete = 'off'; password.placeholder = '导出时的配对密码'; password.setAttribute('aria-label', '输入配对密码');
+    disableTextCorrections(input); disableTextCorrections(password); input.setAttribute('autocomplete', 'off');
     const summary = this.contentEl.createEl('p'); summary.setAttribute('role', 'status');
     let button!: { setDisabled(value: boolean): unknown }; let pending = false;
     const update = () => {
