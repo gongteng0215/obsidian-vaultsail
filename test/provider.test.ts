@@ -8,6 +8,14 @@ import { RemoteVaultStore, type Revision } from '../src/sync/remote-vault.ts';
 import { apiSuccess, request, type HttpRequest, type HttpResponse } from '../src/providers/http.ts';
 
 import { baiduHarness as harness } from './fixtures/baidu.ts';
+test('a previously verified operation cannot be silently rewritten into a different valid operation', async () => {
+  const h = harness(), remote = new RemoteVaultStore(h.provider), vault = await remote.create('不可变历史');
+  const data = bytes('same content'); const op: Revision = { schemaVersion: 1, vaultId: vault.vaultId, opId: uuid(), deviceId: uuid(), fileId: uuid(), path: 'note.md', parents: [], kind: 'update', hash: hash(data), size: data.byteLength, createdAt: 1 };
+  await remote.publish(vault.vaultId, op, data); await remote.revisions(vault.vaultId);
+  const path = '/apps/中文应用/' + remote.base(vault.vaultId) + '/ops/' + op.deviceId + '/' + op.opId + '.json';
+  h.files.set(path, bytes(JSON.stringify({ ...op, createdAt: 2 })));
+  await assert.rejects(remote.revisions(vault.vaultId), { code: 'integrity' });
+});
 
 test('missing listing digests use batched fresh metadata and survive restart without downloading unchanged history', async () => {
   const h = harness(), remote = new RemoteVaultStore(h.provider), vault = await remote.create('缺少列表摘要'), deviceId = uuid();

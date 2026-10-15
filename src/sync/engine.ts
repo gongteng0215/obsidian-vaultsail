@@ -1,8 +1,9 @@
-import { assertNoCollisions, checkSize, hash, included, safeMessage, uuid, validId, VaultSailError } from '../core/safety.ts';
+import { assertNoCollisions, checkSize, hash, included, jsonBytes, safeMessage, uuid, validId, VaultSailError } from '../core/safety.ts';
 import { reconcileFile } from '../core/reconcile.ts';
 import { buildHeads, RemoteVaultStore, validateRevision, type Revision } from './remote-vault.ts';
 import type { SyncProgress, ProgressPhase } from './progress.ts';
 import { DEFAULT_TRANSFER_CONCURRENCY, MAX_TRANSFER_CONCURRENCY, mapConcurrent, TRANSFER_BATCH_BYTES, validConcurrency } from '../core/concurrency.ts';
+import { AUTO_MERGE_DEVICE, automaticMergeId, commonAncestor, mergeText, threeWayMerge, type TextMerge } from './merge.ts';
 
 export interface LocalFiles {
   paths(): Promise<string[]>;
@@ -29,11 +30,14 @@ export interface PlanRow {
   path: string; action: 'upload' | 'download' | 'delete-local' | 'delete-remote' | 'conflict' | 'skip' | 'noop';
   reason: string; localHash: string | null; size: number; heads: Revision[];
   renameFrom?: string;
+  renameConflict?: boolean;
 }
 export interface SyncPlan { vaultId: string; mode: 'upload' | 'download' | 'sync'; deletionEnabled: boolean; revisionIds: string[]; rows: PlanRow[]; }
 export interface SyncResult {
   incomingChanges: number; preservedConflicts: number; uploadedFiles: number; downloadedFiles: number; deletedFiles: number;
+  autoMergedFiles: number;
 }
+export interface ConflictDetails { row: PlanRow; local?: string; base?: string; versions: { id: string; label: string; text?: string; size: number }[]; merge?: TextMerge; mergeLabels?: [string, string]; }
 type Snapshot = { ops: Revision[]; heads: Map<string, Revision[]>; local: Map<string, { hash: string; size: number }> };
 export function newState(deviceId = uuid()): SyncState { return { schemaVersion: 1, deviceId, bases: Object.create(null) as Record<string, Baseline>, journals: [], knownOps: [] }; }
 export function validateState(value: unknown, vaultId: string, deviceId: string): SyncState {
@@ -64,6 +68,9 @@ export class SyncEngine {
   private progress!: SyncProgress;
   private prepared?: { plan: SyncPlan; snapshot: Snapshot };
   private concurrency: number;
+  private localIndex?: Map<string, { hash: string; size: number }>;
+  private dirtyPaths = new Map<string, number>(); private changeSequence = 0; private remoteSignature?: string;
+  private headGroups = new WeakMap<Snapshot, Map<string, Revision[]>>();
   constructor(remote: RemoteVaultStore, local: LocalFiles, store: StateStore, vaultId: string, configDir = '.obsidian', report: (progress: SyncProgress) => void = () => {}, concurrency = DEFAULT_TRANSFER_CONCURRENCY) {
     if (!validConcurrency(concurrency)) throw new VaultSailError('configuration', `传输并发数必须为 1–${MAX_TRANSFER_CONCURRENCY} 之间的整数。`);
     this.concurrency = concurrency;
@@ -95,29 +102,79 @@ export class SyncEngine {
   private async state(): Promise<SyncState> {
     const state = await this.store.load(); return validateState(state, this.vaultId, state.deviceId);
   }
-  private async scan(state: SyncState): Promise<Snapshot> {
+  markDirty(path?: string): void {
+    if (!path || this.dirtyPaths.size >= 10000) { this.localIndex = undefined; this.dirtyPaths.clear(); }
+    else this.dirtyPaths.set(path, ++this.changeSequence);
+  }
+  private async applyLocal(path: string, data: ArrayBuffer | null, expected: string | null, recoveryId: string): Promise<void> {
+    await this.local.apply(path, data, expected, recoveryId);
+    if (data === null) this.localIndex?.delete(path); else this.localIndex?.set(path, { hash: hash(data), size: data.byteLength });
+  }
+  async changedFromBaseline(paths: string[]): Promise<string[]> {
+    const state = await this.state(), changed: string[] = [];
+    if (state.journals.length) return paths;
+    for (const path of paths) {
+      const sequence = this.dirtyPaths.get(path), data = await this.local.read(path);
+      if (!state.bases[path] || (data === null ? null : hash(data)) !== state.bases[path].hash) changed.push(path);
+      else if (this.dirtyPaths.get(path) === sequence) this.dirtyPaths.delete(path);
+    }
+    return changed;
+  }
+  private signature(ops: Revision[]): string { return hash(jsonBytes([...ops].sort((a, b) => a.opId.localeCompare(b.opId)))); }
+  private conflictHeads(snapshot: Snapshot, path: string): Revision[] {
+    let groups = this.headGroups.get(snapshot);
+    if (!groups) { groups = new Map(); for (const heads of snapshot.heads.values()) for (const head of heads) if (head.kind === 'update') groups.set(head.fileId, [...groups.get(head.fileId) ?? [], head]); this.headGroups.set(snapshot, groups); }
+    const own = snapshot.heads.get(path) ?? [], related = own.filter(head => head.kind === 'update').flatMap(head => groups!.get(head.fileId) ?? []);
+    return related.some(head => head.path !== path) ? [...new Map([...related, ...own].map(head => [head.opId, head])).values()] : own;
+  }
+  private retiredSource(snapshot: Snapshot, path: string, heads: Revision[]): boolean {
+    return heads.length === 1 && heads[0].kind === 'delete' && snapshot.ops.some(op => op.opId === heads[0].opId && op.path !== path);
+  }
+  async recoverPending(): Promise<void> {
+    if ((await this.state()).journals.length) {
+      try { await this.recover(); }
+      catch (error) { if (error instanceof VaultSailError && error.code === 'changed') throw new VaultSailError('recovery', '未完成任务遇到新的编辑，内容已保留，请先处理旧任务。'); throw error; }
+    }
+  }
+  async syncAutomatic(paths: string[], remote: boolean, full: boolean, deletionEnabled = false): Promise<SyncResult> {
+    paths.forEach(path => this.markDirty(path));
+    await this.recoverPending();
+    let ops: Revision[] | undefined;
+    if (remote && !full && this.localIndex) {
+      ops = await this.exclusive(async () => { this.emit('checking-remote'); return this.remote.revisions(this.vaultId, undefined, true); });
+      if (!paths.length && this.signature(ops) === this.remoteSignature) return { incomingChanges: 0, preservedConflicts: 0, uploadedFiles: 0, downloadedFiles: 0, deletedFiles: 0, autoMergedFiles: 0 };
+    }
+    return this.sync(deletionEnabled, { incremental: !full, ops });
+  }
+  private async scan(state: SyncState, options: { incremental?: boolean; ops?: Revision[]; allowRenames?: boolean } = {}): Promise<Snapshot> {
     this.emit('scanning-remote', { path: undefined }); this.guard();
-    const ops = await this.remote.revisions(this.vaultId, (doneFiles, totalFiles) => this.emit('scanning-remote', { doneFiles, totalFiles })); this.guard();
+    const ops = options.ops ?? await this.remote.revisions(this.vaultId, (doneFiles, totalFiles) => this.emit('scanning-remote', { doneFiles, totalFiles }), options.allowRenames); this.guard();
     const found = new Set(ops.map(op => op.opId));
     if (state.knownOps.some(id => !found.has(id))) throw new VaultSailError('visibility', '之前确认的远端记录暂不可见，停止写入。');
-    const heads = buildHeads(ops); const paths = (await this.local.paths()).filter(path => included(path, this.configDir));
+    const heads = buildHeads(ops, options.allowRenames); const paths = (await this.local.paths()).filter(path => included(path, this.configDir));
     assertNoCollisions(paths); const local = new Map<string, { hash: string; size: number }>();
     let scanned = 0; this.emit('scanning-local', { totalFiles: paths.length, doneFiles: 0 });
+    const changes = new Map(this.dirtyPaths);
     for (const path of paths) {
       this.emit('scanning-local', { path });
+      const cached = options.incremental && !changes.has(path) ? this.localIndex?.get(path) : undefined;
+      const base = state.bases[path], versions = heads.get(path) ?? [];
+      if (cached && base && sameIds(base.heads, ids(versions))) { local.set(path, cached); this.emit('scanning-local', { doneFiles: ++scanned }); continue; }
       this.guard(); const data = await this.local.read(path);
       if (data === null) throw new VaultSailError('changed', '扫描期间本地文件发生变化，请重新预览。');
       checkSize(data.byteLength); local.set(path, { hash: hash(data), size: data.byteLength });
       this.emit('scanning-local', { doneFiles: ++scanned });
     }
+    this.localIndex = new Map(local);
+    for (const [path, sequence] of changes) if (this.dirtyPaths.get(path) === sequence) this.dirtyPaths.delete(path);
     assertNoCollisions([...new Set([...paths, ...heads.keys()])]);
     for (const path of heads.keys()) if (!included(path, this.configDir)) throw new VaultSailError('path', '远端路径属于排除目录。');
     return { ops, heads, local };
   }
-  async preview(mode: SyncPlan['mode'], deletionEnabled = false): Promise<SyncPlan> {
+  async preview(mode: SyncPlan['mode'], deletionEnabled = false, options: { incremental?: boolean; ops?: Revision[]; allowRenames?: boolean } = {}): Promise<SyncPlan> {
     return this.exclusive(async () => {
       const state = await this.state(); if (state.journals.length) throw new VaultSailError('recovery', '有未完成操作，请先恢复任务。');
-      const snapshot = await this.scan(state); const rows: PlanRow[] = [];
+      const snapshot = await this.scan(state, options); const rows: PlanRow[] = [];
       const operationIds = new Set(snapshot.ops.map(op => op.opId));
       const renames = new Map<string, string>();
       if (mode === 'sync') {
@@ -136,11 +193,16 @@ export class SyncEngine {
       const renamedSources = new Set(renames.values());
       for (const path of [...new Set([...snapshot.local.keys(), ...snapshot.heads.keys(), ...Object.keys(state.bases)])].sort()) {
         const renameFrom = renames.get(path);
-        const local = snapshot.local.get(path); const heads = snapshot.heads.get(renameFrom ?? path) ?? []; const base = state.bases[path]; const head = heads[0];
+        const local = snapshot.local.get(path); const ownHeads = snapshot.heads.get(renameFrom ?? path) ?? [];
+        const relatedHeads = options.allowRenames ? this.conflictHeads(snapshot, renameFrom ?? path) : ownHeads;
+        const renameConflict = new Set(relatedHeads.filter(head => head.kind === 'update').map(head => head.path)).size > 1;
+        const heads = renameConflict ? relatedHeads : ownHeads; const base = state.bases[path]; const head = heads[0];
         if (base && !base.heads.every(id => operationIds.has(id))) throw new VaultSailError('state', '基线引用的远端版本缺失。');
         if (base && !head) throw new VaultSailError('visibility', '基线文件的远端版本缺失。');
         let action: PlanRow['action'] = 'noop'; let reason = '双方内容一致';
-        if (renameFrom) { action = 'upload'; reason = '识别到唯一的同内容重命名，保留文件身份'; }
+        if (renameConflict) { action = 'conflict'; reason = '并发重命名：解决后以此路径作为最终文件名'; }
+        else if (local && local.hash !== base?.hash && this.retiredSource(snapshot, path, heads)) { action = 'upload'; reason = '重新使用退役的旧文件名，创建独立文件身份'; }
+        else if (renameFrom) { action = 'upload'; reason = '识别到唯一的同内容重命名，保留文件身份'; }
         else if (renamedSources.has(path)) { action = 'skip'; reason = '源路径由重命名操作处理'; }
         else if (base && head && base.fileId !== head.fileId) { action = 'conflict'; reason = '同一路径的文件身份已变化，需手动确认'; }
         else if (heads.length > 1) { action = 'conflict'; reason = '云端有并发版本，需保留并处理所有分支'; }
@@ -163,7 +225,7 @@ export class SyncEngine {
           action = decision.operation; reason = ({ upload: '本地修改，远端未变', download: '远端修改，本地未变', conflict: '双方均已修改', 'delete-local': '远端明确记录了删除', 'delete-remote': '本地删除，远端未变', noop: '双方内容一致' })[decision.operation];
           if ((action === 'delete-local' || action === 'delete-remote') && (!deletionEnabled || !base)) { action = 'skip'; reason = '删除传播关闭或缺少可信基线'; }
         }
-        rows.push({ path, action, reason, localHash: local?.hash ?? null, size: action === 'download' ? head?.size ?? 0 : local?.size ?? head?.size ?? 0, heads, ...(renameFrom ? { renameFrom } : {}) });
+        rows.push({ path, action, reason, localHash: local?.hash ?? null, size: action === 'download' ? head?.size ?? 0 : local?.size ?? head?.size ?? 0, heads, ...(renameFrom ? { renameFrom } : {}), ...(renameConflict ? { renameConflict: true } : {}) });
       }
       this.emit('preview-ready', { doneFiles: rows.length, totalFiles: rows.length, path: undefined });
       const plan: SyncPlan = { vaultId: this.vaultId, mode, deletionEnabled, revisionIds: snapshot.ops.map(op => op.opId).sort(), rows };
@@ -173,17 +235,17 @@ export class SyncEngine {
   async execute(plan: SyncPlan, onProgress: (done: number, total: number) => void = () => {}, autoConflicts = false): Promise<SyncResult> {
     return this.executePlan(plan, onProgress, autoConflicts);
   }
-  async sync(deletionEnabled = false): Promise<SyncResult> {
-    const plan = await this.preview('sync', deletionEnabled); const prepared = this.prepared;
+  async sync(deletionEnabled = false, options: { incremental?: boolean; ops?: Revision[] } = {}): Promise<SyncResult> {
+    const plan = await this.preview('sync', deletionEnabled, { ...options, allowRenames: true }); const prepared = this.prepared;
     if (!prepared || prepared.plan !== plan) throw new VaultSailError('changed', '同步依据已变化，请重试。');
     this.prepared = undefined;
-    return this.executePlan(plan, () => {}, true, prepared.snapshot);
+    return this.executePlan(plan, () => {}, true, prepared.snapshot, options.incremental === true);
   }
-  private async executePlan(plan: SyncPlan, onProgress: (done: number, total: number) => void, autoConflicts: boolean, prepared?: Snapshot): Promise<SyncResult> {
+  private async executePlan(plan: SyncPlan, onProgress: (done: number, total: number) => void, autoConflicts: boolean, prepared?: Snapshot, incremental = false): Promise<SyncResult> {
     return this.exclusive(async () => {
       if (plan.vaultId !== this.vaultId) throw new VaultSailError('binding', '预览属于其他云端库。');
       const state = await this.state(); if (state.journals.length) throw new VaultSailError('recovery', '请先恢复未完成任务。');
-      const snapshot = prepared ?? await this.scan(state);
+      const snapshot = prepared ?? await this.scan(state, { allowRenames: plan.rows.some(row => row.renameConflict) });
       if (!sameIds(plan.revisionIds, snapshot.ops.map(op => op.opId))) throw new VaultSailError('changed', '预览后云端已变化，请重新预览。');
       const actualPaths = new Set([...snapshot.local.keys(), ...snapshot.heads.keys(), ...Object.keys(state.bases)]);
       if (prepared) {
@@ -191,7 +253,7 @@ export class SyncEngine {
         if (!sameIds([...nowPaths].sort(), [...snapshot.local.keys()].sort())) throw new VaultSailError('changed', '扫描后本地文件列表已变化，请重试。');
       }
       if (actualPaths.size !== plan.rows.length || plan.rows.some(row => !actualPaths.has(row.path) || (snapshot.local.get(row.path)?.hash ?? null) !== row.localHash)) throw new VaultSailError('changed', '预览后本地已变化，请重新预览。');
-      let done = 0; let doneBytes = 0; let preservedConflicts = 0;
+      let done = 0; let doneBytes = 0; let preservedConflicts = 0; let autoMergedFiles = 0;
       const notifyDone = () => { try { onProgress(done, plan.rows.length); } catch { /* UI callbacks cannot fail a journal commit. */ } };
       let uploadedFiles = 0; let downloadedFiles = 0; let deletedFiles = 0;
       const published = new Set<string>();
@@ -209,10 +271,12 @@ export class SyncEngine {
           if (!sameIds(ids(row.heads), ids(snapshot.heads.get(row.path) ?? []))) throw new VaultSailError('changed', '传输依据已变化，请重新预览。');
           const upload = row.action === 'upload';
           if (upload && !data) throw new VaultSailError('changed', '待上传文件已不存在，请重新预览。');
+          const freshIdentity = upload && this.retiredSource(snapshot, row.path, row.heads);
           const revision: Revision = upload ? { schemaVersion: 1, vaultId: this.vaultId, opId: uuid(), deviceId: state.deviceId,
-            fileId: row.heads[0]?.fileId ?? state.bases[row.path]?.fileId ?? uuid(), path: row.path, parents: ids(row.heads),
+            fileId: freshIdentity ? uuid() : row.heads[0]?.fileId ?? state.bases[row.path]?.fileId ?? uuid(), path: row.path, parents: freshIdentity ? [] : ids(row.heads),
             kind: 'update', size: data!.byteLength, hash: hash(data!), createdAt: Date.now() } : row.heads[0];
           const journal: Journal = { id: revision.opId, path: row.path, action: upload ? 'publish' : 'apply', stage: 'prepared', revision, expectedLocal: row.localHash };
+          if (freshIdentity) journal.allowBranch = true;
           if (upload) { await this.local.stage(revision.opId, data!); await this.local.preserve(row.path, data!, revision.opId); }
           state.journals.push(journal); await this.store.save(state);
           jobs.push({ row, journal, data: upload ? data : null });
@@ -237,7 +301,7 @@ export class SyncEngine {
             await commit(async () => {
               this.guard();
               if (row.action === 'upload') { journal.stage = 'published'; await this.store.save(state); this.guard(); published.add(op.opId); }
-              else { report('applying'); await this.local.apply(row.path, downloaded!, row.localHash, op.opId); journal.stage = 'applied'; await this.store.save(state); }
+              else { report('applying'); await this.applyLocal(row.path, downloaded!, row.localHash, op.opId); journal.stage = 'applied'; await this.store.save(state); }
               state.bases[row.path] = { hash: op.hash!, heads: [op.opId], fileId: op.fileId };
               state.knownOps = [...new Set([...state.knownOps, op.opId])];
               state.journals = state.journals.filter(item => item !== journal); await this.store.save(state);
@@ -258,12 +322,21 @@ export class SyncEngine {
         await flush();
         this.emit('checking', { path: row.path });
         this.guard();
-        if (prepared) {
+        if (prepared && (!incremental || row.action !== 'noop' || this.dirtyPaths.has(row.path))) {
           const current = await this.local.read(row.path);
           if ((current === null ? null : hash(current)) !== row.localHash) throw new VaultSailError('changed', '扫描后本地内容已变化，修改已保留，请重试。');
         }
         if (row.action === 'conflict') {
-          if (autoConflicts) { const opId = await this.preserveConflict(row, state, plan.mode !== 'download'); if (opId) published.add(opId); preservedConflicts++; doneBytes += conflictBytes(row); }
+          if (autoConflicts) {
+            if (row.renameConflict) {
+              for (const head of row.heads) if (head.kind === 'update') await this.ensureConflictCopy(row.path, head.deviceId.slice(0, 8) + '-' + head.opId, head.hash!, () => this.remote.blob(this.vaultId, head));
+              preservedConflicts++; done++; notifyDone(); this.emit('checking', { doneFiles: done }); continue;
+            }
+            const merged = plan.mode === 'sync' ? await this.autoMerge(row, state, snapshot) : undefined;
+            if (merged) { for (const id of merged) published.add(id); autoMergedFiles++; }
+            else { const opId = await this.preserveConflict(row, state, plan.mode !== 'download'); if (opId) published.add(opId); preservedConflicts++; }
+            doneBytes += conflictBytes(row);
+          }
           done++; notifyDone(); this.emit('checking', { doneFiles: done, doneBytes }); continue;
         }
         if (row.action === 'skip') { done++; notifyDone(); this.emit('checking', { doneFiles: done }); continue; }
@@ -293,7 +366,7 @@ export class SyncEngine {
             state.journals.push(journal); await this.store.save(state);
             this.emit('downloading'); const data = head.kind === 'delete' ? null : await this.remote.blob(this.vaultId, head, () => this.emit('verifying')); this.guard();
             this.emit('applying');
-            await this.local.apply(row.path, data, row.localHash, head.opId); journal.stage = 'applied'; await this.store.save(state);
+            await this.applyLocal(row.path, data, row.localHash, head.opId); journal.stage = 'applied'; await this.store.save(state);
             state.bases[row.path] = { hash: head.hash ?? null, heads: [head.opId], fileId: head.fileId }; state.journals = []; await this.store.save(state);
           }
         }
@@ -311,13 +384,74 @@ export class SyncEngine {
       // A no-change plan applies no remote content or local file writes. Its
       // baseline remains at the verified initial snapshot; later publications
       // are discovered on the next sync, without repeating this entire scan.
-      const finalOps = readOnly ? snapshot.ops : await this.remote.revisions(this.vaultId); const found = new Set(finalOps.map(op => op.opId));
+      const finalOps = readOnly ? snapshot.ops : await this.remote.revisions(this.vaultId, undefined, true); const found = new Set(finalOps.map(op => op.opId));
       this.emit('checking');
       if ([...state.knownOps, ...snapshot.ops.map(op => op.opId), ...published].some(id => !found.has(id))) throw new VaultSailError('visibility', '批次结束时已验证版本不可见，任务状态保留，请重试。');
       state.knownOps = [...new Set([...state.knownOps, ...found])]; await this.store.save(state);
+      if (!finalOps.some(op => !startIds.has(op.opId) && !published.has(op.opId))) this.remoteSignature = this.signature(finalOps);
       return { incomingChanges: finalOps.filter(op => !startIds.has(op.opId) && !published.has(op.opId)).length,
-        preservedConflicts, uploadedFiles, downloadedFiles, deletedFiles };
+        preservedConflicts, uploadedFiles, downloadedFiles, deletedFiles, autoMergedFiles };
     });
+  }
+  private async material(row: PlanRow, state: SyncState, snapshot: Snapshot): Promise<ConflictDetails> {
+    const data = await this.local.read(row.path);
+    if ((data === null ? null : hash(data)) !== row.localHash) throw new VaultSailError('changed', '冲突内容已变化，请重新查看。');
+    const local = data === null ? undefined : mergeText(data), versions: ConflictDetails['versions'] = [];
+    for (const [index, head] of row.heads.entries()) {
+      const value = index < 16 && head.kind === 'update' && head.size <= 256 * 1024 ? await this.remote.blob(this.vaultId, head) : undefined;
+      versions.push({ id: head.opId, label: (row.renameConflict ? head.path + ' · ' : '') + head.deviceId.slice(0, 8) + ' · ' + head.opId.slice(0, 8) + (head.kind === 'delete' ? '（删除记录）' : ''), size: head.size,
+        ...(value ? { text: mergeText(value) } : {}) });
+    }
+    const result: ConflictDetails = { row, local, versions };
+    if (data === null && state.bases[row.path] !== undefined) return result;
+    if (!row.path.toLowerCase().endsWith('.md') || row.heads.some(head => head.kind !== 'update' || head.previousPath) || new Set(row.heads.map(head => head.fileId)).size !== 1) return result;
+    let tips: string[] = [], left: string | undefined, right: string | undefined;
+    if (row.heads.length === 1 && state.bases[row.path]?.heads.length === 1 && data !== null) {
+      tips = [state.bases[row.path].heads[0], row.heads[0].opId]; left = local; right = versions[0].text;
+      result.mergeLabels = ['本机当前内容', versions[0].label];
+    } else if (row.heads.length === 2 && (data === null || row.heads.some(head => head.hash === row.localHash) || state.bases[row.path]?.hash === row.localHash)) {
+      tips = row.heads.map(head => head.opId); left = versions[0].text; right = versions[1].text;
+      result.mergeLabels = [versions[0].label, versions[1].label];
+    }
+    const ancestor = commonAncestor(snapshot.ops, tips);
+    if (!ancestor || ancestor.kind !== 'update' || ancestor.size > 256 * 1024 || ancestor.fileId !== row.heads[0]?.fileId || left === undefined || right === undefined) return result;
+    result.base = mergeText(await this.remote.blob(this.vaultId, ancestor));
+    if (result.base !== undefined) result.merge = threeWayMerge(result.base, left, right);
+    return result;
+  }
+  async describeConflict(row: PlanRow): Promise<ConflictDetails> {
+    return this.exclusive(async () => {
+      const state = await this.state(); const snapshot = await this.scan(state, { allowRenames: true });
+      if (!sameIds(ids(this.conflictHeads(snapshot, row.path)), ids(row.heads))) throw new VaultSailError('changed', '远端冲突已变化，请重新查看。');
+      return this.material(row, state, snapshot);
+    });
+  }
+  private async publishLocalBranch(row: PlanRow, state: SyncState, snapshot: Snapshot): Promise<Snapshot> {
+    if (this.retiredSource(snapshot, row.path, row.heads)) return snapshot;
+    if (row.localHash !== null && !row.heads.some(head => head.hash === row.localHash) && state.bases[row.path]?.hash !== row.localHash) {
+      const opId = await this.preserveConflict(row, state, true);
+      if (opId) {
+        const ops = await this.remote.revisions(this.vaultId, undefined, true), heads = buildHeads(ops, true), next = { ...snapshot, ops, heads };
+        if (!sameIds(ids(this.conflictHeads(next, row.path)), [...ids(row.heads), opId])) throw new VaultSailError('changed', '保存本地分支时远端出现新修改，内容已保留，请重新查看。');
+        return next;
+      }
+    }
+    return snapshot;
+  }
+  private async autoMerge(row: PlanRow, state: SyncState, snapshot: Snapshot): Promise<string[] | undefined> {
+    if (!row.path.toLowerCase().endsWith('.md') || row.size > 256 * 1024 || row.heads.some(head => head.size > 256 * 1024)) return undefined;
+    if (row.heads.length > 1 && row.heads.every(head => head.kind === 'update' && head.hash === row.heads[0].hash && head.size === row.heads[0].size)
+      && (row.localHash === row.heads[0].hash || row.localHash === state.bases[row.path]?.hash || (row.localHash === null && !state.bases[row.path]))) {
+      const selected = await this.remote.blob(this.vaultId, row.heads[0]);
+      return [await this.commitResolution(state, snapshot, row.path, selected, row.localHash, true)];
+    }
+    if (row.heads.length > 2) return undefined;
+    const details = await this.material(row, state, snapshot);
+    if (!details.merge?.clean || details.merge.text === undefined) return undefined;
+    const updated = await this.publishLocalBranch(row, state, snapshot);
+    const before = new Set(snapshot.ops.map(op => op.opId));
+    const op = await this.commitResolution(state, updated, row.path, new TextEncoder().encode(details.merge.text).buffer, row.localHash, true);
+    return [...updated.ops.filter(op => !before.has(op.opId)).map(op => op.opId), op];
   }
   private async ensureConflictCopy(path: string, key: string, expected: string, load: () => Promise<ArrayBuffer>): Promise<string> {
     let existing = await this.local.readConflictCopy(path, key);
@@ -355,7 +489,7 @@ export class SyncEngine {
         if (!data || hash(data) !== chosen.hash) throw new VaultSailError('integrity', '待应用的冲突版本未校验。');
         const journal: Journal = { id: chosen.opId, path: row.path, action: 'apply', stage: 'prepared', revision: chosen, expectedLocal: localHash };
         state.journals.push(journal); await this.store.save(state); this.guard(); this.emit('applying');
-        await this.local.apply(row.path, data, localHash, chosen.opId); journal.stage = 'applied'; await this.store.save(state); this.guard();
+        await this.applyLocal(row.path, data, localHash, chosen.opId); journal.stage = 'applied'; await this.store.save(state); this.guard();
         state.bases[row.path] = { hash: chosen.hash!, heads: [chosen.opId], fileId: chosen.fileId }; state.journals = []; await this.store.save(state);
       }
       return undefined;
@@ -375,7 +509,7 @@ export class SyncEngine {
   async recover(): Promise<void> {
     return this.exclusive(async () => {
       const state = await this.state(); this.emit('checking-remote', { path: undefined });
-      const visible = await this.remote.revisions(this.vaultId); const known = new Set(visible.map(op => op.opId));
+      const visible = await this.remote.revisions(this.vaultId, undefined, true); const known = new Set(visible.map(op => op.opId));
       this.emit('checking', { totalFiles: state.journals.length, totalBytes: state.journals.reduce((sum, journal) => sum + journal.revision.size, 0) });
       if (state.knownOps.some(id => !known.has(id))) throw new VaultSailError('visibility', '已知远端记录缺失，恢复暂停。');
       for (const journal of [...state.journals]) {
@@ -385,8 +519,9 @@ export class SyncEngine {
           if (!known.has(op.opId)) {
             const data = op.kind === 'update' ? await this.local.staged(op.opId) : null;
             if ((data ? hash(data) : null) !== (op.hash ?? null)) throw new VaultSailError('changed', '待发布内容已变化，恢复暂停；请保留恢复日志。');
-            const heads = buildHeads(visible).get(op.previousPath ?? op.path) ?? [];
-            if (journal.allowBranch) buildHeads([...visible, op]);
+            const snapshot = { ops: visible, heads: buildHeads(visible, true), local: new Map<string, { hash: string; size: number }>() };
+            const heads = journal.action === 'resolve' ? this.conflictHeads(snapshot, op.path) : snapshot.heads.get(op.previousPath ?? op.path) ?? [];
+            if (journal.allowBranch) buildHeads([...visible, op], true);
             else if (!sameIds(ids(heads), [...op.parents].sort())) throw new VaultSailError('changed', '待发布操作的远端依据已变化，恢复暂停。');
             await this.remote.publish(this.vaultId, op, data ?? undefined, phase => this.emit(phase));
           }
@@ -398,7 +533,7 @@ export class SyncEngine {
             if (currentHash !== journal.expectedLocal) throw new VaultSailError('changed', '本地内容已变化，停止恢复以保留修改。');
             this.emit('downloading'); const data = op.kind === 'update' ? await this.remote.blob(this.vaultId, op, () => this.emit('verifying')) : null; this.guard();
             this.emit('applying');
-            await this.local.apply(op.path, data, journal.expectedLocal, op.opId);
+            await this.applyLocal(op.path, data, journal.expectedLocal, op.opId);
           }
         }
         state.bases[op.path] = { hash: op.hash ?? null, heads: [op.opId], fileId: op.fileId };
@@ -410,42 +545,103 @@ export class SyncEngine {
   async abandonPending(): Promise<void> {
     return this.exclusive(async () => {
       const state = await this.state(); this.emit('checking-remote', { path: undefined });
-      const ops = await this.remote.revisions(this.vaultId); const found = new Set(ops.map(op => op.opId));
+      const ops = await this.remote.revisions(this.vaultId, undefined, true); const found = new Set(ops.map(op => op.opId));
       this.emit('checking');
       if (state.knownOps.some(id => !found.has(id))) throw new VaultSailError('visibility', '已知远端记录缺失，暂停处理。');
       // Keep baseline, staged contents and recovery points; a subsequent plan sees any published branch.
       state.journals = []; state.knownOps = [...new Set([...state.knownOps, ...found])]; await this.store.save(state);
     });
   }
-  async resolve(path: string, choice: 'local' | string, expectedRow?: PlanRow): Promise<void> {
+  async resolve(path: string, choice: 'local' | string, expectedRow?: PlanRow, mergedData?: ArrayBuffer): Promise<void> {
     return this.exclusive(async () => {
       const state = await this.state(); if (state.journals.length) throw new VaultSailError('recovery', '请先恢复未完成任务。');
-      const snapshot = await this.scan(state); const heads = snapshot.heads.get(path) ?? [];
+      const snapshot = await this.scan(state, { allowRenames: true }); const heads = this.conflictHeads(snapshot, path);
       const localData = await this.local.read(path); const expected = localData ? hash(localData) : null;
       if (expectedRow && (expectedRow.path !== path || expectedRow.localHash !== expected || !sameIds(ids(expectedRow.heads), ids(heads)))) throw new VaultSailError('changed', '冲突预览后内容已变化，请重新预览。');
       let selected = localData;
-      if (choice !== 'local') { const head = heads.find(op => op.opId === choice); if (!head) throw new VaultSailError('changed', '选择的远端版本已变化。'); selected = head.kind === 'update' ? await this.remote.blob(this.vaultId, head) : null; }
+      if (mergedData !== undefined) { if (!expectedRow) throw new VaultSailError('changed', '合并内容需要有效的冲突预览。'); checkSize(mergedData.byteLength); selected = mergedData; }
+      else if (choice !== 'local') { const head = heads.find(op => op.opId === choice); if (!head) throw new VaultSailError('changed', '选择的远端版本已变化。'); selected = head.kind === 'update' ? await this.remote.blob(this.vaultId, head) : null; }
       if (!selected) throw new VaultSailError('conflict', '首期冲突处理必须选择一个内容版本，删除分支仅保留记录。');
-      this.emit('checking', { path, doneFiles: 0, totalFiles: 1, doneBytes: 0, totalBytes: selected.byteLength });
+      const row = expectedRow ?? { path, action: 'conflict', reason: '', localHash: expected, size: localData?.byteLength ?? 0, heads };
+      const updated = await this.publishLocalBranch(row, state, snapshot);
+      await this.commitResolution(state, updated, path, selected, expected);
+    });
+  }
+  async resolveBoth(row: PlanRow, otherChoice: string, copyPath: string, primaryChoice = 'local'): Promise<void> {
+    return this.exclusive(async () => {
+      if (!included(copyPath, this.configDir) || copyPath === row.path) throw new VaultSailError('path', '请输入正常笔记目录中的新文件名。');
+      const state = await this.state(); if (state.journals.length) throw new VaultSailError('recovery', '请先恢复未完成任务。');
+      if (row.renameConflict) throw new VaultSailError('conflict', '请先选择最终文件名并统一版本，再复制为两篇。');
+      const snapshot = await this.scan(state, { allowRenames: true }), heads = this.conflictHeads(snapshot, row.path), localData = await this.local.read(row.path);
+      if ((localData === null ? null : hash(localData)) !== row.localHash || !sameIds(ids(heads), ids(row.heads))) throw new VaultSailError('changed', '冲突内容已变化，请重新查看。');
+      assertNoCollisions([...new Set([...snapshot.local.keys(), ...snapshot.heads.keys()]), copyPath]);
+      const choose = async (choice: string) => {
+        if (choice === 'local') return localData;
+        const head = heads.find(op => op.opId === choice);
+        if (!head || head.kind !== 'update') throw new VaultSailError('conflict', '请选择有效的内容版本。');
+        return this.remote.blob(this.vaultId, head);
+      };
+      const selected = await choose(primaryChoice), other = await choose(otherChoice);
+      if (selected === null || other === null) throw new VaultSailError('conflict', '保留为两篇需要两个内容版本。');
+      const updated = await this.publishLocalBranch(row, state, snapshot);
+      const visible = await this.remote.revisions(this.vaultId, undefined, true);
+      if (buildHeads(visible, true).has(copyPath)) throw new VaultSailError('collision', '新文件名已被远端使用，请换一个名称。');
+      const op: Revision = { schemaVersion: 1, vaultId: this.vaultId, opId: uuid(), deviceId: state.deviceId, fileId: uuid(), path: copyPath,
+        parents: [], kind: 'update', hash: hash(other), size: other.byteLength, createdAt: Date.now() };
+      const journal: Journal = { id: op.opId, path: copyPath, action: 'resolve', stage: 'prepared', revision: op, expectedLocal: null };
+      await this.local.stage(op.opId, other); state.journals.push(journal); await this.store.save(state); this.guard();
+      await this.remote.publish(this.vaultId, op, other); journal.stage = 'published'; await this.store.save(state); this.guard();
+      await this.applyLocal(copyPath, other, null, op.opId); journal.stage = 'applied'; await this.store.save(state);
+      state.bases[copyPath] = { hash: op.hash!, heads: [op.opId], fileId: op.fileId }; state.knownOps = [...new Set([...state.knownOps, op.opId])];
+      state.journals = state.journals.filter(item => item.id !== op.opId); await this.store.save(state);
+      await this.commitResolution(state, updated, row.path, selected, row.localHash);
+    });
+  }
+  async resolveDelete(row: PlanRow, deletionEnabled: boolean): Promise<void> {
+    if (!deletionEnabled || row.renameConflict) throw new VaultSailError('configuration', '删除传播未开启，或需要先解决文件名冲突。');
+    return this.exclusive(async () => {
+      const state = await this.state(); if (state.journals.length) throw new VaultSailError('recovery', '请先恢复未完成任务。');
+      const snapshot = await this.scan(state, { allowRenames: true }), heads = this.conflictHeads(snapshot, row.path), data = await this.local.read(row.path);
+      if (!sameIds(ids(heads), ids(row.heads)) || (data === null ? null : hash(data)) !== row.localHash) throw new VaultSailError('changed', '删除确认前内容已变化，请重新查看。');
+      await this.commitResolution(state, snapshot, row.path, null, row.localHash);
+    });
+  }
+  private async commitResolution(state: SyncState, snapshot: Snapshot, path: string, selected: ArrayBuffer | null, expected: string | null, automatic = false): Promise<string> {
+      const heads = this.conflictHeads(snapshot, path), localData = await this.local.read(path);
+      if ((localData === null ? null : hash(localData)) !== expected) throw new VaultSailError('changed', '解决前本地内容已变化，草稿已保留。');
+      this.emit('checking', { path, doneFiles: 0, totalFiles: 1, doneBytes: 0, totalBytes: selected?.byteLength ?? 0 });
       const op: Revision = { schemaVersion: 1, vaultId: this.vaultId, opId: uuid(), deviceId: state.deviceId, fileId: heads[0]?.fileId ?? uuid(), path,
-        parents: ids(heads), kind: 'update', hash: hash(selected), size: selected.byteLength, createdAt: Date.now() };
+        parents: ids(heads), kind: selected === null ? 'delete' : 'update', ...(selected === null ? {} : { hash: hash(selected) }), size: selected?.byteLength ?? 0, createdAt: Date.now() };
+      const freshIdentity = selected !== null && this.retiredSource(snapshot, path, heads);
+      if (freshIdentity) { op.fileId = uuid(); op.parents = []; }
+      if (automatic) {
+        op.fileId = heads.map(head => head.fileId).sort()[0]; op.deviceId = AUTO_MERGE_DEVICE;
+        op.createdAt = Math.max(0, ...heads.map(head => head.createdAt));
+        op.opId = automaticMergeId(this.vaultId, path, op.parents, op.hash!, op.fileId);
+      }
+      const otherPath = heads.find(head => head.fileId === op.fileId && head.path !== path)?.path;
+      if (otherPath) op.previousPath = otherPath;
       // Preserve every competing content before either publishing or replacing the target.
       for (const head of heads) if (head.kind === 'update') await this.local.preserve(path, await this.remote.blob(this.vaultId, head), head.opId);
       if (localData) await this.local.preserve(path, localData, op.opId);
       this.emit('checking-remote', { path: undefined });
-      const latest = buildHeads(await this.remote.revisions(this.vaultId)).get(path) ?? [];
+      const latestOps = await this.remote.revisions(this.vaultId, undefined, true);
+      const latest = this.conflictHeads({ ...snapshot, ops: latestOps, heads: buildHeads(latestOps, true) }, path);
       this.emit('checking', { path });
-      if (!sameIds(ids(heads), ids(latest))) throw new VaultSailError('changed', '保存副本期间远端发生变化，请重新处理冲突。');
+      const alreadyMerged = automatic && latest.length === 1 && latest[0].opId === op.opId;
+      if (alreadyMerged && hash(jsonBytes(validateRevision(latest[0], this.vaultId))) !== hash(jsonBytes(validateRevision(op, this.vaultId)))) throw new VaultSailError('integrity', '自动合并标识对应的内容不一致，已停止。');
+      if (!alreadyMerged && !sameIds(ids(heads), ids(latest))) throw new VaultSailError('changed', '保存副本期间远端发生变化，请重新处理冲突。');
       const now = await this.local.read(path); if ((now ? hash(now) : null) !== expected) throw new VaultSailError('changed', '保存副本期间本地发生变化。');
       const journal: Journal = { id: op.opId, path, action: 'resolve', stage: 'prepared', revision: op, expectedLocal: expected };
-      await this.local.stage(op.opId, selected);
+      if (freshIdentity) journal.allowBranch = true;
+      if (selected !== null) await this.local.stage(op.opId, selected);
       state.journals.push(journal); await this.store.save(state); this.guard();
-      await this.remote.publish(this.vaultId, op, selected, phase => this.emit(phase)); journal.stage = 'published'; await this.store.save(state); this.guard();
+      await this.remote.publish(this.vaultId, op, selected ?? undefined, phase => this.emit(phase)); journal.stage = 'published'; await this.store.save(state); this.guard();
       this.emit('applying');
-      await this.local.apply(path, selected, expected, op.opId); journal.stage = 'applied'; await this.store.save(state);
-      state.bases[path] = { hash: op.hash!, heads: [op.opId], fileId: op.fileId }; state.knownOps = [...new Set([...snapshot.ops.map(item => item.opId), op.opId])];
+      await this.applyLocal(path, selected, expected, op.opId); journal.stage = 'applied'; await this.store.save(state);
+      state.bases[path] = { hash: op.hash ?? null, heads: [op.opId], fileId: op.fileId }; state.knownOps = [...new Set([...state.knownOps, ...snapshot.ops.map(item => item.opId), op.opId])];
       state.journals = []; await this.store.save(state);
-      this.emit('checking', { doneFiles: 1, doneBytes: selected.byteLength });
-    });
+      this.emit('checking', { doneFiles: 1, doneBytes: selected?.byteLength ?? 0 });
+      return op.opId;
   }
 }

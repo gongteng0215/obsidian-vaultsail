@@ -19,8 +19,9 @@ export class PluginSettingTab {
   constructor(app: unknown) { this.app = app; this.containerEl = element(document.body, 'section'); }
 }
 export class Modal {
+  static instances: Modal[] = [];
   app: any; containerEl: HTMLElement; titleEl: HTMLElement; contentEl: HTMLElement;
-  constructor(app: unknown) { this.app = app; this.containerEl = document.createElement('section'); this.titleEl = element(this.containerEl, 'h2'); this.contentEl = element(this.containerEl, 'div'); }
+  constructor(app: unknown) { this.app = app; Modal.instances.push(this); this.containerEl = document.createElement('section'); this.titleEl = element(this.containerEl, 'h2'); this.contentEl = element(this.containerEl, 'div'); }
   open(): void { document.body.appendChild(this.containerEl); (this as unknown as { onOpen?: () => void }).onOpen?.(); }
   close(): void { (this as unknown as { onClose?: () => void }).onClose?.(); this.containerEl.remove(); }
 }

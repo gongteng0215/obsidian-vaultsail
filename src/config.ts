@@ -6,13 +6,16 @@ export interface VaultSailSettings {
   pendingVaultName?: string;
   sessionRef?: string;
   transferConcurrency: number;
+  autoSyncEnabled: boolean; remotePollSeconds: number;
 }
 export const DEFAULT_APP_DIRECTORY = '/apps/VaultSail';
-export const DEFAULT_SETTINGS: VaultSailSettings = { providerId: 'none', remoteVaultId: '', appKey: '', appDirectory: DEFAULT_APP_DIRECTORY, secretRef: '', experimentalSync: false, deletionEnabled: false, transferConcurrency: DEFAULT_TRANSFER_CONCURRENCY };
+export const DEFAULT_SETTINGS: VaultSailSettings = { providerId: 'none', remoteVaultId: '', appKey: '', appDirectory: DEFAULT_APP_DIRECTORY, secretRef: '', experimentalSync: false, deletionEnabled: false, transferConcurrency: DEFAULT_TRANSFER_CONCURRENCY, autoSyncEnabled: false, remotePollSeconds: 60 };
 export function migrateSettings(value: unknown): VaultSailSettings {
   const source = value && typeof value === 'object' ? value as Record<string, unknown> : {};
   const result: VaultSailSettings = { ...DEFAULT_SETTINGS };
   if (validConcurrency(source.transferConcurrency)) result.transferConcurrency = source.transferConcurrency;
+  result.autoSyncEnabled = source.autoSyncEnabled === true;
+  if (typeof source.remotePollSeconds === 'number' && Number.isInteger(source.remotePollSeconds) && source.remotePollSeconds >= 30 && source.remotePollSeconds <= 300) result.remotePollSeconds = source.remotePollSeconds;
   if (source.providerId === 'baidu') result.providerId = 'baidu';
   for (const key of ['remoteVaultId', 'appKey', 'appDirectory', 'secretRef'] as const) if (typeof source[key] === 'string') result[key] = source[key];
   result.appDirectory = result.appDirectory.trim() || DEFAULT_APP_DIRECTORY;

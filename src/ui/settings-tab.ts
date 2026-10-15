@@ -30,6 +30,8 @@ export class VaultSailSettingTab extends PluginSettingTab {
     const meter = this.containerEl.querySelector<HTMLProgressElement>('.vaultsail-progress-meter');
     const detail = progress ? formatProgress(progress) : '点击开始同步，或先预览文件变化。';
     if (text && text.textContent !== detail) text.setText(detail);
+    const queue = this.containerEl.querySelector<HTMLElement>('.vaultsail-queue-status');
+    if (queue) queue.setText(p.queueSummary());
     const timing = this.containerEl.querySelector<HTMLElement>('.vaultsail-performance-text');
     const timingText = p.performanceText();
     if (timing) { timing.hidden = !timingText; if (timing.textContent !== timingText) timing.setText(timingText); }
@@ -182,8 +184,17 @@ export class VaultSailSettingTab extends PluginSettingTab {
       .addText(text => text.setValue(name).onChange(value => { name = value; }))
       .addButton(button => button.setButtonText('创建并绑定').setDisabled(p.busy).onClick(() => new ConfirmModal(this.app, '创建云端库', '将在获准应用目录下创建新库：' + name, () => p.run('创建云端库…', () => p.createVault(name))).open()));
     new Setting(transferCard).setName('双向同步').setDesc('根据上次成功的基线自动判断上传与下载。双方改动自动保留原笔记和冲突副本；删除默认关闭。')
-      .addButton(button => button.setButtonText('开始同步').setCta().setDisabled(p.busy).onClick(() => { void p.run('正在同步…', () => p.startSync()); }))
+      .addButton(button => button.setButtonText('开始同步').setCta().onClick(() => { p.requestSync(); }))
       .addButton(button => button.setButtonText('先看同步清单').setDisabled(p.busy).onClick(() => { void p.run('扫描双向变更…', () => p.preview('sync')); }));
+    new Setting(transferCard).setName('自动同步').setDesc('保存后安静 2 秒同步，连续编辑最多合并 15 秒；前台定期检查其他设备的版本。升级后需主动开启。')
+      .addToggle(toggle => toggle.setValue(p.settings.autoSyncEnabled).setDisabled(p.busy).onChange(value => { void p.setAutomatic(value).catch(error => { toggle.setValue(p.settings.autoSyncEnabled); new Notice(safeMessage(error)); }); }));
+    let interval = String(p.settings.remotePollSeconds);
+    new Setting(transferCard).setName('远端检查间隔（秒）').setDesc('30–300 秒，默认 60。执行任务时不叠加检查，后台挂起时暂停。')
+      .addText(text => text.setValue(interval).setDisabled(p.busy).onChange(value => { interval = value; }))
+      .addButton(button => button.setButtonText('保存检查间隔').setDisabled(p.busy).onClick(() => { void p.setAutomatic(p.settings.autoSyncEnabled, Number(interval)).catch(error => new Notice(safeMessage(error))); }));
+    transferCard.createEl('p', { cls: 'vaultsail-queue-status', text: p.queueSummary() }).setAttribute('role', 'status');
+    new Setting(transferCard).setName('待解决冲突').setDesc('查看各版本、逐块合并或保留为两篇；确认后其他设备自动接收解决版本。')
+      .addButton(button => button.setButtonText('查看待解决冲突').setDisabled(p.busy).onClick(() => p.openConflicts()));
     let concurrencyDraft = String(p.settings.transferConcurrency);
     const concurrencySetting = new Setting(transferCard).setName('同时传输的文件数')
       .setDesc(`可自行输入 1–${MAX_TRANSFER_CONCURRENCY} 之间的整数，默认 ${DEFAULT_TRANSFER_CONCURRENCY}。大附件自动减少同时传输数量，修改不影响账号或云端库绑定。`);

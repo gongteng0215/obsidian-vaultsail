@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { migrateSettings } from '../src/config.ts';
+test('automatic sync requires opt-in and validates the device-local remote check interval', () => {
+  assert.equal(migrateSettings({}).autoSyncEnabled, false); assert.equal(migrateSettings({}).remotePollSeconds, 60);
+  assert.equal(migrateSettings({ autoSyncEnabled: 'true' }).autoSyncEnabled, false);
+  for (const value of [30, 60, 300]) assert.equal(migrateSettings({ remotePollSeconds: value }).remotePollSeconds, value);
+  for (const value of [0, 29, 301, 60.5, '60']) assert.equal(migrateSettings({ remotePollSeconds: value }).remotePollSeconds, 60);
+});
 test('legacy intent is preserved without inventing a verified binding or retaining credentials', () => {
   const settings = migrateSettings({ providerId: 'baidu', remoteVaultId: 'ai-research', access_token: 'private', refresh_token: 'private', secret: 'private', unknown: true });
   assert.equal(settings.remoteVaultId, 'ai-research'); assert.equal(settings.binding, undefined); assert.equal(settings.deletionEnabled, false); assert.equal(JSON.stringify(settings).includes('private'), false);

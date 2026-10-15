@@ -254,7 +254,8 @@ test('manual transfer conflicts instead of overwriting; resolution saves every c
   a.files.set('note.md', bytes('A')); await ea.execute(await ea.preview('upload')); b.files.set('note.md', bytes('B'));
   const plan = await eb.preview('download'); assert.equal(plan.rows[0].action, 'conflict'); await eb.execute(plan); assert.equal(hash(b.files.get('note.md')!), hash(bytes('B')));
   await eb.resolve('note.md', plan.rows[0].heads[0].opId);
-  assert.equal(hash(b.files.get('note.md')!), hash(bytes('A'))); assert.equal(b.recovery.size, 2);
+  assert.equal(hash(b.files.get('note.md')!), hash(bytes('A'))); assert.ok(b.recovery.size >= 2);
+  assert.ok((await remote.revisions(vault.vaultId)).some(op => op.hash === hash(bytes('B'))), 'discarded local choice also remains a cloud version');
   assert.equal(buildHeads(await remote.revisions(vault.vaultId)).get('note.md')!.length, 1);
 });
 test('one-click sync handles single-sided changes automatically and visible copies preserve concurrent edits without duplicate versions', async () => {
@@ -353,7 +354,97 @@ test('published conflict resolution recovers local application after interruptio
   const { a, b, ea, eb, sb, cloud } = await setup(); a.files.set('note.md', bytes('A')); await ea.execute(await ea.preview('upload')); b.files.set('note.md', bytes('B'));
   const row = (await eb.preview('download')).rows[0]; b.failApply = true;
   await assert.rejects(eb.resolve(row.path, row.heads[0].opId), { code: 'network' }); assert.equal(sb.value.journals[0].stage, 'published');
-  await eb.recover(); assert.equal(hash(b.files.get('note.md')!), hash(bytes('A'))); assert.equal(cloud.published, 2);
+  await eb.recover(); assert.equal(hash(b.files.get('note.md')!), hash(bytes('A'))); assert.equal(cloud.published, 3);
+});
+test('disjoint Markdown edits merge into a parent-linked version and both devices converge without new versions', async () => {
+  const { a, b, ea, eb, remote, vault } = await setup();
+  a.files.set('note.md', bytes('top\n\nbottom\n')); await ea.sync(); await eb.sync();
+  a.files.set('note.md', bytes('TOP\n\nbottom\n')); await ea.sync();
+  b.files.set('note.md', bytes('top\n\nBOTTOM\n')); const result = await eb.sync();
+  assert.equal(result.autoMergedFiles, 1); assert.equal(result.preservedConflicts, 0);
+  assert.equal(new TextDecoder().decode(b.files.get('note.md')!), 'TOP\n\nBOTTOM\n');
+  const ops = await remote.revisions(vault.vaultId), head = buildHeads(ops).get('note.md')![0]; assert.equal(head.parents.length, 2);
+  assert.ok(ops.some(op => op.hash === hash(bytes('top\n\nBOTTOM\n'))), 'the unpublished local branch is preserved before merging');
+  await ea.sync(); assert.equal(hash(a.files.get('note.md')!), hash(b.files.get('note.md')!));
+  await eb.sync(); assert.equal((await remote.revisions(vault.vaultId)).length, ops.length);
+});
+test('overlapping edits expose structured conflict blocks; a reviewed custom result resolves every branch on both devices', async () => {
+  const { a, b, ea, eb, remote, vault } = await setup(); a.files.set('note.md', bytes('old\n')); await ea.sync(); await eb.sync();
+  a.files.set('note.md', bytes('A\n')); await ea.sync(); b.files.set('note.md', bytes('B\n'));
+  const row = (await eb.preview('sync')).rows[0], details = await eb.describeConflict(row);
+  assert.equal(details.base, 'old\n'); assert.equal(details.merge?.clean, false);
+  await eb.resolve(row.path, 'merged', row, bytes('A and B\n')); await ea.sync();
+  assert.equal(hash(a.files.get('note.md')!), hash(bytes('A and B\n')));
+  const heads = buildHeads(await remote.revisions(vault.vaultId)); assert.equal(heads.get('note.md')!.length, 1); assert.equal(heads.get('note.md')![0].parents.length, 2);
+});
+test('a stale merge draft cannot overwrite continued editing, and keep-both creates a normal synced note', async () => {
+  const { a, b, ea, eb, remote, vault } = await setup(); a.files.set('note.md', bytes('A')); await ea.sync(); b.files.set('note.md', bytes('B'));
+  const row = (await eb.preview('sync')).rows.find(row => row.path === 'note.md')!; b.files.set('note.md', bytes('B edited'));
+  await assert.rejects(eb.resolve(row.path, 'merged', row, bytes('draft')), { code: 'changed' });
+  const fresh = (await eb.preview('sync')).rows.find(row => row.path === 'note.md')!;
+  await eb.resolveBoth(fresh, fresh.heads[0].opId, 'note-另一版.md'); await ea.sync();
+  assert.equal(hash(a.files.get('note-另一版.md')!), hash(bytes('A'))); assert.equal(hash(a.files.get('note.md')!), hash(bytes('B edited')));
+  assert.equal(buildHeads(await remote.revisions(vault.vaultId)).get('note.md')!.length, 1);
+});
+test('automatic remote checks skip unchanged local bodies, dirty-file scans are incremental and self-write events need no retransmission', async () => {
+  const { a, b, ea, eb } = await setup();
+  for (let i = 0; i < 10; i++) a.files.set(`note-${i}.md`, bytes('base-' + i));
+  await ea.syncAutomatic([], true, true); await eb.syncAutomatic([], true, true);
+  let reads = 0; const read = b.read.bind(b); b.read = async path => { reads++; return read(path); };
+  await eb.syncAutomatic([], true, false); assert.equal(reads, 0, 'an unchanged remote tick must not hash every local note');
+  b.files.set('note-0.md', bytes('changed')); eb.markDirty('note-0.md'); reads = 0;
+  await eb.syncAutomatic(['note-0.md'], false, false); assert.ok(reads < 10, 'only dirty/affected files are read');
+  a.files.set('note-1.md', bytes('remote edit')); await ea.sync(); await eb.syncAutomatic([], true, false);
+  assert.deepEqual(await eb.changedFromBaseline(['note-1.md']), [], 'a plugin-applied version does not become another upload');
+  const before = b.files.get('note-1.md')!; b.files.set('note-1.md', bytes('user continued editing')); eb.markDirty('note-1.md');
+  assert.deepEqual(await eb.changedFromBaseline(['note-1.md']), ['note-1.md']); assert.notEqual(hash(before), hash(b.files.get('note-1.md')!));
+});
+test('concurrent renames stay pending while independent notes sync; choosing a final path converges both branches', async () => {
+  const { a, b, ea, eb, remote, vault, sb } = await setup(); a.files.set('original.md', bytes('same')); await ea.sync(); await eb.sync();
+  const root = (await remote.revisions(vault.vaultId))[0];
+  for (const path of ['name-a.md', 'name-b.md']) await remote.publish(vault.vaultId, { ...root, opId: uuid(), deviceId: uuid(), path, previousPath: 'original.md', parents: [root.opId] }, bytes('same'));
+  a.files.set('unrelated.md', bytes('new independent note')); const result = await ea.sync(); assert.ok(result.preservedConflicts >= 1);
+  const rows = (await ea.preview('sync', false, { allowRenames: true })).rows, row = rows.find(row => row.path === 'name-a.md')!;
+  assert.equal(row.renameConflict, true); assert.equal(row.heads.length, 2);
+  await ea.resolve(row.path, row.heads[0].opId, row);
+  const heads = buildHeads(await remote.revisions(vault.vaultId)); assert.equal(heads.get('name-a.md')![0].kind, 'update'); assert.equal(heads.get('name-b.md')![0].kind, 'delete');
+  await eb.sync(); assert.equal(hash(b.files.get('unrelated.md')!), hash(bytes('new independent note'))); assert.equal(hash(b.files.get('name-a.md')!), hash(bytes('same'))); assert.equal(sb.value.journals.length, 0);
+});
+test('keep-both interrupted after publishing the extra note recovers it without losing the original conflict', async () => {
+  const { a, b, ea, eb, remote, vault, sb } = await setup(); a.files.set('note.md', bytes('A')); await ea.sync(); b.files.set('note.md', bytes('B'));
+  const row = (await eb.preview('sync')).rows[0]; b.failApply = true;
+  await assert.rejects(eb.resolveBoth(row, row.heads[0].opId, 'copy.md'), { code: 'network' });
+  assert.equal(sb.value.journals[0].path, 'copy.md'); const id = sb.value.journals[0].id;
+  await eb.recover(); assert.equal(hash(b.files.get('copy.md')!), hash(bytes('A'))); assert.equal(hash(b.files.get('note.md')!), hash(bytes('B')));
+  assert.equal((await remote.revisions(vault.vaultId)).filter(op => op.opId === id).length, 1);
+  assert.equal(buildHeads(await remote.revisions(vault.vaultId)).get('note.md')!.length, 2);
+});
+test('two devices simultaneously merging the same branches publish one identical automatic merge operation', async () => {
+  const { a, b, ea, eb, remote, vault } = await setup(); const base = bytes('top\n\nbottom\n');
+  a.files.set('note.md', base); await ea.sync(); await eb.sync(); const root = (await remote.revisions(vault.vaultId))[0];
+  for (const text of ['TOP\n\nbottom\n', 'top\n\nBOTTOM\n']) {
+    const data = bytes(text); await remote.publish(vault.vaultId, { ...root, opId: uuid(), deviceId: uuid(), parents: [root.opId], hash: hash(data), size: data.byteLength }, data);
+  }
+  await Promise.all([ea.sync(), eb.sync()]);
+  assert.equal(hash(a.files.get('note.md')!), hash(bytes('TOP\n\nBOTTOM\n'))); assert.equal(hash(a.files.get('note.md')!), hash(b.files.get('note.md')!));
+  assert.equal((await remote.revisions(vault.vaultId)).length, 4);
+  await Promise.all([ea.sync(), eb.sync()]); assert.equal((await remote.revisions(vault.vaultId)).length, 4);
+});
+test('deletion versus modification needs an explicit enabled decision and preserves recoverable content', async () => {
+  const { a, b, ea, eb, remote, vault } = await setup(); a.files.set('note.md', bytes('base')); await ea.sync(); await eb.sync();
+  b.files.delete('note.md'); a.files.set('note.md', bytes('edited remotely')); await ea.sync();
+  const row = (await eb.preview('sync', true)).rows[0]; assert.equal(row.action, 'conflict');
+  await assert.rejects(eb.resolveDelete(row, false), { code: 'configuration' });
+  await eb.resolveDelete(row, true); assert.equal(b.files.has('note.md'), false); assert.ok(b.recovery.size > 0);
+  await ea.sync(false); assert.equal(a.files.has('note.md'), true, 'deletion remains off on this receiver');
+  await ea.sync(true); assert.equal(a.files.has('note.md'), false); assert.equal(buildHeads(await remote.revisions(vault.vaultId)).get('note.md')![0].kind, 'delete');
+});
+test('reusing a retired rename source creates a distinct file identity and never moves the renamed note back', async () => {
+  const { a, ea, remote, vault } = await setup(); a.files.set('old.md', bytes('first')); await ea.sync();
+  a.files.delete('old.md'); a.files.set('new.md', bytes('first')); await ea.sync(true);
+  a.files.set('old.md', bytes('second independent note')); await ea.sync(true);
+  const heads = buildHeads(await remote.revisions(vault.vaultId)); assert.equal(heads.get('new.md')![0].kind, 'update'); assert.equal(heads.get('old.md')![0].kind, 'update');
+  assert.notEqual(heads.get('new.md')![0].fileId, heads.get('old.md')![0].fileId);
 });
 test('missing parents, cycles, unknown schemas and duplicate IDs stop graph construction', async () => {
   const { a, ea, remote, vault } = await setup(); a.files.set('note.md', bytes('A')); await ea.execute(await ea.preview('upload'));

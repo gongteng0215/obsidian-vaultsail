@@ -6,24 +6,24 @@ Sync notes and attachments through Baidu Netdisk with version preservation and p
 
 ## Features
 
-- Start bidirectional sync with one click, or preview upload, download and sync changes first.
-- Compare files against a verified baseline. Concurrent edits preserve every valid version and create visible conflict copies.
+- Sync manually or opt into automatic sync with coalesced file events, remote checks and persistent queued work.
+- Merge bounded Markdown edits against a common ancestor. Resolve overlaps in a conflict inbox, edit a persistent draft, select a complete version, or keep both as normally synced files.
 - Verify transferred content with SHA-256. Recover unfinished operations and restore local recovery copies.
 - Export a password-encrypted code or file containing your application credentials and authorization. Account-only export and import are the default: each vault chooses its own cloud destination. Sharing an existing remote vault requires an explicit choice at both ends.
 - See scan, transfer and verification progress, elapsed time, last completion and remote version locations.
 - Keep deletion propagation off by default. Exclude Obsidian configuration, credentials, internal state and recovery folders from note sync.
 
-Baidu Netdisk is the current provider. Transfers are manual, with a 20 MiB per-file limit and eight concurrent file transfers by default. Enter a custom integer from 1 to 32, then save; existing saved preferences are preserved, with a reset-to-eight button available. Large attachments automatically reduce the batch size. Pairing configuration is encrypted; note contents stored in the cloud are **not** end-to-end encrypted. Automatic text merging and continuous mobile background sync are not provided.
+Baidu Netdisk is the current provider. Automatic sync requires opt-in after upgrade: local changes wait for 2 seconds of quiet (up to 15 seconds while editing); foreground remote checks default to 60 seconds plus jitter, configurable from 30 to 300. Transfers retain the 20 MiB limit and default eight concurrent files (configurable 1–32), with smaller batches for large attachments. Markdown merging is bounded to 256 KiB and a limited line-diff budget; overlapping edits and ambiguous ancestry require review. Pairing is encrypted; cloud notes are **not** end-to-end encrypted. Continuous mobile background sync is not provided.
 
 ## Install
 
 Requires **Obsidian 1.11.4 or newer**. The [community listing](https://community.obsidian.md/plugins/vaultsail) is restored, and **0.1.17** completed the automated review with no blocking errors on October 15, 2026. The in-app search catalog updates separately from the listing. Automated review does not replace real-device validation.
 
-**[0.1.23 is a test release](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.1.23) awaiting device validation.** It batches fresh metadata when directory listings omit content digests, preserves the verified revision cache across restarts, and skips the second inventory scan when there are no changes. Live timing includes version cache hits and actual record reads. See the [test-build notes](docs/releases/0.1.23.md). Community installation selects the release matching the repository manifest; a GitHub prerelease flag alone does not isolate community updates. Check the installed version after updating, or pin 0.1.23 in BRAT.
+**[0.2.0 is an automatic-sync and merge test release](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.0) awaiting real Windows/iPad validation.** It is developed on a separate branch; the default branch's community manifest remains at 0.1.23. Pin 0.2.0 in BRAT or install its files manually. See the [test-build notes](docs/releases/0.2.0.md). Community installation follows the default-branch manifest; a prerelease flag alone does not isolate updates.
 
-For direct GitHub installation on iPad, install and enable [BRAT](https://github.com/TfTHacker/obsidian42-brat) through Obsidian's community plugins, then add `gongteng0215/obsidian-vaultsail` and select version `0.1.23`. Enable VaultSail in an empty test vault before importing an encrypted pairing code.
+For direct GitHub installation on iPad, install and enable [BRAT](https://github.com/TfTHacker/obsidian42-brat) through Obsidian's community plugins, then add `gongteng0215/obsidian-vaultsail` and select version `0.2.0`. Enable VaultSail in an empty test vault before importing an encrypted pairing code.
 
-For manual installation, download the ZIP or the three individual files from the [0.1.23 test release](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.1.23). Place `main.js`, `manifest.json` and `styles.css` in `plugins/vaultsail/` under the current vault's configuration directory, then enable VaultSail. The default directory is `.obsidian`; custom configuration directories are supported.
+For manual installation, download the ZIP or the three individual files from the [0.2.0 test release](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.0). Place `main.js`, `manifest.json` and `styles.css` in `plugins/vaultsail/` under the current vault's configuration directory, then enable VaultSail. The default directory is `.obsidian`; custom configuration directories are supported.
 
 ## Connect your first device
 

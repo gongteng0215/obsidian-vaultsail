@@ -15,7 +15,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   proto.setText = function(this: HTMLElement, value: string) { this.textContent = value; };
   proto.createEl = function(this: HTMLElement, tag: string, options?: { text?: string; cls?: string }) { const el = this.appendChild(document.createElement(tag)); el.textContent = options?.text ?? ''; if (options?.cls) el.className = options.cls; return el; };
   proto.createDiv = function(this: HTMLElement, options?: { cls?: string }) { const el = this.appendChild(document.createElement('div')); if (options?.cls) el.className = options.cls; return el; };
-  const result = await build({ stdin: { contents: "export { default as Plugin } from './src/main.ts'; export { AuthManager } from './src/auth/auth-manager.ts'; export { ObsidianLocalFiles, ObsidianStateStore } from './src/platform/obsidian-adapters.ts'; export { TFile } from 'obsidian';", resolveDir: process.cwd() }, bundle: true, format: 'esm', platform: 'node', write: false,
+  const result = await build({ stdin: { contents: "export { default as Plugin } from './src/main.ts'; export { AuthManager } from './src/auth/auth-manager.ts'; export { ObsidianLocalFiles, ObsidianStateStore } from './src/platform/obsidian-adapters.ts'; export { TFile, Modal } from 'obsidian';", resolveDir: process.cwd() }, bundle: true, format: 'esm', platform: 'node', write: false,
     plugins: [{ name: 'obsidian-harness', setup(builder) { builder.onResolve({ filter: /^obsidian$/ }, () => ({ path: path.resolve('test/fixtures/obsidian.ts') })); } }] });
   mkdirSync('dist/test', { recursive: true }); const harnessPath = path.resolve('dist/test/ui-harness.mjs');
   writeFileSync(harnessPath, result.outputFiles[0].text); const module = await import(pathToFileURL(harnessPath).href);
@@ -28,6 +28,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
     remove: async (p: string) => { files.delete(p); }, rename: async (from: string, to: string) => { if (failStateRename && from.endsWith('.next')) { failStateRename = false; throw new Error('crash'); } assert.equal(files.has(to), false); files.set(to, files.get(from)!); files.delete(from); },
     list: async (p: string) => ({ files: [...files.keys()].filter(key => key.startsWith(p + '/') && !key.slice(p.length + 1).includes('/')), folders: [...dirs].filter(key => key.startsWith(p + '/') && !key.slice(p.length + 1).includes('/')) }),
   };
+  const vaultEvents = new Map<string, ((file: { path: string }, oldPath?: string) => void)[]>();
   const app = {
     secretStorage: { getSecret: (key: string) => secretMap.get(key) ?? null, setSecret: (key: string, value: string) => {
       // Match Obsidian's actual SecretStorage.validateId contract, including its length cap.
@@ -35,11 +36,13 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
       secretMap.set(key, value);
     } },
     loadLocalStorage: (key: string) => localMap.get(key) ?? null, saveLocalStorage: (key: string, value: unknown) => { localMap.set(key, value); },
-    workspace: { on: () => ({}) },
+    workspace: { on: () => ({}), onLayoutReady: (callback: () => void) => callback() },
     vault: { configDir: '.obsidian', adapter, getName: () => '测试笔记库', getFiles: () => [...files].filter(([p]) => !p.startsWith('.')).map(([p, data]) => new module.TFile(p, data.byteLength)),
+      on: (name: string, callback: (file: { path: string }, oldPath?: string) => void) => { vaultEvents.set(name, [...vaultEvents.get(name) ?? [], callback]); return {}; },
       getAbstractFileByPath: (p: string) => files.has(p) ? new module.TFile(p, files.get(p)!.byteLength) : dirs.has(p) ? { path: p } : null,
       readBinary: async (file: { path: string }) => files.get(file.path)!.slice(0), modifyBinary: async (file: { path: string }, data: ArrayBuffer) => { files.set(file.path, data.slice(0)); },
-      process: async (file: { path: string }, update: (text: string) => string) => { const text = update(new TextDecoder('utf-8', { ignoreBOM: true }).decode(files.get(file.path)!)); files.set(file.path, new TextEncoder().encode(text).buffer); },
+      process: async (file: { path: string }, update: (text: string) => string) => { const text = update(new TextDecoder('utf-8', { ignoreBOM: true }).decode(files.get(file.path)!)); files.set(file.path, new TextEncoder().encode(text).buffer);
+        for (const callback of vaultEvents.get('modify') ?? []) callback(new module.TFile(file.path, files.get(file.path)!.byteLength)); },
       createBinary: async (p: string, data: ArrayBuffer) => { assert.equal(files.has(p), false); files.set(p, data.slice(0)); }, createFolder: async (p: string) => { dirs.add(p); }, trash: async (file: { path: string }) => { files.delete(file.path); } },
   };
   const plugin = new module.Plugin(app); plugin.saved = { providerId: 'baidu', appKey: 'my-app', secretRef: 'own-secret', appDirectory: '/apps/test', remoteVaultId: 'legacy-name', access_token: 'must-be-stripped' };
@@ -315,9 +318,9 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   assert.ok(document.body.textContent!.includes('/blobs/' + hash(files.get('note.md')!)));
   assert.equal([...remoteObjects.keys()].some(p => p.includes('VaultSail-配置')), false, 'exported pairing files must never become remote notes');
   const beforeSync = remoteObjects.size; files.set('note.md', new TextEncoder().encode('edited locally').buffer);
-  setupButton('开始同步').click(); for (let i = 0; i < 1000 && plugin.busy; i++) await Promise.resolve();
+  setupButton('开始同步').click(); await until(() => !plugin.busy && remoteObjects.size > beforeSync);
   assert.equal(plugin.busy, false); assert.equal(plugin.progress?.phase, 'completed'); assert.ok(remoteObjects.size > beforeSync);
-  const afterSync = remoteObjects.size; setupButton('开始同步').click(); for (let i = 0; i < 1000 && plugin.busy; i++) await Promise.resolve();
+  const afterSync = remoteObjects.size; setupButton('开始同步').click(); await until(() => !plugin.busy && !plugin.queue.state.manual);
   assert.equal(remoteObjects.size, afterSync); assert.equal(plugin.settings.experimentalSync, false, 'normal sync must be available without the deletion experiment');
   const originalNote = files.get('note.md')!;
   await local.writeConflictCopy('note.md', 'local-test', originalNote); assert.equal(hash((await local.readConflictCopy('note.md', 'local-test'))!), hash(originalNote));
@@ -340,6 +343,54 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   concurrencyField().value = '2.5'; concurrencyField().dispatchEvent(new window.Event('input')); setupButton('保存并发数').click();
   await Promise.resolve(); assert.equal(plugin.settings.transferConcurrency, 12);
   setupButton('恢复默认 8').click(); await until(() => plugin.saved.transferConcurrency === 8); await until(() => concurrencyField().value === '8');
+  // Drive the actual conflict inbox/editor, including persisted drafts and
+  // a commit whose modal cannot close halfway through publication.
+  const conflictOps = await plugin.engine.remote.revisions(plugin.settings.binding.vaultId);
+  const parentIds = new Set(conflictOps.flatMap((op: any) => op.parents));
+  const head = conflictOps.find((op: any) => op.path === 'note.md' && !parentIds.has(op.opId));
+  const remoteConflict = new TextEncoder().encode('remote conflict body').buffer;
+  await plugin.engine.remote.publish(plugin.settings.binding.vaultId, { ...head, opId: uuid(), deviceId: uuid(), parents: [head.opId], hash: hash(remoteConflict), size: remoteConflict.byteLength }, remoteConflict);
+  files.set('note.md', new TextEncoder().encode('local conflict body').buffer);
+  setupButton('查看待解决冲突').click(); await until(() => !!setupButton('对比与解决'));
+  setupButton('对比与解决').click(); await until(() => !!document.querySelector('textarea[aria-label="合并结果"]'));
+  const mergeInput = document.querySelector('textarea[aria-label="合并结果"]') as HTMLTextAreaElement;
+  mergeInput.value = 'merged by user'; mergeInput.dispatchEvent(new window.Event('input'));
+  const firstEditor = module.Modal.instances.at(-1); firstEditor.close();
+  await until(() => [...files.keys()].some(path => path.includes('/drafts/') && path.endsWith('.json')));
+  setupButton('对比与解决').click(); await until(() => (document.querySelector('textarea[aria-label="合并结果"]') as HTMLTextAreaElement)?.value === 'merged by user');
+  const activeEditor = module.Modal.instances.at(-1);
+  setupButton('全文已手动合并')?.click();
+  const publishBeforeResolution = plugin.engine.remote.publish.bind(plugin.engine.remote); let releaseResolution!: () => void; let resolutionStarted = false;
+  plugin.engine.remote.publish = async (...args: any[]) => { if (!resolutionStarted) { resolutionStarted = true; await new Promise<void>(resolve => { releaseResolution = resolve; }); } return publishBeforeResolution(...args); };
+  setupButton('确认解决并同步').click(); setupButton('确认').click(); await until(() => resolutionStarted);
+  activeEditor.close(); assert.equal(activeEditor.containerEl.isConnected, true, 'a committed resolution must not be presented as cancelled');
+  releaseResolution(); await until(() => !activeEditor.containerEl.isConnected && !plugin.busy);
+  assert.equal(new TextDecoder().decode(files.get('note.md')!), 'merged by user');
+  await until(() => document.body.textContent!.includes('没有待解决冲突'));
+  plugin.engine.remote.publish = publishBeforeResolution;
+  // Local events enqueue work automatically; the UI does not need a Sync click.
+  await plugin.setAutomatic(true); await plugin.queue.pump();
+  const autoCount = remoteObjects.size; files.set('note.md', new TextEncoder().encode('automatic file edit').buffer);
+  for (const callback of vaultEvents.get('modify') ?? []) callback(new module.TFile('note.md', files.get('note.md')!.byteLength));
+  const autoNow = Date.now;
+  try { const current = autoNow(); Date.now = () => current + 2500; await plugin.queue.pump(); }
+  finally { Date.now = autoNow; }
+  assert.ok(remoteObjects.size > autoCount); assert.equal(plugin.settings.autoSyncEnabled, true);
+  const automaticOps = await plugin.engine.remote.revisions(plugin.settings.binding.vaultId), used = new Set(automaticOps.flatMap((op: any) => op.parents));
+  const beforeDownload = automaticOps.find((op: any) => op.path === 'note.md' && !used.has(op.opId));
+  const downloadedText = new TextEncoder().encode('received from another device').buffer;
+  await plugin.engine.remote.publish(plugin.settings.binding.vaultId, { ...beforeDownload, opId: uuid(), deviceId: uuid(), parents: [beforeDownload.opId], hash: hash(downloadedText), size: downloadedText.byteLength }, downloadedText);
+  const afterRemoteWrite = remoteObjects.size; plugin.queue.request('remote'); await plugin.queue.pump();
+  assert.equal(new TextDecoder().decode(files.get('note.md')!), 'received from another device');
+  assert.ok(plugin.queue.state.dirty['note.md'], 'native download writes also produce a queued modify event');
+  try { const current = autoNow(); Date.now = () => current + 2500; await plugin.queue.pump(); } finally { Date.now = autoNow; }
+  assert.equal(remoteObjects.size, afterRemoteWrite, 'plugin-created file events must not loop or publish another version');
+  await plugin.setAutomatic(false); assert.equal(plugin.saved.autoSyncEnabled, false);
+  let ready!: () => void;
+  const delayedApp = { ...app, workspace: { on: () => ({}), onLayoutReady: (callback: () => void) => { ready = callback; } } };
+  const delayed = new module.Plugin(delayedApp); delayed.saved = { ...structuredClone(plugin.saved), autoSyncEnabled: true }; delayed.provider = () => fakeProvider;
+  await delayed.onload(); assert.equal(delayed.queue, undefined, 'automatic sync must wait for the complete initial vault layout');
+  ready(); assert.ok(delayed.queue); delayed.onunload();
   // Exercise a real timer against the rendered view, including a pending file
   // request, failure, recovery actions and a new task replacing the old snapshot.
   const realNow = Date.now; const clock = realNow();

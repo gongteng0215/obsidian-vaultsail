@@ -29,7 +29,7 @@ export function validateRevision(value: unknown, vaultId: string): Revision {
     path: op.path as string, parents: [...op.parents] as string[], kind: op.kind as Revision['kind'], size: op.size as number, createdAt: op.createdAt as number,
     ...(op.kind === 'update' ? { hash: op.hash as string } : {}), ...(op.previousPath !== undefined ? { previousPath: op.previousPath as string } : {}) };
 }
-export function buildHeads(ops: Revision[]): Map<string, Revision[]> {
+export function buildHeads(ops: Revision[], allowConcurrentRenames = false): Map<string, Revision[]> {
   const byId = new Map<string, Revision>(); const children = new Map<string, string[]>(); const indegrees = new Map<string, number>();
   for (const op of ops) {
     if (byId.has(op.opId)) throw new VaultSailError('schema', '操作 ID 重复。');
@@ -53,7 +53,7 @@ export function buildHeads(ops: Revision[]): Map<string, Revision[]> {
   const filePaths = new Map<string, string>();
   for (const revisions of heads.values()) for (const head of revisions) {
     const path = filePaths.get(head.fileId);
-    if (path && path !== head.path) throw new VaultSailError('rename-conflict', '同一文件存在并发重命名分支，已保留全部版本并暂停应用。');
+    if (path && path !== head.path && !allowConcurrentRenames) throw new VaultSailError('rename-conflict', '同一文件存在并发重命名分支，已保留全部版本并暂停应用。');
     filePaths.set(head.fileId, head.path);
   }
   // A rename explicitly retires its old path; absence alone never does.
@@ -61,6 +61,9 @@ export function buildHeads(ops: Revision[]): Map<string, Revision[]> {
   for (const id of queue) {
     const op = byId.get(id)!;
     if (op.previousPath) retired.set(op.previousPath, { ...op, path: op.previousPath, kind: 'delete', hash: undefined, size: 0, previousPath: undefined });
+    for (const parentId of op.parents) { const parent = byId.get(parentId)!;
+      if (parent.fileId === op.fileId && parent.path !== op.path) retired.set(parent.path, { ...op, path: parent.path, kind: 'delete', hash: undefined, size: 0, previousPath: undefined });
+    }
   }
   for (const [path, retirement] of retired) if (!heads.has(path)) heads.set(path, [retirement]);
   return heads;
@@ -148,7 +151,7 @@ export class RemoteVaultStore {
     }
     return result;
   }
-  async revisions(id: string, onProgress: (done: number, total: number) => void = () => {}): Promise<Revision[]> {
+  async revisions(id: string, onProgress: (done: number, total: number) => void = () => {}, allowConcurrentRenames = false): Promise<Revision[]> {
     await this.loadCache(id); await this.get(id); const base = this.base(id) + '/ops'; const result: Revision[] = []; const active = new Set<string>();
     const entries: { deviceId: string; entry: Awaited<ReturnType<typeof listAll>>[number] }[] = [];
     for (const device of await listAll(this.provider, base)) {
@@ -176,6 +179,7 @@ export class RemoteVaultStore {
         const data = reusable ? undefined : await this.provider.read(entry.path);
         if (reusable) stats.cacheHits++; else stats.read++;
         const op = reusable ? cached.revision : validateRevision(parseJson(data!), id);
+        if (cached && data && hash(jsonBytes(op)) !== hash(jsonBytes(validateRevision(cached.revision, id)))) throw new VaultSailError('integrity', '已发布的版本记录被修改，已停止同步。');
         if (op.deviceId !== deviceId || entry.path !== base + '/' + deviceId + '/' + op.opId + '.json') throw new VaultSailError('schema', '操作文件与记录标识不一致。');
         this.cachedRevisions.set(entry.path, { etag: entry.etag, contentHash: data ? hash(data) : cached?.contentHash, size: entry.size, revision: op });
         active.add(entry.path);
@@ -183,7 +187,7 @@ export class RemoteVaultStore {
         return op;
     });
     result.push(...records);
-    buildHeads(result); await this.saveCache(id, active);
+    buildHeads(result, allowConcurrentRenames); await this.saveCache(id, active);
     try { this.onScan({ ...stats }); } catch { /* Reporting cannot affect validation. */ }
     return result;
   }
