@@ -2,7 +2,7 @@
 
 仓库：`https://github.com/gongteng0215/obsidian-vaultsail`
 
-插件 ID：`vaultsail`；名称：`VaultSail`；作者：`gongteng0215`；版本：`0.1.13`；最低 Obsidian：`1.11.4`。
+插件 ID：`vaultsail`；名称：`VaultSail`；作者：`gongteng0215`；版本：`0.1.14`；最低 Obsidian：`1.11.4`。
 
 短描述：Sync notes and attachments through Baidu Netdisk with version preservation and encrypted device pairing.
 
@@ -28,3 +28,5 @@ GitHub 0.1.12 已公开，独立插件文件/ZIP 已下载与本地校验一致�
 - README 披露账号要求、百度网络服务、密钥存储、配对的权限含义、笔记尚未加密和实际设备验证边界。
 - 自动化测试和构建需要在冻结的发布提交通过。旧包与临时产物清理不删除测试源码、Git 恢复包、安装恢复备份或用户配置。
 - 真实 iPad、真实 100 文件跨端、长期共享令牌续期仍未由开发者验收；不能在提交时声明已实测通过，也不能保证审核通过。
+
+0.1.13 第二轮检查要求功能标题不包含插件名称，构建再次通过官方逐字节复现。0.1.14 保留独立品牌展示，标题改为功能名称，继续审核。

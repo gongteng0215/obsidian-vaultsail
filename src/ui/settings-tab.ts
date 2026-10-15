@@ -35,7 +35,8 @@ export class VaultSailSettingTab extends PluginSettingTab {
     }
     mark.appendChild(svg);
     const title = brand.createDiv({ cls: 'vaultsail-brand-copy' }); title.createEl('span', { text: 'YOUR VAULT, EVERY CLOUD', cls: 'vaultsail-eyebrow' });
-    new Setting(title).setName('VaultSail · 云舟').setHeading().setClass('vaultsail-brand-heading');
+    title.createEl('span', { text: 'VaultSail · 云舟', cls: 'vaultsail-brand-name' });
+    new Setting(title).setName('连接与同步').setHeading().setClass('vaultsail-brand-heading');
     title.createEl('p', { text: '让笔记，随你远航。' });
     const badge = hero.createEl('span', { cls: 'vaultsail-badge', text: AUTH_LABELS[p.auth.status()] }); badge.setAttribute('data-status', p.auth.status());
     const route = hero.createDiv({ cls: 'vaultsail-route' });

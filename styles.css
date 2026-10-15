@@ -11,7 +11,8 @@
 .vaultsail-mark svg { width: 100%; height: 100%; }
 .vaultsail-eyebrow { display: block; font-size: 10px; font-weight: 700; letter-spacing: 1.7px; color: var(--text-muted); }
 .vaultsail-hero .vaultsail-eyebrow { color: #a5cdd0; }
-.vaultsail-workspace .vaultsail-brand-heading .setting-item-name { font-size: 25px; font-weight: 650; letter-spacing: -0.5px; color: inherit; }
+.vaultsail-workspace .vaultsail-brand-name { display: block; margin: 6px 0; font-size: 25px; font-weight: 650; letter-spacing: -0.5px; color: inherit; }
+.vaultsail-workspace .vaultsail-brand-heading .setting-item-name { font-size: 13px; font-weight: 500; color: inherit; }
 .vaultsail-workspace .vaultsail-brand-heading { padding: 0; border: 0; margin: 6px 0; }
 .vaultsail-workspace .vaultsail-brand-heading .setting-item-info { margin: 0; }
 .vaultsail-brand p { margin: 0; color: #c2dadc; font-size: 13px; }
@@ -56,7 +57,7 @@
 .vaultsail-workspace { container-type: inline-size; }
 @container (max-width: 450px) {
   .vaultsail-hero { padding: 20px; } .vaultsail-badge { position: static; display: inline-block; margin-top: 16px; }
-  .vaultsail-workspace .vaultsail-brand-heading .setting-item-name { font-size: 21px; } .vaultsail-eyebrow { font-size: 8px; letter-spacing: 1px; }
+  .vaultsail-workspace .vaultsail-brand-name { font-size: 21px; } .vaultsail-eyebrow { font-size: 8px; letter-spacing: 1px; }
   .vaultsail-metrics { gap: 5px; } .vaultsail-metric { padding: 0 6px; } .vaultsail-metric strong { font-size: 11px; }
   .vaultsail-tab span { display: none; } .vaultsail-tab strong { font-size: 11px; } .vaultsail-card { padding: 16px; }
 }
