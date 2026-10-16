@@ -3,6 +3,7 @@ export interface SyncProgress {
   phase: ProgressPhase; path?: string; doneFiles: number; totalFiles: number; doneBytes: number; totalBytes: number; startedAt: number; updatedAt: number;
   message?: string;
   activeFiles?: number; concurrency?: number;
+  blockedFiles?: number;
 }
 export const PROGRESS_LABELS: Record<ProgressPhase, string> = {
   connecting: '检查百度连接与云端库',
@@ -24,5 +25,7 @@ export function formatProgress(progress: SyncProgress, now = Date.now()): string
   const result = progress.message ? '\n' + progress.message : '';
   const stopped = progress.phase === 'failed' ? '\n任务已停止，请根据错误恢复任务或重新同步。' : '';
   const parallel = progress.concurrency && !scanning ? `\n同时传输 ${progress.activeFiles ?? 0}/${progress.concurrency} 个文件` : '';
-  return `${PROGRESS_LABELS[progress.phase]}${progress.path ? ' · ' + progress.path : ''}\n${count}${size} · 耗时 ${elapsed} 秒${parallel}${waiting}${result}${stopped}`;
+  const blocked = progress.blockedFiles ? `\n跳过 ${progress.blockedFiles} 项（超限或关联保护，未传输；可查看跳过文件）` : '';
+  const label = progress.phase === 'completed' && progress.blockedFiles ? '部分完成 · 有跳过项' : PROGRESS_LABELS[progress.phase];
+  return `${label}${progress.path ? ' · ' + progress.path : ''}\n${count}${size} · 耗时 ${elapsed} 秒${parallel}${blocked}${waiting}${result}${stopped}`;
 }

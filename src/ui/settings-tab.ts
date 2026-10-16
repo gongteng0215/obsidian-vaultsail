@@ -24,7 +24,7 @@ export class VaultSailSettingTab extends PluginSettingTab {
     const card = this.containerEl.querySelector<HTMLElement>('.vaultsail-progress-card');
     card?.setAttribute('data-phase', progress?.phase ?? 'idle'); card?.setAttribute('aria-busy', String(running));
     const state = this.containerEl.querySelector<HTMLElement>('.vaultsail-progress-state');
-    const stateLabel = running ? '进行中 · 实时更新' : progress?.phase === 'failed' ? '上次任务 · 已停止' : progress?.phase === 'paused' ? '上次任务 · 已暂停' : progress ? '上次任务' : '等待开始';
+    const stateLabel = running ? '进行中 · 实时更新' : progress?.phase === 'failed' ? '上次任务 · 已停止' : progress?.phase === 'paused' ? '上次任务 · 已暂停' : progress?.phase === 'completed' && progress.blockedFiles ? '上次任务 · 部分完成' : progress ? '上次任务' : '等待开始';
     if (state && state.textContent !== stateLabel) state.setText(stateLabel);
     const text = this.containerEl.querySelector<HTMLElement>('.vaultsail-progress-text');
     const meter = this.containerEl.querySelector<HTMLProgressElement>('.vaultsail-progress-meter');
@@ -32,6 +32,8 @@ export class VaultSailSettingTab extends PluginSettingTab {
     if (text && text.textContent !== detail) text.setText(detail);
     const queue = this.containerEl.querySelector<HTMLElement>('.vaultsail-queue-status');
     if (queue) queue.setText(p.queueSummary());
+    const blocked = this.containerEl.querySelector<HTMLElement>('.vaultsail-blocked-summary');
+    if (blocked) blocked.setText(p.blockedSummary());
     const timing = this.containerEl.querySelector<HTMLElement>('.vaultsail-performance-text');
     const timingText = p.performanceText();
     if (timing) { timing.hidden = !timingText; if (timing.textContent !== timingText) timing.setText(timingText); }
@@ -168,7 +170,7 @@ export class VaultSailSettingTab extends PluginSettingTab {
       .addButton(button => button.setButtonText('复制云端路径').onClick(() => copyText(p.cloudLocation())))
       .addButton(button => button.setButtonText('查看云端文件').setDisabled(p.busy).onClick(() => { void p.run('读取云端文件版本…', () => p.showCloudFiles()); }));
     const success = p.lastSuccess();
-    new Setting(vaultCard).setName('最近一次传输完成').setDesc(success ? `${new Date(success.completedAt).toLocaleString()} · 处理 ${success.files} 个文件 · 校验内容 ${formatBytes(success.bytes)} · 耗时 ${(success.elapsedMs / 1000).toFixed(1)} 秒` : '本设备尚无当前云端库的已完成传输记录。');
+    new Setting(vaultCard).setName('最近一次传输完成').setDesc(success ? `${new Date(success.completedAt).toLocaleString()} · 处理 ${success.files} 个文件 · 校验内容 ${formatBytes(success.bytes)} · 耗时 ${(success.elapsedMs / 1000).toFixed(1)} 秒${success.blockedFiles ? ` · 部分完成，跳过 ${success.blockedFiles} 项未传输` : ''}` : '本设备尚无当前云端库的已完成传输记录。');
     if (!p.settings.binding && p.settings.remoteVaultId) new Setting(vaultCard).setName('待验证的云端库').setDesc(`${p.settings.pendingVaultName ?? ''} · ${p.settings.remoteVaultId}`)
       .addButton(button => button.setButtonText('验证并绑定导入库').setDisabled(p.busy || p.auth.status() !== 'connected').onClick(() => { void p.run('验证导入的云端库…', () => p.bind(p.settings.remoteVaultId)); }));
     new Setting(vaultCard).setName('当前云端库').setDesc(p.settings.binding ? `已绑定：${p.settings.binding.displayName} · ${p.settings.binding.vaultId}` : `尚未验证绑定${p.settings.remoteVaultId ? '；原设置保留为待验证标识' : ''}`)
@@ -193,6 +195,9 @@ export class VaultSailSettingTab extends PluginSettingTab {
       .addText(text => text.setValue(interval).setDisabled(p.busy).onChange(value => { interval = value; }))
       .addButton(button => button.setButtonText('保存检查间隔').setDisabled(p.busy).onClick(() => { void p.setAutomatic(p.settings.autoSyncEnabled, Number(interval)).catch(error => new Notice(safeMessage(error))); }));
     transferCard.createEl('p', { cls: 'vaultsail-queue-status', text: p.queueSummary() }).setAttribute('role', 'status');
+    transferCard.createEl('p', { cls: 'vaultsail-blocked-summary', text: p.blockedSummary() }).setAttribute('role', 'status');
+    new Setting(transferCard).setName('超限与关联保护项').setDesc('超过 20 MiB 的本地文件不读正文，其他独立文件继续。存在未校验附件时，缺失路径的删除或改名可能暂缓。')
+      .addButton(button => button.setButtonText('查看跳过文件').onClick(() => p.showBlockedFiles()));
     new Setting(transferCard).setName('待解决冲突').setDesc('查看各版本、逐块合并或保留为两篇；确认后其他设备自动接收解决版本。')
       .addButton(button => button.setButtonText('查看待解决冲突').setDisabled(p.busy).onClick(() => p.openConflicts()));
     let concurrencyDraft = String(p.settings.transferConcurrency);

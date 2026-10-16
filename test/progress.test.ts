@@ -22,3 +22,9 @@ test('connection checks are live work while completed, failed and preview snapsh
   assert.equal(progressRunning({ ...sample, phase: 'connecting' }), true);
   for (const phase of ['completed', 'failed', 'paused', 'preview-ready'] as const) assert.equal(progressRunning({ ...sample, phase }), false);
 });
+
+test('completed scans with blocked files explicitly report partial completion without verified byte inflation', () => {
+  const result = formatProgress({ ...sample, phase: 'completed', doneFiles: 2, totalFiles: 2, blockedFiles: 1 });
+  assert.match(result, /部分完成/); assert.match(result, /跳过 1 项/); assert.match(result, /未传输/);
+  assert.match(result, /已校验内容 1.0 KiB \/ 8.0 KiB/);
+});

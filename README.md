@@ -20,6 +20,8 @@ Sync Obsidian notes and attachments through your own Baidu Netdisk account, with
 
 **0.2.0 supports Baidu Netdisk.** Requests go directly to Baidu, without a developer-operated authorization or sync server. Current settings and messages are primarily in Chinese; this guide includes their UI labels.
 
+**Preview 0.2.1:** metadata-first local size checks, a blocked-file list, partial-completion reporting, and on-demand upload chunk bodies are implemented on a separate branch. The file cap remains 20 MiB; concurrency already supports 1–32, default 8. See [preview notes](docs/releases/0.2.1.md). The community/default-branch target remains 0.2.0 until promoted.
+
 ## Feature inventory
 
 This inventory describes **0.2.0**, not future releases. **Implemented** means code and automated coverage exist, not complete real-device certification. **Limited** means the listed restrictions apply. **Experimental** requires a separate opt-in.

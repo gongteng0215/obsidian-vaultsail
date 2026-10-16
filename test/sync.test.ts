@@ -35,6 +35,7 @@ class MemoryCloud implements CloudStorageProvider {
 class MemoryLocal implements LocalFiles {
   files = new Map<string, ArrayBuffer>(); recovery = new Map<string, ArrayBuffer>(); staging = new Map<string, ArrayBuffer>(); failApply = false;
   async paths(): Promise<string[]> { return [...this.files.keys()]; }
+  async stat(path: string): Promise<{ size: number } | null> { const data = this.files.get(path); return data ? { size: data.byteLength } : null; }
   async read(path: string): Promise<ArrayBuffer | null> { return this.files.get(path)?.slice(0) ?? null; }
   async stage(id: string, data: ArrayBuffer): Promise<void> { this.staging.set(id, data.slice(0)); }
   async staged(id: string): Promise<ArrayBuffer | null> { return this.staging.get(id)?.slice(0) ?? null; }
@@ -138,6 +139,19 @@ test('changing the idle concurrency applies to an existing preview and remains b
   cloud.writeImmutable = async (path, data) => { active++; peak = Math.max(peak, active);
     try { assert.throws(() => ea.configureConcurrency(2), { code: 'busy' }); await new Promise(resolve => setTimeout(resolve, 2)); await write(path, data); } finally { active--; } };
   const result = await ea.execute(plan); assert.equal(result.uploadedFiles, 8); assert.equal(peak, 4);
+});
+
+test('the existing configurable upper bound runs 32 small-file workers without overlapping local commits', async () => {
+  const { a, b, ea, eb, cloud, sa, sb } = await setup(32);
+  for (let i = 0; i < 40; i++) a.files.set(`small-${i}.md`, bytes('data-' + i));
+  let active = 0, peak = 0, committing = false; const write = cloud.writeImmutable.bind(cloud), save = sa.save.bind(sa);
+  cloud.writeImmutable = async (path, data) => { active++; peak = Math.max(peak, active);
+    try { await new Promise(resolve => setTimeout(resolve, 1)); await write(path, data); } finally { active--; } };
+  sa.save = async state => { assert.equal(committing, false); committing = true;
+    try { await Promise.resolve(); await save(state); } finally { committing = false; } };
+  assert.equal((await ea.sync()).uploadedFiles, 40); assert.equal(peak, 32); assert.equal(active, 0);
+  assert.equal((await eb.sync()).downloadedFiles, 40); assert.equal(sa.value.journals.length, 0); assert.equal(sb.value.journals.length, 0);
+  for (const [path, data] of a.files) assert.equal(hash(b.files.get(path)!), hash(data));
 });
 
 test('parallel response loss drains in-flight files and recovers their original operation IDs', async () => {
@@ -473,10 +487,99 @@ test('path traversal, reserved filenames and Unicode/case collisions are blocked
   assert.throws(() => assertNoCollisions(['notes', 'notes/a.md']), { code: 'collision' });
   assert.equal(appRoot('/apps/中文应用/测试'), '/apps/中文应用/测试'); assert.equal(included('custom-config/private', 'custom-config'), false);
 });
-test('large files and corrupt baseline stop transfer before publication', async () => {
+test('oversized local files are skipped without body reads; corrupt baselines still stop transfer', async () => {
   const { a, ea, sa, cloud } = await setup(); a.files.set('large.bin', new ArrayBuffer(MAX_FILE_SIZE + 1));
-  await assert.rejects(ea.preview('upload'), { code: 'size' }); assert.equal(cloud.published, 0); a.files.clear();
+  a.read = async () => { throw new Error('oversized body must not be read'); };
+  const plan = await ea.preview('upload'); assert.equal(plan.rows[0].action, 'skip'); assert.equal(plan.rows[0].blocked?.reason, 'size');
+  const result = await ea.execute(plan); assert.equal(result.blockedFiles, 1); assert.equal(cloud.published, 0); assert.deepEqual(sa.value.bases, {}); a.files.clear();
   sa.value.schemaVersion = 2 as 1; await assert.rejects(ea.preview('sync'), { code: 'state' });
+});
+
+test('metadata-only oversized files do not block mixed transfers, repeat polls, or later smaller edits', async () => {
+  const { a, sa, remote, vault } = await setup(8);
+  a.files.set('large.pdf', bytes('virtual oversized body')); a.files.set('note.md', bytes('ordinary note'));
+  let oversized = true, largeReads = 0; const stat = a.stat.bind(a), read = a.read.bind(a);
+  a.stat = async path => path === 'large.pdf' && oversized ? { size: 1024 * 1024 * 1024 } : stat(path);
+  a.read = async path => { if (path === 'large.pdf') { largeReads++; assert.equal(oversized, false, 'oversized data is never allocated/read'); } return read(path); };
+  const events: SyncProgress[] = [];
+  const engine = new SyncEngine(remote, a, sa, vault.vaultId, '.obsidian', event => events.push(event), 8);
+  const result = await engine.sync(); assert.equal(result.uploadedFiles, 1); assert.equal(result.blockedFiles, 1);
+  assert.equal(largeReads, 0); assert.equal(sa.value.bases['large.pdf'], undefined);
+  assert.equal(engine.blockedFiles()[0].size, 1024 * 1024 * 1024);
+  assert.equal(events.at(-1)?.phase, 'completed'); assert.equal(events.at(-1)?.blockedFiles, 1);
+  assert.deepEqual(await engine.changedFromBaseline(['large.pdf']), ['large.pdf']); assert.equal(largeReads, 0);
+  const count = (await remote.revisions(vault.vaultId)).length;
+  for (let i = 0; i < 10; i++) assert.equal((await engine.syncAutomatic([], true, false)).blockedFiles, 1);
+  assert.equal(largeReads, 0); assert.equal((await remote.revisions(vault.vaultId)).length, count);
+  oversized = false; a.files.set('large.pdf', bytes('now a small attachment'));
+  const next = await engine.syncAutomatic(['large.pdf'], false, false);
+  assert.equal(next.blockedFiles, 0); assert.equal(next.uploadedFiles, 1); assert.equal(engine.blockedFiles().length, 0);
+  assert.equal(sa.value.bases['large.pdf'].hash, hash(a.files.get('large.pdf')!));
+});
+
+test('oversized local updates retain their baseline and cannot be replaced by cloud edits', async () => {
+  const { a, b, ea, eb, sa } = await setup();
+  a.files.set('attachment.pdf', bytes('original')); await ea.sync(); await eb.sync();
+  const baseline = structuredClone(sa.value.bases['attachment.pdf']);
+  b.files.set('attachment.pdf', bytes('remote edit')); await eb.sync();
+  a.files.set('other.md', bytes('independent')); const stat = a.stat.bind(a), read = a.read.bind(a);
+  a.stat = async path => path === 'attachment.pdf' ? { size: MAX_FILE_SIZE + 1 } : stat(path);
+  a.read = async path => { assert.notEqual(path, 'attachment.pdf'); return read(path); };
+  const result = await ea.sync(true); assert.equal(result.blockedFiles, 1); assert.equal(result.uploadedFiles, 1);
+  assert.equal(new TextDecoder().decode(a.files.get('attachment.pdf')), 'original');
+  assert.deepEqual(sa.value.bases['attachment.pdf'], baseline);
+});
+
+test('remote rename paths sharing an oversized identity are frozen while independent notes transfer', async () => {
+  const { a, b, ea, eb, sa } = await setup(); a.files.set('old.pdf', bytes('original'));
+  await ea.sync(); await eb.sync(); const baseline = structuredClone(sa.value.bases['old.pdf']);
+  b.files.set('new.pdf', b.files.get('old.pdf')!); b.files.delete('old.pdf'); await eb.sync(true);
+  const stat = a.stat.bind(a), read = a.read.bind(a);
+  a.stat = async path => path === 'old.pdf' ? { size: MAX_FILE_SIZE + 1 } : stat(path);
+  a.read = async path => { assert.notEqual(path, 'old.pdf'); return read(path); };
+  a.files.set('independent.md', bytes('still transfers'));
+  const result = await ea.sync(true); assert.equal(result.uploadedFiles, 1); assert.equal(result.deletedFiles, 0); assert.equal(result.blockedFiles, 2);
+  assert.equal(a.files.has('old.pdf'), true); assert.equal(a.files.has('new.pdf'), false);
+  assert.deepEqual(sa.value.bases['old.pdf'], baseline); assert.equal(sa.value.bases['new.pdf'], undefined);
+  assert.equal(ea.blockedFiles().find(file => file.path === 'new.pdf')?.reason, 'related');
+});
+
+test('an unhashable local rename cannot turn a missing baseline into a remote deletion', async () => {
+  const { a, ea, sa, remote, vault } = await setup(); a.files.set('old.pdf', bytes('old'));
+  await ea.sync(); const baseline = structuredClone(sa.value.bases['old.pdf']);
+  a.files.delete('old.pdf'); a.files.set('moved.pdf', bytes('virtual oversized')); a.files.set('new.md', bytes('new note'));
+  const stat = a.stat.bind(a), read = a.read.bind(a);
+  a.stat = async path => path === 'moved.pdf' ? { size: MAX_FILE_SIZE + 1 } : stat(path);
+  a.read = async path => { assert.notEqual(path, 'moved.pdf'); return read(path); };
+  const result = await ea.sync(true); assert.equal(result.deletedFiles, 0); assert.equal(result.uploadedFiles, 1);
+  assert.equal(result.blockedFiles, 2); assert.deepEqual(sa.value.bases['old.pdf'], baseline);
+  assert.equal((await remote.revisions(vault.vaultId)).filter(op => op.kind === 'delete').length, 0);
+});
+
+test('already verified tombstones are not reported as blocked missing files', async () => {
+  const { a, ea, sa } = await setup(); a.files.set('deleted.md', bytes('past content'));
+  await ea.sync(); a.files.delete('deleted.md'); await ea.sync(true); assert.equal(sa.value.bases['deleted.md'].hash, null);
+  a.files.set('large.pdf', bytes('oversized metadata')); const stat = a.stat.bind(a);
+  a.stat = async path => path === 'large.pdf' ? { size: MAX_FILE_SIZE + 1 } : stat(path);
+  assert.equal((await ea.sync(true)).blockedFiles, 1); assert.deepEqual(ea.blockedFiles().map(file => file.path), ['large.pdf']);
+});
+
+test('blocked preview changes and malformed metadata require replanning without writes', async () => {
+  const { a, ea, cloud } = await setup(); a.files.set('file.pdf', bytes('small'));
+  const stat = a.stat.bind(a); let size = MAX_FILE_SIZE + 1;
+  a.stat = async path => path === 'file.pdf' ? { size } : stat(path);
+  const plan = await ea.preview('sync'); size = 5;
+  await assert.rejects(ea.execute(plan), { code: 'changed' }); assert.equal(cloud.published, 0);
+  size = -1; await assert.rejects(ea.preview('sync'), { code: 'size' }); assert.equal(cloud.published, 0);
+  size = NaN; await assert.rejects(ea.preview('sync'), { code: 'size' });
+});
+
+test('oversized paths still participate in collision checks and remote size validation is unchanged', async () => {
+  const { a, ea, vault } = await setup(); a.files.set('Note.md', bytes('normal')); a.files.set('note.md', bytes('oversized placeholder'));
+  const stat = a.stat.bind(a); a.stat = async path => path === 'note.md' ? { size: MAX_FILE_SIZE + 1 } : stat(path);
+  await assert.rejects(ea.preview('sync'), { code: 'collision' });
+  assert.throws(() => validateRevision({ schemaVersion: 1, vaultId: vault.vaultId, opId: uuid(), deviceId: uuid(), fileId: uuid(),
+    path: 'remote.pdf', parents: [], kind: 'update', hash: 'a'.repeat(64), size: MAX_FILE_SIZE + 1, createdAt: 1 }, vault.vaultId), { code: 'size' });
 });
 test('changed conflict preview cannot silently resolve the latest local edit', async () => {
   const { a, b, ea, eb } = await setup(); a.files.set('note.md', bytes('A')); await ea.execute(await ea.preview('upload')); b.files.set('note.md', bytes('B'));

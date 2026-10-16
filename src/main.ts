@@ -1,4 +1,4 @@
-import { Modal, Notice, Plugin, requireApiVersion } from 'obsidian';
+import { Modal, Notice, Plugin, Setting, requireApiVersion } from 'obsidian';
 import { VaultSailSettingTab } from './ui/settings-tab';
 import { DEFAULT_SETTINGS, migrateSettings, type VaultSailSettings } from './config';
 import { AuthManager, type DeviceSession } from './auth/auth-manager';
@@ -7,7 +7,7 @@ import { appRoot, bytes, hash, included, MAX_FILE_SIZE, safeMessage, uuid, Vault
 import { BaiduProvider } from './providers/baidu-provider';
 import { ObsidianCredentials, ObsidianLocalFiles, ObsidianRevisionCache, ObsidianStateStore, deviceIdentity, obsidianTransport } from './platform/obsidian-adapters';
 import { buildHeads, RemoteVaultStore, type RemoteVault } from './sync/remote-vault';
-import { SyncEngine, type SyncPlan } from './sync/engine';
+import { SyncEngine, type SyncPlan, type BlockedFile } from './sync/engine';
 import { CloudVaultSetupModal, PlanModal } from './ui/modals';
 import { CONFIG_EXPORT_DIRECTORY, exportPortableConfig, parsePortableConfig } from './portable-config';
 import { ConfigExportModal, ConfigImportModal } from './ui/config-modals';
@@ -118,7 +118,7 @@ export default class VaultSailPlugin extends Plugin {
     this.performance.phase(progress.phase);
     this.progress = { ...progress, startedAt: this.transferStartedAt ?? progress.startedAt };
     if (this.pauseRequested && progressRunning(progress)) this.statusText = '已请求暂停，等待当前请求结束。';
-    else this.statusText = progress.message ?? PROGRESS_LABELS[progress.phase];
+    else this.statusText = progress.message ?? (progress.phase === 'completed' && progress.blockedFiles ? '部分完成，请查看跳过文件。' : PROGRESS_LABELS[progress.phase]);
     if (!progressRunning(progress)) this.transferPauseRequested = false;
     const notify = () => {
       try { this.settingTab?.updateProgress(); } catch { /* A detached view cannot prevent heartbeats or other observers. */ }
@@ -160,6 +160,18 @@ export default class VaultSailPlugin extends Plugin {
     this.ensureQueue(); if (this.queue) this.queue.request('manual'); else void this.run('正在同步…', () => this.startSync());
   }
   queueSummary(): string { return this.queue?.summary() ?? '绑定云端库后可开启自动同步。'; }
+  blockedFiles(): BlockedFile[] { return this.engine?.blockedFiles() ?? []; }
+  blockedSummary(): string { const count = this.blockedFiles().length; return count ? `上次扫描有 ${count} 项超限或关联保护，未传输，原文件与基线保留。` : '上次扫描没有超限或关联保护项；尚未扫描时，请先预览或同步。'; }
+  showBlockedFiles(): void {
+    const files = this.blockedFiles(), modal = new Modal(this.app); modal.titleEl.setText('跳过文件 · 本机扫描结果');
+    modal.contentEl.createEl('p', { text: '当前单文件上限仍为 20 MiB。这里只显示上次扫描的超限及关联保护项，不会读取附件正文。缩小或移走超限附件后可重新检查；没有传输的文件不视为已同步。' });
+    if (!files.length) modal.contentEl.createEl('p', { text: '暂无跳过项，请先预览或同步检查。' });
+    for (const file of files.slice(0, 200)) new Setting(modal.contentEl).setName(file.path).setDesc(`${file.size ? formatBytes(file.size) + ' · ' : ''}${file.message}`);
+    if (files.length > 200) modal.contentEl.createEl('p', { text: `共 ${files.length} 项，当前显示前 200 项。` });
+    new Setting(modal.contentEl).addButton(button => button.setButtonText('关闭').onClick(() => modal.close()))
+      .addButton(button => button.setButtonText('重新检查并同步').setDisabled(this.busy).onClick(() => { modal.close(); this.requestSync(); }));
+    modal.open();
+  }
   async setAutomatic(enabled: boolean, pollSeconds = this.settings.remotePollSeconds): Promise<void> {
     if (this.busy) throw new VaultSailError('busy', '请等待当前任务结束。');
     if (!Number.isInteger(pollSeconds) || pollSeconds < 30 || pollSeconds > 300) throw new VaultSailError('configuration', '远端检查间隔必须为 30–300 秒的整数。');
@@ -342,9 +354,9 @@ export default class VaultSailPlugin extends Plugin {
       this.beginTransfer(); this.refreshUI();
       try {
         if (!this.settings.deletionEnabled && plan.rows.some(row => row.action === 'delete-local' || row.action === 'delete-remote')) throw new VaultSailError('configuration', '删除传播已关闭，请重新预览。');
-        await withVaultTaskLock(this.app, () => engine.execute(plan, progress, true));
+        const result = await withVaultTaskLock(this.app, () => engine.execute(plan, progress, true));
         const key = this.successKey(); if (key && this.progress) this.app.saveLocalStorage(key, { completedAt: Date.now(), mode: plan.mode,
-          files: this.progress.doneFiles, bytes: this.progress.doneBytes, elapsedMs: this.progress.updatedAt - this.progress.startedAt });
+          files: this.progress.doneFiles, bytes: this.progress.doneBytes, elapsedMs: this.progress.updatedAt - this.progress.startedAt, blockedFiles: result.blockedFiles });
       } catch (error) { this.failTransfer(error); throw error; } finally { this.performance.finish(); this.busy = false; this.refreshUI(); } },
       async (row, choice) => { if (this.busy) throw new VaultSailError('busy', '当前有其他操作。'); this.busy = true;
         this.beginTransfer(); this.refreshUI();
@@ -359,19 +371,20 @@ export default class VaultSailPlugin extends Plugin {
     }
     const startedAt = Date.now(); const engine = await this.getEngine(); let conflicts = 0; let incoming = 0; let files = 0; let contentBytes = 0;
     if (batch) await engine.recoverPending();
-    let uploaded = 0; let downloaded = 0; let deleted = 0; let merged = 0;
+    let uploaded = 0; let downloaded = 0; let deleted = 0; let merged = 0; let blocked = 0;
     let paths = batch?.paths ?? [];
     if (batch && !batch.manual && !batch.full && !batch.remote) { paths = await engine.changedFromBaseline(paths); if (!paths.length) { this.statusText = '文件内容已与基线一致，无需同步。'; if (this.progress) this.publishProgress({ ...this.progress, phase: 'completed', updatedAt: Date.now() }); return; } }
     // One extra pass catches concurrent publications without an unbounded background loop.
     for (let pass = 0; pass < 2; pass++) {
       const result = batch && !batch.manual ? await engine.syncAutomatic(paths, batch.remote, batch.full || pass > 0, this.settings.deletionEnabled) : await engine.sync(this.settings.deletionEnabled); conflicts += result.preservedConflicts; incoming = result.incomingChanges; merged += result.autoMergedFiles ?? 0;
       uploaded += result.uploadedFiles; downloaded += result.downloadedFiles; deleted += result.deletedFiles;
+      blocked = result.blockedFiles;
       files += this.progress?.doneFiles ?? 0; contentBytes += this.progress?.doneBytes ?? 0;
       if (!incoming) break;
     }
-    if (this.progress) this.publishProgress({ ...this.progress, startedAt, doneFiles: files, totalFiles: files, doneBytes: contentBytes, totalBytes: contentBytes, updatedAt: Date.now() });
-    const key = this.successKey(); if (key) this.app.saveLocalStorage(key, { completedAt: Date.now(), mode: 'sync', files, bytes: contentBytes, elapsedMs: Date.now() - startedAt });
-    const message = `同步完成：上传 ${uploaded} 个，下载 ${downloaded} 个${merged ? `，自动合并 ${merged} 个` : ''}${deleted ? `，删除 ${deleted} 项` : ''}，失败 0 项${conflicts ? `；${conflicts} 项冲突已保留双方，可打开待解决冲突` : ''}${incoming ? '；期间又有新版本，下一次同步会继续处理' : ''}。`;
+    if (this.progress) this.publishProgress({ ...this.progress, startedAt, doneFiles: files, totalFiles: files, doneBytes: contentBytes, totalBytes: contentBytes, blockedFiles: blocked, updatedAt: Date.now() });
+    const key = this.successKey(); if (key) this.app.saveLocalStorage(key, { completedAt: Date.now(), mode: 'sync', files, bytes: contentBytes, elapsedMs: Date.now() - startedAt, blockedFiles: blocked });
+    const message = `同步${blocked ? '部分完成' : '完成'}：上传 ${uploaded} 个，下载 ${downloaded} 个${merged ? `，自动合并 ${merged} 个` : ''}${deleted ? `，删除 ${deleted} 项` : ''}，失败 0 项${blocked ? `；跳过 ${blocked} 项超限或关联文件，未传输，请查看跳过文件` : ''}${conflicts ? `；${conflicts} 项冲突已保留双方，可打开待解决冲突` : ''}${incoming ? '；期间又有新版本，下一次同步会继续处理' : ''}。`;
     this.statusText = message; if (!this.automaticRun) new Notice(message, 9000);
   }
   cloudLocation(): string {
@@ -383,10 +396,10 @@ export default class VaultSailPlugin extends Plugin {
     const b = this.settings.binding;
     return b ? 'vaultsail-success-' + hash(bytes(b.appKey + '|' + b.root + '|' + b.accountHash + '|' + b.vaultId)) : undefined;
   }
-  lastSuccess(): { completedAt: number; files: number; bytes: number; elapsedMs: number } | undefined {
+  lastSuccess(): { completedAt: number; files: number; bytes: number; elapsedMs: number; blockedFiles?: number } | undefined {
     const key = this.successKey(); const value = key ? this.app.loadLocalStorage(key) : null;
     return value && ['completedAt', 'files', 'bytes', 'elapsedMs'].every(field => typeof value[field] === 'number' && Number.isFinite(value[field]) && value[field] >= 0)
-      ? { completedAt: value.completedAt, files: value.files, bytes: value.bytes, elapsedMs: value.elapsedMs } : undefined;
+      ? { completedAt: value.completedAt, files: value.files, bytes: value.bytes, elapsedMs: value.elapsedMs, blockedFiles: Number.isSafeInteger(value.blockedFiles) && value.blockedFiles >= 0 ? value.blockedFiles : 0 } : undefined;
   }
   async showCloudFiles(): Promise<void> {
     const { provider, binding } = await this.boundProvider();
@@ -568,7 +581,7 @@ export default class VaultSailPlugin extends Plugin {
       performance: this.performance.snapshot() ?? null,
       performanceNotes: '阶段为实际经过时间；请求耗时及重试等待为并发累计，不能相加当作总耗时。pending 表示原生请求结束尚未确认；failed 仅统计网络或 HTTP 错误。统计仅保留至插件重载。',
       requestLabels: REQUEST_LABELS,
-      autoSyncEnabled: this.settings.autoSyncEnabled, remotePollSeconds: this.settings.remotePollSeconds, queueStatus: this.queueSummary(),
+      autoSyncEnabled: this.settings.autoSyncEnabled, remotePollSeconds: this.settings.remotePollSeconds, queueStatus: this.queueSummary(), blockedFileCount: this.blockedFiles().length,
       lastPairingStep: this.lastPairingStep ?? null,
       realDeviceValidation: '用户在本设备完成；开发者未验证真实账号或 iPad', maxFileMiB: 20, transferConcurrency: this.settings.transferConcurrency }, null, 2);
   }

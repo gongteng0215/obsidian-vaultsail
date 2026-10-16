@@ -91,7 +91,8 @@ export class PlanModal extends Modal {
   onOpen(): void {
     this.titleEl.setText('VaultSail · 传输预览');
     const changed = this.plan.rows.filter(row => row.action !== 'noop');
-    this.contentEl.createEl('p', { text: `${this.plan.rows.length} 个文件，${changed.length} 项变化。冲突会自动保留双方副本；下面的内容选择是可选的统一版本操作。` });
+    const blocked = this.plan.rows.filter(row => row.blocked).length;
+    this.contentEl.createEl('p', { text: `${this.plan.rows.length} 个文件，${changed.length} 项待处理${blocked ? `，其中 ${blocked} 项超限或关联保护将跳过，不会传输` : ''}。冲突会自动保留双方副本；下面的内容选择是可选的统一版本操作。` });
     const status = this.contentEl.createEl('p', { cls: 'vaultsail-progress-text' }); status.setAttribute('role', 'status');
     const meter = this.contentEl.createEl('progress', { cls: 'vaultsail-progress-meter' }); meter.max = Math.max(1, this.plan.rows.length); meter.value = 0;
     meter.setAttribute('aria-label', '文件处理进度');
@@ -114,7 +115,7 @@ export class PlanModal extends Modal {
       .addButton(button => button.setButtonText('暂停任务').onClick(() => { this.pause(); status.setText('暂停请求已提交，等待当前请求结束。'); }))
       .addButton(button => button.setButtonText('执行清单（冲突自动保留双方）').setCta().onClick(async () => {
         button.setDisabled(true); executing = true;
-        try { await this.execute((done, total) => { if (!this.subscribe) status.setText(`已处理 ${done}/${total}`); }); status.setText(status.textContent + '\n执行完成；冲突副本可在 VaultSail-conflicts 查看。'); }
+        try { await this.execute((done, total) => { if (!this.subscribe) status.setText(`已处理 ${done}/${total}`); }); status.setText(status.textContent + (blocked ? `\n部分完成：${blocked} 项未传输，原文件与基线保留。` : '\n执行完成；冲突副本可在 VaultSail-conflicts 查看。')); }
         catch (e) { status.setText(status.textContent + '\n' + safeMessage(e)); }
         finally { executing = false; button.setDisabled(false); }
       }));

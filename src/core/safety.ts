@@ -65,8 +65,13 @@ export function parseJson(data: ArrayBuffer): unknown {
 }
 export function uuid(): string { return crypto.randomUUID(); }
 export function validId(id: unknown): id is string { return typeof id === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(id); }
+/** Validate metadata without granting permission to allocate or transfer its body. */
+export function checkSizeValue(size: number): void {
+  if (!Number.isSafeInteger(size) || size < 0) throw new VaultSailError('size', '文件大小无效。');
+}
 export function checkSize(size: number): void {
-  if (!Number.isSafeInteger(size) || size < 0 || size > MAX_FILE_SIZE) throw new VaultSailError('size', '文件大小无效或超过 20 MiB 上限。');
+  checkSizeValue(size);
+  if (size > MAX_FILE_SIZE) throw new VaultSailError('size', '文件超过 20 MiB 上限。');
 }
 export const sleep = (ms: number, signal?: AbortSignal): Promise<void> => new Promise(resolve => {
   if (signal?.aborted) { resolve(); return; }

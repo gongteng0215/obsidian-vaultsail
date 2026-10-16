@@ -422,5 +422,22 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
     assert.equal(document.querySelector('.vaultsail-progress-text')!.textContent!.includes('网络请求超时'), false);
     plugin.publishProgress({ ...plugin.progress, phase: 'completed', updatedAt: Date.now() });
   } finally { Date.now = realNow; plugin.busy = false; }
+  // Metadata may describe a large attachment without allocating its body.
+  // Exercise the actual adapter, sync entry point, progress, list and redaction.
+  const oldStat = adapter.stat, oldRead = app.vault.readBinary;
+  files.set('private-large-attachment.pdf', new ArrayBuffer(1)); files.set('small-after-large.md', new TextEncoder().encode('small file still syncs').buffer);
+  adapter.stat = async path => path === 'private-large-attachment.pdf' ? { type: 'file', size: 1024 * 1024 * 1024 } : oldStat(path);
+  app.vault.readBinary = async file => { assert.notEqual(file.path, 'private-large-attachment.pdf'); return oldRead(file); };
+  await plugin.run('检查混合文件…', () => plugin.startSync());
+  assert.match(plugin.statusText, /同步部分完成/); assert.equal(plugin.lastSuccess().blockedFiles, 1);
+  assert.match(document.querySelector('.vaultsail-progress-state')!.textContent!, /部分完成/);
+  assert.match(document.querySelector('.vaultsail-progress-text')!.textContent!, /跳过 1 项/);
+  assert.ok([...remoteObjects.keys()].some(key => key.includes('/ops/')));
+  assert.ok((await plugin.engine.remote.revisions(plugin.settings.binding.vaultId)).some((op: any) => op.path === 'small-after-large.md'));
+  assert.equal(JSON.parse(plugin.diagnostics()).blockedFileCount, 1); assert.equal(plugin.diagnostics().includes('private-large-attachment.pdf'), false);
+  ([...plugin.tabs[0].containerEl.querySelectorAll('button')] as HTMLButtonElement[]).find(button => button.textContent === '查看跳过文件')!.click(); const skippedModal = module.Modal.instances.at(-1)!;
+  assert.match(skippedModal.contentEl.textContent!, /private-large-attachment.pdf/); assert.match(skippedModal.contentEl.textContent!, /超过本机 20 MiB/); skippedModal.close();
+  files.delete('private-large-attachment.pdf'); adapter.stat = oldStat; app.vault.readBinary = oldRead;
+  await plugin.run('再次检查…', () => plugin.startSync()); assert.equal(plugin.blockedFiles().length, 0); assert.equal(plugin.lastSuccess().blockedFiles, 0);
   plugin.onunload();
 });

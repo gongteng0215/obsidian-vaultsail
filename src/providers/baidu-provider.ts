@@ -262,19 +262,20 @@ export class BaiduProvider implements CloudStorageProvider {
       if (!firstAttempt && await verify(true)) return;
       firstAttempt = false;
       try {
-        const chunks: Uint8Array[] = [];
-        for (let offset = 0; offset < data.byteLength; offset += CHUNK) chunks.push(new Uint8Array(data.slice(offset, offset + CHUNK)));
-        if (!chunks.length) chunks.push(new Uint8Array());
-        const blocks = chunks.map(chunk => bytesToHex(md5(chunk)));
+        // Keep only block digests. Views borrow the original bounded source;
+        // copying every slice here would retain a second entire file per job.
+        const source = new Uint8Array(data), blocks: string[] = [];
+        for (let offset = 0; offset < data.byteLength; offset += CHUNK) blocks.push(bytesToHex(md5(source.subarray(offset, offset + CHUNK))));
+        if (!blocks.length) blocks.push(bytesToHex(md5(new Uint8Array())));
         const base = { path: this.absolute(path), size: String(data.byteLength), isdir: '0', rtype: '0', block_list: JSON.stringify(blocks) };
         const pre = await this.api(XPAN + 'file', { method: 'precreate' }, { ...base, autoinit: '1' });
         if (pre.return_type === 2) { if (!await verify()) throw new VaultSailError('visibility', '秒传结果尚不可见，请稍后重试。', true); return; }
         if (typeof pre.uploadid !== 'string' || !pre.uploadid || !Array.isArray(pre.block_list) || new Set(pre.block_list).size !== pre.block_list.length) throw new VaultSailError('response', '预上传响应缺少有效分片信息。');
         for (const index of pre.block_list) {
-          if (!Number.isInteger(index) || index < 0 || index >= chunks.length) throw new VaultSailError('response', '接口返回无效分片序号。');
+          if (!Number.isInteger(index) || index < 0 || index >= blocks.length) throw new VaultSailError('response', '接口返回无效分片序号。');
           const boundary = 'vaultsail-' + uuid();
           const head = new TextEncoder().encode(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="chunk"\r\nContent-Type: application/octet-stream\r\n\r\n`);
-          const tail = new TextEncoder().encode(`\r\n--${boundary}--\r\n`); const chunk = chunks[index];
+          const tail = new TextEncoder().encode(`\r\n--${boundary}--\r\n`); const chunk = source.subarray(index * CHUNK, (index + 1) * CHUNK);
           const body = new Uint8Array(head.length + chunk.length + tail.length); body.set(head); body.set(chunk, head.length); body.set(tail, head.length + chunk.length);
           const result = await this.api('https://d.pcs.baidu.com/rest/2.0/pcs/superfile2', { method: 'upload', type: 'tmpfile', path: this.absolute(path), uploadid: pre.uploadid, partseq: String(index) }, undefined, body.buffer, 'multipart/form-data; boundary=' + boundary);
           if (String(result.md5).toLowerCase() !== blocks[index]) throw new VaultSailError('integrity', '上传分片 Hash 不一致。');

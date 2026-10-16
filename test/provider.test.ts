@@ -76,6 +76,21 @@ test('Baidu adapter performs exact multipart and verifies 0B, 1KB, 4MiB and 20Mi
   }
   assert.equal(h.counts().createCalls, 4); assert.equal([...h.uploads.values()].at(-1)!.chunks.size, 5);
 });
+
+test('multipart upload computes digests without copying all source slices and supports reordered requested blocks', async () => {
+  const h = harness(), data = new Uint8Array(4 * 1024 * 1024 + 7);
+  for (let i = 0; i < data.length; i++) data[i] = i % 251;
+  Object.defineProperty(data.buffer, 'slice', { value: () => { throw new Error('source chunks must not be eagerly copied'); } });
+  const order: number[] = [];
+  const provider = new BaiduProvider('/apps/中文应用', async input => {
+    const response = await h.transport(input), method = new URL(input.url).searchParams.get('method');
+    if (method === 'precreate') (response.json as { block_list: number[] }).block_list.reverse();
+    if (method === 'upload') order.push(Number(new URL(input.url).searchParams.get('partseq')));
+    return response;
+  }, { accessToken: async () => 'private-access' });
+  await provider.writeImmutable('lazy/attachment.pdf', data.buffer);
+  assert.deepEqual(order, [1, 0]); assert.equal(hash(await provider.read('lazy/attachment.pdf')), hash(data.buffer));
+});
 test('lost create response is verified before retry and immutable conflicts never overwrite', async () => {
   const h = harness(); h.setLost(); await h.provider.writeImmutable('test/file.bin', bytes('A'));
   assert.equal(h.counts().createCalls, 1); await h.provider.writeImmutable('test/file.bin', bytes('A')); assert.equal(h.counts().createCalls, 1);

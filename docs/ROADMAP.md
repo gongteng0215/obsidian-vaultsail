@@ -32,6 +32,8 @@ Version gaps leave room for fixes. Additional providers, large files, and encryp
 
 The [large-file plan](LARGE_FILES.md) adds a conditional track: 0.2.x isolates oversized files and removes chunk copies; 0.3.x proves platform capabilities and compatible readers; 0.4.x evaluates higher limits/chunk I/O only after gates pass; 0.5.x or later improves recovery. The default stays 20 MiB. Desktop results do not qualify iPad or promise GB support.
 
+Implementation: [separate 0.2.1 preview](releases/0.2.1.md) now includes local oversized-file skips, related-path protection, partial-result lists, and on-demand upload chunks. 168 automated checks pass; native acceptance is pending and the community target remains 0.2.0. Other milestones remain open.
+
 ## 0.2.1 / 0.2.x: stabilize the current release
 
 ### Deliverables

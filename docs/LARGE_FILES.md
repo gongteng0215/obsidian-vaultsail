@@ -2,7 +2,7 @@
 
 **English** | [简体中文](LARGE_FILES.zh-CN.md) · [Roadmap](ROADMAP.md) · [Current capabilities](../README.md#feature-inventory)
 
-Date: **2026-10-16**. Baseline: **0.2.0**. Status: **design, not implemented**. This documentation change does not raise the 20 MiB limit, modify cloud data, or release a new plugin. Version assignments below are conditional targets, not dates or supported-size promises.
+Date: **2026-10-16**. Design baseline: **0.2.0**. Progress: **0.2.1 preview implements L0 local preflight, blocked-file handling, and on-demand chunk bodies**, with [validation/limits](releases/0.2.1.md). Later stages remain unimplemented design. The cap stays 20 MiB without a cloud format migration; native acceptance is pending. Version assignments below are conditional targets, not dates or supported-size promises.
 
 ## 1. Recommendation and goals
 
@@ -252,7 +252,7 @@ Run at least 10 roundtrips for each proposed profile, recording platform/version
 
 L2 buffered profiles can be evaluated after LF-04/LF-05, but must include conflict, readback, recovery, and old-target peaks. Values are published only with evidence.
 
-**Recommended next scope: LF-01 through LF-03, keeping 20 MiB.** Then prototype LF-04 before deciding supported sizes/platforms. Do not rewrite the entire engine in one step.
+**The local preflight, blocked-file, and on-demand chunk scope of LF-01 through LF-03 is implemented in preview 0.2.1, with 168 automated checks and the 20 MiB cap retained.** Blocked paths are session-local last successful scan results. Remote-reader size separation, native memory acceptance, and full chunk I/O remain unimplemented. Validate this build before LF-04 platform prototypes and higher-limit decisions.
 
 ## 16. Sources and unresolved gates
 

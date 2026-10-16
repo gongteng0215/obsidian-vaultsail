@@ -1,5 +1,5 @@
 import { TFile, type App, requestUrl } from 'obsidian';
-import { checkSize, conflictCopyPath, hash, included, jsonBytes, parseJson, relativePath, uuid, validId, VaultSailError } from '../core/safety';
+import { checkSize, checkSizeValue, conflictCopyPath, hash, included, jsonBytes, parseJson, relativePath, uuid, validId, VaultSailError } from '../core/safety';
 import type { CredentialStore } from '../auth/auth-manager';
 import type { HttpTransport } from '../providers/http';
 import { newState, validateState, type LocalFiles, type StateStore, type SyncState } from '../sync/engine';
@@ -70,6 +70,12 @@ export class ObsidianLocalFiles implements LocalFiles {
     relativePath(path); if (!included(path, this.app.vault.configDir)) throw new VaultSailError('path', '此路径被同步排除。');
   }
   async paths(): Promise<string[]> { return this.app.vault.getFiles().filter(file => included(file.path, this.app.vault.configDir)).map(file => file.path); }
+  async stat(path: string): Promise<{ size: number } | null> {
+    this.userPath(path); const stat = await this.app.vault.adapter.stat(path);
+    if (!stat) return null;
+    if (stat.type !== 'file') throw new VaultSailError('collision', '目标路径是目录。');
+    checkSizeValue(stat.size); return { size: stat.size };
+  }
   async read(path: string): Promise<ArrayBuffer | null> {
     this.userPath(path); const file = this.app.vault.getAbstractFileByPath(path);
     if (!file) return null;
