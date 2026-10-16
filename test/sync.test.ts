@@ -7,6 +7,7 @@ import type { CloudStorageProvider, RemotePage } from '../src/providers/cloud-st
 import type { SyncProgress } from '../src/sync/progress.ts';
 import { BaiduProvider } from '../src/providers/baidu-provider.ts';
 import { baiduHarness } from './fixtures/baidu.ts';
+import type { FileHistoryEvent } from '../src/sync/history.ts';
 
 class MemoryCloud implements CloudStorageProvider {
   readonly id = 'mock'; readonly displayName = 'mock'; readonly root = '/apps/test';
@@ -580,6 +581,32 @@ test('oversized paths still participate in collision checks and remote size vali
   await assert.rejects(ea.preview('sync'), { code: 'collision' });
   assert.throws(() => validateRevision({ schemaVersion: 1, vaultId: vault.vaultId, opId: uuid(), deviceId: uuid(), fileId: uuid(),
     path: 'remote.pdf', parents: [], kind: 'update', hash: 'a'.repeat(64), size: MAX_FILE_SIZE + 1, createdAt: 1 }, vault.vaultId), { code: 'size' });
+});
+
+test('file history reports parallel successes only after verified baseline commits, and separates skip/noop', async () => {
+  const { a, sa, remote, vault } = await setup(); const events: FileHistoryEvent[] = [], committed: boolean[] = [];
+  for (let i = 0; i < 10; i++) a.files.set(`note-${i}.md`, bytes('data-' + i));
+  a.files.set('large.mp4', bytes('metadata only')); const stat = a.stat.bind(a);
+  a.stat = async path => path === 'large.mp4' ? { size: MAX_FILE_SIZE + 1 } : stat(path);
+  const engine = new SyncEngine(remote, a, sa, vault.vaultId, '.obsidian', () => {}, 8, event => {
+    if (event.state === 'succeeded') committed.push(sa.value.bases[event.path]?.hash === hash(a.files.get(event.path)!) && !sa.value.journals.some(journal => journal.path === event.path));
+    events.push(event);
+  });
+  await engine.sync(); const final = [...new Map(events.map(event => [event.id, event])).values()];
+  assert.equal(final.filter(event => event.state === 'succeeded').length, 10); assert.equal(final.find(event => event.path === 'large.mp4')?.state, 'skipped');
+  assert.equal(committed.length, 10); assert.ok(committed.every(Boolean));
+  assert.equal(events.some(event => event.state === 'queued'), true); assert.equal(events.some(event => event.state === 'running'), true);
+  events.length = 0; await engine.sync(); assert.equal(events.filter(event => event.state === 'succeeded').length, 0); assert.equal(events.filter(event => event.state === 'unchanged').length, 10);
+});
+
+test('uncertain publication and recovery keep truthful file history; observer failures never change sync', async () => {
+  const { a, sa, cloud, remote, vault } = await setup(); a.files.set('note.md', bytes('body'));
+  const events: FileHistoryEvent[] = [], engine = new SyncEngine(remote, a, sa, vault.vaultId, '.obsidian', () => {}, 1, event => events.push(event));
+  cloud.failAfterPublish = true; await assert.rejects(engine.sync());
+  assert.equal(events.some(event => event.state === 'succeeded'), false); assert.equal(events.at(-1)?.state, 'unconfirmed');
+  events.length = 0; await engine.recover(); assert.equal(events.at(-1)?.action, 'recover'); assert.equal(events.at(-1)?.state, 'succeeded');
+  const independent = new SyncEngine(remote, a, sa, vault.vaultId, '.obsidian', () => {}, 1, () => { throw new Error('detached UI'); });
+  a.files.set('other.md', bytes('safe')); assert.equal((await independent.sync()).uploadedFiles, 1);
 });
 test('changed conflict preview cannot silently resolve the latest local edit', async () => {
   const { a, b, ea, eb } = await setup(); a.files.set('note.md', bytes('A')); await ea.execute(await ea.preview('upload')); b.files.set('note.md', bytes('B'));

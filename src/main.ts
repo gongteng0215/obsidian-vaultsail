@@ -20,6 +20,9 @@ import { SyncQueue, type QueueBatch } from './sync/queue';
 import { withVaultTaskLock } from './platform/task-lock';
 import { ConflictDrafts } from './platform/conflict-drafts';
 import { ConflictInbox } from './ui/conflicts';
+import { SyncHistory, type FileHistoryEvent, type HistoryMode } from './sync/history';
+import { ObsidianHistoryStore } from './platform/sync-history-store';
+import { SyncHistoryModal } from './ui/sync-history';
 import { decryptPairing, encryptPairing, isEncryptedPairing, PAIRING_LIFETIME_MS, validateAuthorizedPairing, validatePairingCode, type AuthorizedPairing, type PairingImportOptions } from './encrypted-pairing';
 
 const PAIRING_STEPS = {
@@ -54,6 +57,7 @@ export default class VaultSailPlugin extends Plugin {
   private lastPairingStep?: keyof typeof PAIRING_STEPS;
   private queue?: SyncQueue; private queueContext?: string; private automaticRun = false;
   private layoutReady = false; private pendingManualSync = false;
+  private histories = new Map<string, SyncHistory>(); private activeHistory?: SyncHistory;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -76,7 +80,8 @@ export default class VaultSailPlugin extends Plugin {
 
     for (const mode of ['upload', 'download', 'sync'] as const) this.addCommand({ id: 'preview-' + mode,
       name: mode === 'upload' ? '预览上传' : mode === 'download' ? '预览下载' : '预览双向同步', callback: () => { void this.run('正在扫描…', () => this.preview(mode)); } });
-    this.addCommand({ id: 'recover-transfer', name: '恢复未完成传输', callback: () => { void this.run('正在恢复…', async () => { const engine = await this.getEngine(); await engine.recover(); }); } });
+    this.addCommand({ id: 'recover-transfer', name: '恢复未完成传输', callback: () => { void this.run('正在恢复…', () => this.recover()); } });
+    this.addCommand({ id: 'sync-history', name: '查看同步记录', callback: () => this.showSyncHistory() });
     this.addCommand({ id: 'start-sync', name: '开始双向同步', callback: () => { this.requestSync(); } });
     this.addCommand({ id: 'resolve-conflicts', name: '查看待解决冲突', callback: () => { this.openConflicts(); } });
     this.addRibbonIcon('cloud', 'VaultSail：开始同步', () => { this.requestSync(); });
@@ -105,7 +110,7 @@ export default class VaultSailPlugin extends Plugin {
     await this.auditLocalRecovery();
   }
 
-  onunload(): void { this.alive = false; this.queue?.dispose(); this.performance.finish(); this.connectionRequests.abort(); this.pause(false); this.auth?.cancel(); if (this.progressTimer) clearInterval(this.progressTimer); this.progressTimer = undefined; this.progressListeners.clear(); }
+  onunload(): void { this.alive = false; this.queue?.dispose(); this.performance.finish(); this.connectionRequests.abort(); this.pause(false); this.auth?.cancel(); if (this.progressTimer) clearInterval(this.progressTimer); this.progressTimer = undefined; this.progressListeners.clear(); for (const history of this.histories.values()) history.dispose(); }
   private invalidateConnection(): void {
     this.queue?.dispose(); this.queue = undefined; this.queueContext = undefined;
     this.generation++; this.connectionRequests.abort(); this.connectionRequests = new AbortController();
@@ -160,6 +165,22 @@ export default class VaultSailPlugin extends Plugin {
     this.ensureQueue(); if (this.queue) this.queue.request('manual'); else void this.run('正在同步…', () => this.startSync());
   }
   queueSummary(): string { return this.queue?.summary() ?? '绑定云端库后可开启自动同步。'; }
+  private history(context = this.context()): SyncHistory | undefined {
+    if (!context) return;
+    let history = this.histories.get(context);
+    if (!history) { history = new SyncHistory(new ObsidianHistoryStore(this.app, this.deviceId, context), context, this.deviceId, this.app.vault.configDir); this.histories.set(context, history); }
+    return history;
+  }
+  private async recorded<T>(mode: HistoryMode, action: () => Promise<T>): Promise<T> {
+    if (this.activeHistory) return action();
+    const history = this.history(); if (!history) return action();
+    history.begin(mode); this.activeHistory = history;
+    try { const result = await action(); await history.finish(); return result; }
+    catch (error) { await history.finish(error, true); throw error; }
+    finally { this.activeHistory = undefined; }
+  }
+  private recordHistoryFile(context: string, event: FileHistoryEvent): void { if (this.activeHistory?.context === context) this.activeHistory.file(event); }
+  showSyncHistory(): void { const history = this.history(); if (!history) { new Notice('请先绑定云端库，再查看当前库的本机同步记录。'); return; } new SyncHistoryModal(this.app, history).open(); }
   blockedFiles(): BlockedFile[] { return this.engine?.blockedFiles() ?? []; }
   blockedSummary(): string { const count = this.blockedFiles().length; return count ? `上次扫描有 ${count} 项超限或关联保护，未传输，原文件与基线保留。` : '上次扫描没有超限或关联保护项；尚未扫描时，请先预览或同步。'; }
   showBlockedFiles(): void {
@@ -192,16 +213,16 @@ export default class VaultSailPlugin extends Plugin {
   }
   openConflicts(): void {
     const context = this.context(); if (!context) { new Notice('请先绑定云端库。'); return; }
-    const boundAction = <T>(action: (engine: SyncEngine) => Promise<T>) => {
+    const boundAction = <T>(action: (engine: SyncEngine) => Promise<T>, record = false) => {
       if (this.context() !== context) return Promise.reject<T>(new VaultSailError('binding', '连接已变更，请重新打开冲突列表。'));
-      return this.conflictAction(action);
+      return this.conflictAction(engine => record ? this.recorded('resolve', () => action(engine)) : action(engine));
     };
     new ConflictInbox(this.app, {
       list: () => boundAction(async engine => (await engine.preview('sync', this.settings.deletionEnabled, { allowRenames: true })).rows.filter(row => row.action === 'conflict')),
       details: row => boundAction(engine => engine.describeConflict(row)),
-      resolve: (row, choice, data) => boundAction(engine => engine.resolve(row.path, choice, row, data)),
-      both: (row, other, path, primary) => boundAction(engine => engine.resolveBoth(row, other, path, primary)),
-      deletionEnabled: this.settings.deletionEnabled, remove: row => boundAction(engine => engine.resolveDelete(row, this.settings.deletionEnabled)),
+      resolve: (row, choice, data) => boundAction(engine => engine.resolve(row.path, choice, row, data), true),
+      both: (row, other, path, primary) => boundAction(engine => engine.resolveBoth(row, other, path, primary), true),
+      deletionEnabled: this.settings.deletionEnabled, remove: row => boundAction(engine => engine.resolveDelete(row, this.settings.deletionEnabled), true),
       drafts: new ConflictDrafts(this.app, this.deviceId, context),
     }).open();
   }
@@ -344,7 +365,8 @@ export default class VaultSailPlugin extends Plugin {
       if (this.engine) return this.engine;
       const context = hash(bytes(b.appKey + '|' + b.root + '|' + accountHash + '|' + b.vaultId));
       this.engine = new SyncEngine(new RemoteVaultStore(provider, new ObsidianRevisionCache(this.app, this.deviceId, context), this.settings.transferConcurrency, stats => this.performance.scan(stats)), this.local,
-        new ObsidianStateStore(this.app, this.deviceId, b.vaultId, context), b.vaultId, this.app.vault.configDir, event => this.publishProgress(event), this.settings.transferConcurrency);
+        new ObsidianStateStore(this.app, this.deviceId, b.vaultId, context), b.vaultId, this.app.vault.configDir, event => this.publishProgress(event), this.settings.transferConcurrency,
+        event => this.recordHistoryFile(context, event));
       return this.engine;
     } catch (error) { this.failTransfer(error); throw error; }
   }
@@ -354,16 +376,19 @@ export default class VaultSailPlugin extends Plugin {
       this.beginTransfer(); this.refreshUI();
       try {
         if (!this.settings.deletionEnabled && plan.rows.some(row => row.action === 'delete-local' || row.action === 'delete-remote')) throw new VaultSailError('configuration', '删除传播已关闭，请重新预览。');
-        const result = await withVaultTaskLock(this.app, () => engine.execute(plan, progress, true));
+        const result = await withVaultTaskLock(this.app, () => this.recorded(mode === 'sync' ? 'manual' : mode, () => engine.execute(plan, progress, true)));
         const key = this.successKey(); if (key && this.progress) this.app.saveLocalStorage(key, { completedAt: Date.now(), mode: plan.mode,
           files: this.progress.doneFiles, bytes: this.progress.doneBytes, elapsedMs: this.progress.updatedAt - this.progress.startedAt, blockedFiles: result.blockedFiles });
       } catch (error) { this.failTransfer(error); throw error; } finally { this.performance.finish(); this.busy = false; this.refreshUI(); } },
       async (row, choice) => { if (this.busy) throw new VaultSailError('busy', '当前有其他操作。'); this.busy = true;
         this.beginTransfer(); this.refreshUI();
-        try { await withVaultTaskLock(this.app, () => engine.resolve(row.path, choice, row)); } catch (error) { this.failTransfer(error); throw error; }
+        try { await withVaultTaskLock(this.app, () => this.recorded('resolve', () => engine.resolve(row.path, choice, row))); } catch (error) { this.failTransfer(error); throw error; }
         finally { this.performance.finish(); this.busy = false; this.refreshUI(); } }, () => this.pause(), listener => this.subscribeProgress(listener)).open();
   }
   async startSync(batch?: QueueBatch): Promise<void> {
+    return this.recorded(batch && !batch.manual ? 'automatic' : 'manual', () => this.performSync(batch));
+  }
+  private async performSync(batch?: QueueBatch): Promise<void> {
     if (batch && !batch.manual && !batch.full && !batch.remote && this.engine) {
       const paths = await this.engine.changedFromBaseline(batch.paths);
       if (!paths.length) { this.statusText = '文件内容已与基线一致，无需同步。'; return; }
@@ -559,7 +584,7 @@ export default class VaultSailPlugin extends Plugin {
       throw new VaultSailError('pairing-' + step, PAIRING_STEPS[step] + '失败' + kind + '。请重试，并提供此步骤名称或脱敏诊断；不要发送配对码和密码。');
     } finally { for (const signal of signals) signal.removeEventListener('abort', cancel); auth.cancel(); staged.clear(); }
   }
-  async recover(): Promise<void> { await (await this.getEngine()).recover(); }
+  async recover(): Promise<void> { await this.recorded('recover', async () => (await this.getEngine()).recover()); }
   async abandonPending(): Promise<void> { await (await this.getEngine()).abandonPending(); }
   async auditLocalRecovery(): Promise<void> {
     const b = this.settings.binding; if (!b) return;

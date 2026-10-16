@@ -4,6 +4,7 @@ import { buildHeads, RemoteVaultStore, validateRevision, type Revision } from '.
 import type { SyncProgress, ProgressPhase } from './progress.ts';
 import { DEFAULT_TRANSFER_CONCURRENCY, MAX_TRANSFER_CONCURRENCY, mapConcurrent, TRANSFER_BATCH_BYTES, validConcurrency } from '../core/concurrency.ts';
 import { AUTO_MERGE_DEVICE, automaticMergeId, commonAncestor, mergeText, threeWayMerge, type TextMerge } from './merge.ts';
+import { failureState, historyCode, type FileHistoryEvent, type HistoryAction, type HistoryReason, type HistoryState } from './history.ts';
 
 export interface LocalFiles {
   paths(): Promise<string[]>;
@@ -76,12 +77,24 @@ export class SyncEngine {
   private dirtyPaths = new Map<string, number>(); private changeSequence = 0; private remoteSignature?: string;
   private headGroups = new WeakMap<Pick<Snapshot, 'heads'>, Map<string, Revision[]>>();
   private blocked = new Map<string, BlockedFile>();
+  private fileRecords = new Map<string, FileHistoryEvent>();
+  private onFile: (event: FileHistoryEvent) => void;
   blockedFiles(): BlockedFile[] { return [...this.blocked.values()].map(file => ({ ...file })); }
-  constructor(remote: RemoteVaultStore, local: LocalFiles, store: StateStore, vaultId: string, configDir = '.obsidian', report: (progress: SyncProgress) => void = () => {}, concurrency = DEFAULT_TRANSFER_CONCURRENCY) {
+  constructor(remote: RemoteVaultStore, local: LocalFiles, store: StateStore, vaultId: string, configDir = '.obsidian', report: (progress: SyncProgress) => void = () => {}, concurrency = DEFAULT_TRANSFER_CONCURRENCY,
+    onFile: (event: FileHistoryEvent) => void = () => {}) {
     if (!validConcurrency(concurrency)) throw new VaultSailError('configuration', `传输并发数必须为 1–${MAX_TRANSFER_CONCURRENCY} 之间的整数。`);
     this.concurrency = concurrency;
     this.remote = remote; this.local = local; this.store = store; this.vaultId = vaultId; this.configDir = configDir;
     this.report = report;
+    this.onFile = onFile;
+  }
+  private recordFile(path: string, action: HistoryAction, size: number, state: HistoryState, reason: HistoryReason = 'planned', error?: unknown): void {
+    const event: FileHistoryEvent = { id: this.fileRecords.get(path)?.id ?? uuid(), path, action, size, state, reason, ...(error ? { code: historyCode(error) } : {}) };
+    this.fileRecords.set(path, event);
+    try { this.onFile({ ...event }); } catch { /* Display history must not affect verified sync. */ }
+  }
+  private recordRow(row: PlanRow, state: HistoryState, action: HistoryAction = row.action, reason: HistoryReason = row.blocked?.reason === 'size' ? 'oversized' : row.blocked ? 'related' : row.action === 'noop' ? 'unchanged' : row.action === 'skip' ? 'policy' : 'planned', error?: unknown): void {
+    this.recordFile(row.path, action, row.size, state, reason, error);
   }
   private emit(phase: ProgressPhase, update: Partial<SyncProgress> = {}): void {
     this.progress = { ...this.progress, ...update, phase, updatedAt: Date.now() };
@@ -98,11 +111,15 @@ export class SyncEngine {
   private guard(): void { if (this.stopped) throw new VaultSailError('paused', '任务已暂停，未完成操作保留在恢复日志中。'); }
   private async exclusive<T>(run: () => Promise<T>, successPhase: 'completed' | 'preview-ready' = 'completed'): Promise<T> {
     if (this.running) throw new VaultSailError('busy', '当前库已有任务在运行。');
-    this.running = true; this.stopped = false;
+    this.running = true; this.stopped = false; this.fileRecords.clear();
     this.progress = { phase: 'checking', doneFiles: 0, totalFiles: 0, doneBytes: 0, totalBytes: 0, startedAt: Date.now(), updatedAt: Date.now(), activeFiles: 0, concurrency: this.concurrency, blockedFiles: this.blocked.size };
     this.emit('checking');
     try { const value = await run(); this.emit(successPhase, { path: undefined }); return value; }
-    catch (error) { this.emit(error instanceof VaultSailError && ['paused', 'cancelled'].includes(error.code) ? 'paused' : 'failed', { message: safeMessage(error) }); throw error; }
+    catch (error) {
+      for (const file of this.fileRecords.values()) if (file.state === 'running' || file.state === 'queued') this.recordFile(file.path, file.action, file.size,
+        file.state === 'queued' ? 'not-run' : failureState(error), 'stopped', error);
+      this.emit(error instanceof VaultSailError && ['paused', 'cancelled'].includes(error.code) ? 'paused' : 'failed', { message: safeMessage(error) }); throw error;
+    }
     finally { this.running = false; }
   }
   private async state(): Promise<SyncState> {
@@ -297,11 +314,14 @@ export class SyncEngine {
       const conflictBytes = (row: PlanRow) => row.heads.reduce((sum, head) => sum + (head.kind === 'update' ? head.size : 0), 0) + (row.localHash ? row.size : 0);
       const totalBytes = plan.rows.reduce((sum, row) => sum + (row.action === 'upload' || row.action === 'download' ? row.size : row.action === 'conflict' && autoConflicts ? conflictBytes(row) : 0), 0);
       this.emit('checking', { path: undefined, doneFiles: 0, totalFiles: plan.rows.length, doneBytes: 0, totalBytes, blockedFiles: snapshot.blocked.size });
+      for (const row of plan.rows) this.recordRow(row, 'queued');
       // Persist every operation intent before starting parallel network writes.
       // Local apply/baseline/log commits remain serialized across all workers.
       const transferBatch = async (rows: PlanRow[]) => {
         const jobs: { row: PlanRow; journal: Journal; data: ArrayBuffer | null }[] = [];
         for (const row of rows) {
+          this.recordRow(row, 'running');
+          try {
           this.guard(); const data = await this.local.read(row.path);
           if ((data === null ? null : hash(data)) !== row.localHash) throw new VaultSailError('changed', '传输前本地内容已变化，请重新预览。');
           if (!sameIds(ids(row.heads), ids(snapshot.heads.get(row.path) ?? []))) throw new VaultSailError('changed', '传输依据已变化，请重新预览。');
@@ -316,6 +336,8 @@ export class SyncEngine {
           if (upload) { await this.local.stage(revision.opId, data!); await this.local.preserve(row.path, data!, revision.opId); }
           state.journals.push(journal); await this.store.save(state);
           jobs.push({ row, journal, data: upload ? data : null });
+          this.recordRow(row, 'queued');
+          } catch (error) { this.recordRow(row, failureState(error), row.action, 'stopped', error); throw error; }
         }
         let commitTail = Promise.resolve(); let commitFailed = false; let commitError: unknown;
         const commit = (action: () => Promise<void>) => {
@@ -328,9 +350,10 @@ export class SyncEngine {
         const active = new Set<string>();
         await mapConcurrent(jobs, this.concurrency, async ({ row, journal, data }) => {
           const op = journal.revision;
-          const report = (phase: ProgressPhase) => this.emit(phase, { path: row.path, activeFiles: active.size, concurrency: this.concurrency });
+          const report = (phase: ProgressPhase) => { this.recordRow(row, 'running'); this.emit(phase, { path: row.path, activeFiles: active.size, concurrency: this.concurrency }); };
           this.guard(); active.add(row.path);
           try {
+            this.recordRow(row, 'running');
             let downloaded: ArrayBuffer | undefined;
             if (row.action === 'upload') await this.remote.publish(this.vaultId, op, data!, report);
             else { report('downloading'); downloaded = await this.remote.blob(this.vaultId, op, () => report('verifying')); }
@@ -341,10 +364,12 @@ export class SyncEngine {
               state.bases[row.path] = { hash: op.hash!, heads: [op.opId], fileId: op.fileId };
               state.knownOps = [...new Set([...state.knownOps, op.opId])];
               state.journals = state.journals.filter(item => item !== journal); await this.store.save(state);
+              this.recordRow(row, 'succeeded');
               doneBytes += row.size; if (row.action === 'upload') uploadedFiles++; else downloadedFiles++;
               done++; notifyDone();
             });
-          } finally { active.delete(row.path); this.emit('checking', { path: undefined, activeFiles: active.size, doneFiles: done, doneBytes }); }
+          } catch (error) { this.recordRow(row, failureState(error), row.action, 'stopped', error); throw error; }
+          finally { active.delete(row.path); this.emit('checking', { path: undefined, activeFiles: active.size, doneFiles: done, doneBytes }); }
         });
       };
       let batch: PlanRow[] = []; let batchBytes = 0;
@@ -353,7 +378,7 @@ export class SyncEngine {
         if (row.blocked) {
           // Still present, not verified: do not read, infer deletion, or advance
           // this file's baseline. Independent files can finish normally.
-          await flush(); this.guard(); done++; notifyDone(); this.emit('checking', { path: row.path, doneFiles: done }); continue;
+          await flush(); this.guard(); this.recordRow(row, 'skipped'); done++; notifyDone(); this.emit('checking', { path: row.path, doneFiles: done }); continue;
         }
         if ((row.action === 'upload' || row.action === 'download') && !row.renameFrom) {
           const weight = row.size + (row.action === 'download' ? snapshot.local.get(row.path)?.size ?? 0 : 0);
@@ -362,6 +387,7 @@ export class SyncEngine {
         }
         await flush();
         this.emit('checking', { path: row.path });
+        this.recordRow(row, 'running');
         this.guard();
         if (prepared && (!incremental || row.action !== 'noop' || this.dirtyPaths.has(row.path))) {
           const current = await this.local.read(row.path);
@@ -371,16 +397,17 @@ export class SyncEngine {
           if (autoConflicts) {
             if (row.renameConflict) {
               for (const head of row.heads) if (head.kind === 'update') await this.ensureConflictCopy(row.path, head.deviceId.slice(0, 8) + '-' + head.opId, head.hash!, () => this.remote.blob(this.vaultId, head));
-              preservedConflicts++; done++; notifyDone(); this.emit('checking', { doneFiles: done }); continue;
+              this.recordRow(row, 'conflict', 'conflict', 'preserved'); preservedConflicts++; done++; notifyDone(); this.emit('checking', { doneFiles: done }); continue;
             }
             const merged = plan.mode === 'sync' ? await this.autoMerge(row, state, snapshot) : undefined;
             if (merged) { for (const id of merged) published.add(id); autoMergedFiles++; }
-            else { const opId = await this.preserveConflict(row, state, plan.mode !== 'download'); if (opId) published.add(opId); preservedConflicts++; }
+            else { const opId = await this.preserveConflict(row, state, plan.mode !== 'download'); if (opId) published.add(opId); preservedConflicts++; this.recordRow(row, 'conflict', 'conflict', 'preserved'); }
             doneBytes += conflictBytes(row);
           }
+          if (!autoConflicts) this.recordRow(row, 'conflict', 'conflict', 'review');
           done++; notifyDone(); this.emit('checking', { doneFiles: done, doneBytes }); continue;
         }
-        if (row.action === 'skip') { done++; notifyDone(); this.emit('checking', { doneFiles: done }); continue; }
+        if (row.action === 'skip') { this.recordRow(row, 'skipped'); done++; notifyDone(); this.emit('checking', { doneFiles: done }); continue; }
         if (row.action === 'noop') {
           const head = row.heads[0]; if (row.heads.length === 1) state.bases[row.path] = { hash: head.hash ?? null, heads: [head.opId], fileId: head.fileId };
         } else {
@@ -415,6 +442,7 @@ export class SyncEngine {
         if (row.action === 'upload') uploadedFiles++;
         if (row.action === 'download') downloadedFiles++;
         if (row.action === 'delete-local' || row.action === 'delete-remote') deletedFiles++;
+        this.recordRow(row, row.action === 'noop' ? 'unchanged' : 'succeeded');
         done++; notifyDone(); this.emit('checking', { doneFiles: done, doneBytes });
       }
       await flush();
@@ -557,6 +585,7 @@ export class SyncEngine {
       for (const journal of [...state.journals]) {
         this.emit('checking', { path: journal.path });
         this.guard(); const op = journal.revision;
+        this.recordFile(op.path, 'recover', op.size, 'running', 'recovered');
         if (journal.action === 'publish' || journal.action === 'resolve') {
           if (!known.has(op.opId)) {
             const data = op.kind === 'update' ? await this.local.staged(op.opId) : null;
@@ -580,6 +609,7 @@ export class SyncEngine {
         }
         state.bases[op.path] = { hash: op.hash ?? null, heads: [op.opId], fileId: op.fileId };
         state.journals = state.journals.filter(item => item.id !== journal.id); await this.store.save(state);
+        this.recordFile(op.path, 'recover', op.size, 'succeeded', 'recovered');
         this.emit('checking', { doneFiles: this.progress.doneFiles + 1, doneBytes: this.progress.doneBytes + op.size });
       }
     });
@@ -596,6 +626,7 @@ export class SyncEngine {
   }
   async resolve(path: string, choice: 'local' | string, expectedRow?: PlanRow, mergedData?: ArrayBuffer): Promise<void> {
     return this.exclusive(async () => {
+      this.recordFile(path, 'resolve', expectedRow?.size ?? 0, 'running', 'resolved');
       const state = await this.state(); if (state.journals.length) throw new VaultSailError('recovery', '请先恢复未完成任务。');
       const snapshot = await this.scan(state, { allowRenames: true }); const heads = this.conflictHeads(snapshot, path);
       if (snapshot.blocked.has(path)) throw new VaultSailError('size', '此文件或关联路径尚不可传输，请先处理跳过清单。');
@@ -612,6 +643,7 @@ export class SyncEngine {
   }
   async resolveBoth(row: PlanRow, otherChoice: string, copyPath: string, primaryChoice = 'local'): Promise<void> {
     return this.exclusive(async () => {
+      this.recordFile(row.path, 'resolve', row.size, 'running', 'resolved');
       if (!included(copyPath, this.configDir) || copyPath === row.path) throw new VaultSailError('path', '请输入正常笔记目录中的新文件名。');
       const state = await this.state(); if (state.journals.length) throw new VaultSailError('recovery', '请先恢复未完成任务。');
       if (row.renameConflict) throw new VaultSailError('conflict', '请先选择最终文件名并统一版本，再复制为两篇。');
@@ -634,17 +666,20 @@ export class SyncEngine {
       const op: Revision = { schemaVersion: 1, vaultId: this.vaultId, opId: uuid(), deviceId: state.deviceId, fileId: uuid(), path: copyPath,
         parents: [], kind: 'update', hash: hash(other), size: other.byteLength, createdAt: Date.now() };
       const journal: Journal = { id: op.opId, path: copyPath, action: 'resolve', stage: 'prepared', revision: op, expectedLocal: null };
+      this.recordFile(copyPath, 'upload', other.byteLength, 'running');
       await this.local.stage(op.opId, other); state.journals.push(journal); await this.store.save(state); this.guard();
       await this.remote.publish(this.vaultId, op, other); journal.stage = 'published'; await this.store.save(state); this.guard();
       await this.applyLocal(copyPath, other, null, op.opId); journal.stage = 'applied'; await this.store.save(state);
       state.bases[copyPath] = { hash: op.hash!, heads: [op.opId], fileId: op.fileId }; state.knownOps = [...new Set([...state.knownOps, op.opId])];
       state.journals = state.journals.filter(item => item.id !== op.opId); await this.store.save(state);
+      this.recordFile(copyPath, 'upload', other.byteLength, 'succeeded');
       await this.commitResolution(state, updated, row.path, selected, row.localHash);
     });
   }
   async resolveDelete(row: PlanRow, deletionEnabled: boolean): Promise<void> {
     if (!deletionEnabled || row.renameConflict) throw new VaultSailError('configuration', '删除传播未开启，或需要先解决文件名冲突。');
     return this.exclusive(async () => {
+      this.recordFile(row.path, 'resolve', row.size, 'running', 'resolved');
       const state = await this.state(); if (state.journals.length) throw new VaultSailError('recovery', '请先恢复未完成任务。');
       const snapshot = await this.scan(state, { allowRenames: true }), heads = this.conflictHeads(snapshot, row.path);
       if (snapshot.blocked.has(row.path)) throw new VaultSailError('size', '此文件或关联路径尚不可传输，请先处理跳过清单。');
@@ -654,6 +689,7 @@ export class SyncEngine {
     });
   }
   private async commitResolution(state: SyncState, snapshot: Snapshot, path: string, selected: ArrayBuffer | null, expected: string | null, automatic = false): Promise<string> {
+      this.recordFile(path, automatic ? 'merge' : 'resolve', selected?.byteLength ?? 0, 'running', automatic ? 'merged' : 'resolved');
       const heads = this.conflictHeads(snapshot, path), localData = await this.local.read(path);
       if ((localData === null ? null : hash(localData)) !== expected) throw new VaultSailError('changed', '解决前本地内容已变化，草稿已保留。');
       this.emit('checking', { path, doneFiles: 0, totalFiles: 1, doneBytes: 0, totalBytes: selected?.byteLength ?? 0 });
@@ -688,6 +724,7 @@ export class SyncEngine {
       await this.applyLocal(path, selected, expected, op.opId); journal.stage = 'applied'; await this.store.save(state);
       state.bases[path] = { hash: op.hash ?? null, heads: [op.opId], fileId: op.fileId }; state.knownOps = [...new Set([...state.knownOps, ...snapshot.ops.map(item => item.opId), op.opId])];
       state.journals = []; await this.store.save(state);
+      this.recordFile(path, automatic ? 'merge' : 'resolve', selected?.byteLength ?? 0, 'succeeded', automatic ? 'merged' : 'resolved');
       this.emit('checking', { doneFiles: 1, doneBytes: selected?.byteLength ?? 0 });
       return op.opId;
   }

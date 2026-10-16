@@ -86,3 +86,13 @@
 .vaultsail-pairing button.mod-cta { background: #25897f; color: #fff; }
 .vaultsail-file-row { padding: 12px 0; border-bottom: 1px solid var(--background-modifier-border); }
 .vaultsail-file-row code { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
+.vaultsail-history-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 12px 0; }
+.vaultsail-history-controls select { max-width: 100%; min-width: 0; }
+.vaultsail-history-controls input[type="search"] { flex: 1; min-width: 140px; }
+.vaultsail-history-summary { white-space: pre-wrap; line-height: 1.7; }
+.vaultsail-history-warning { color: var(--text-warning, var(--text-muted)); }
+.vaultsail-history-list { max-height: 50vh; overflow-y: auto; }
+.vaultsail-history-row { border-bottom: 1px solid var(--background-modifier-border); padding: 12px 0; overflow-wrap: anywhere; }
+.vaultsail-history-row p { margin: 5px 0; color: var(--text-muted); }
+.vaultsail-history-row[data-state="failed"] strong { color: var(--text-error); }
+.vaultsail-history-row[data-state="unconfirmed"] strong { color: var(--text-warning, var(--text-muted)); }

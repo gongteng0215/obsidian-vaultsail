@@ -6,10 +6,16 @@ import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 import { parseHTML } from 'linkedom';
 
-test('plugin UI renders usable Chinese authorization controls; settings contain references, never credentials', async () => {
+test('plugin UI renders usable Chinese authorization controls; settings contain references, never credentials', async t => {
   const { document, window } = parseHTML('<html><body></body></html>');
   const openedUrls: string[] = []; window.open = (url: string) => { openedUrls.push(url); return null; };
   Object.assign(globalThis, { document, window });
+  // linkedom exposes only a select.value getter and clears other selections
+  // when any option.selected is written; model the native single-select API.
+  Object.defineProperty(window.HTMLSelectElement.prototype, 'value', { configurable: true,
+    get() { return this.querySelector('option[selected]')?.value ?? this.querySelector('option')?.value ?? ''; },
+    set(value: string) { const options = [...this.querySelectorAll('option')]; for (const option of options) option.removeAttribute('selected'); options.find(option => option.value === value)?.setAttribute('selected', ''); },
+  });
   const proto = window.HTMLElement.prototype as unknown as Record<string, unknown>;
   proto.empty = function(this: HTMLElement) { this.replaceChildren(); };
   proto.setText = function(this: HTMLElement, value: string) { this.textContent = value; };
@@ -19,6 +25,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
     plugins: [{ name: 'obsidian-harness', setup(builder) { builder.onResolve({ filter: /^obsidian$/ }, () => ({ path: path.resolve('test/fixtures/obsidian.ts') })); } }] });
   mkdirSync('dist/test', { recursive: true }); const harnessPath = path.resolve('dist/test/ui-harness.mjs');
   writeFileSync(harnessPath, result.outputFiles[0].text); const module = await import(pathToFileURL(harnessPath).href);
+  t.after(() => { for (const modal of module.Modal.instances) modal.close(); });
   const secretMap = new Map([['own-secret', 'never-render-private-secret']]); const localMap = new Map<string, unknown>(); const files = new Map<string, ArrayBuffer>(); const dirs = new Set<string>();
   let failStateRename = false;
   const adapter = {
@@ -46,6 +53,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
       createBinary: async (p: string, data: ArrayBuffer) => { assert.equal(files.has(p), false); files.set(p, data.slice(0)); }, createFolder: async (p: string) => { dirs.add(p); }, trash: async (file: { path: string }) => { files.delete(file.path); } },
   };
   const plugin = new module.Plugin(app); plugin.saved = { providerId: 'baidu', appKey: 'my-app', secretRef: 'own-secret', appDirectory: '/apps/test', remoteVaultId: 'legacy-name', access_token: 'must-be-stripped' };
+  t.after(() => plugin.onunload());
   await plugin.onload(); plugin.tabs[0].display();
   const buttons = () => [...document.querySelectorAll('button')].map(button => button.textContent);
   for (const label of ['连接百度网盘', '验证文件传输', '创建并绑定', '预览上传', '预览下载', '恢复未完成任务']) assert.ok(buttons().includes(label));
@@ -437,7 +445,53 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   assert.equal(JSON.parse(plugin.diagnostics()).blockedFileCount, 1); assert.equal(plugin.diagnostics().includes('private-large-attachment.pdf'), false);
   ([...plugin.tabs[0].containerEl.querySelectorAll('button')] as HTMLButtonElement[]).find(button => button.textContent === '查看跳过文件')!.click(); const skippedModal = module.Modal.instances.at(-1)!;
   assert.match(skippedModal.contentEl.textContent!, /private-large-attachment.pdf/); assert.match(skippedModal.contentEl.textContent!, /超过本机 20 MiB/); skippedModal.close();
+  ([...plugin.tabs[0].containerEl.querySelectorAll('button')] as HTMLButtonElement[]).find(button => button.textContent === '查看同步记录')!.click();
+  const historyModal = module.Modal.instances.at(-1)!;
+  await new Promise(resolve => setTimeout(resolve, 20));
+  // Earlier lifecycle tests intentionally advanced the wall clock. Select the
+  // actual partial manual task rather than relying on fake timestamp ordering.
+  const taskSelect = historyModal.contentEl.querySelector('select[aria-label="选择同步任务"]') as HTMLSelectElement;
+  taskSelect.value = [...taskSelect.querySelectorAll('option')].find(option => option.textContent!.includes('手动双向同步 · 部分完成'))!.value;
+  taskSelect.dispatchEvent(new window.Event('change'));
+  assert.match(historyModal.contentEl.textContent!, /private-large-attachment.pdf/); assert.match(historyModal.contentEl.textContent!, /部分完成/);
+  const search = historyModal.contentEl.querySelector('input[type=search]') as HTMLInputElement;
+  search.value = 'private-large'; search.dispatchEvent(new window.Event('input'));
+  assert.equal(historyModal.contentEl.querySelectorAll('.vaultsail-history-row').length, 1);
+  assert.match(historyModal.contentEl.textContent!, /超过 20 MiB/);
+  await new Promise(resolve => setTimeout(resolve, 550)); assert.equal(historyModal.contentEl.querySelector('input[type=search]'), search); assert.equal(search.value, 'private-large');
+  historyModal.close();
+  const persistedHistory = [...files.keys()].filter(path => path.includes('/history/') && path.endsWith('.json'));
+  assert.ok(persistedHistory.length); assert.equal(persistedHistory.some(path => path.startsWith('.vaultsail-state/')), true);
+  assert.equal(plugin.diagnostics().includes('private-large-attachment.pdf'), false);
   files.delete('private-large-attachment.pdf'); adapter.stat = oldStat; app.vault.readBinary = oldRead;
   await plugin.run('再次检查…', () => plugin.startSync()); assert.equal(plugin.blockedFiles().length, 0); assert.equal(plugin.lastSuccess().blockedFiles, 0);
+  const originalHistoryPublish = plugin.engine.remote.publish.bind(plugin.engine.remote);
+  let publishEntered!: () => void, releaseHistoryPublish!: () => void;
+  const publishReady = new Promise<void>(resolve => { publishEntered = resolve; }), publishGate = new Promise<void>(resolve => { releaseHistoryPublish = resolve; });
+  plugin.engine.remote.publish = async (...args: any[]) => { if (args[1].path === 'live-history.md') { publishEntered(); await publishGate; } return originalHistoryPublish(...args); };
+  files.set('live-history.md', new TextEncoder().encode('live body').buffer);
+  const syncing = plugin.run('实时记录测试…', () => plugin.startSync()); await publishReady;
+  plugin.showSyncHistory(); const liveHistory = module.Modal.instances.at(-1)!;
+  try {
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const runningSelect = liveHistory.contentEl.querySelector('select[aria-label="选择同步任务"]') as HTMLSelectElement;
+    runningSelect.value = [...runningSelect.querySelectorAll('option')].find(option => option.textContent!.includes('进行中'))!.value;
+    runningSelect.dispatchEvent(new window.Event('change'));
+    const liveSearch = liveHistory.contentEl.querySelector('input[type=search]') as HTMLInputElement;
+    liveSearch.value = 'live-history'; liveSearch.dispatchEvent(new window.Event('input'));
+    assert.equal(liveHistory.contentEl.querySelector('.vaultsail-history-row')!.getAttribute('data-state'), 'running');
+    releaseHistoryPublish(); await syncing; await new Promise(resolve => setTimeout(resolve, 550));
+    assert.equal(liveHistory.contentEl.querySelector('input[type=search]'), liveSearch);
+    assert.equal(liveHistory.contentEl.querySelector('.vaultsail-history-row')!.getAttribute('data-state'), 'succeeded');
+  } finally { releaseHistoryPublish(); await syncing; liveHistory.close(); plugin.engine.remote.publish = originalHistoryPublish; }
   plugin.onunload();
+  const historyRestart = new module.Plugin(app); historyRestart.saved = structuredClone(plugin.saved); await historyRestart.onload();
+  historyRestart.showSyncHistory(); const reopened = module.Modal.instances.at(-1)!;
+  await new Promise(resolve => setTimeout(resolve, 20));
+  const reopenedSelect = reopened.contentEl.querySelector('select[aria-label="选择同步任务"]') as HTMLSelectElement;
+  reopenedSelect.value = [...reopenedSelect.querySelectorAll('option')].find(option => option.textContent!.includes('部分完成'))!.value;
+  reopenedSelect.dispatchEvent(new window.Event('change'));
+  assert.match(reopened.contentEl.textContent!, /private-large-attachment.pdf/);
+  assert.equal(historyRestart.diagnostics().includes('private-large-attachment.pdf'), false);
+  reopened.close(); historyRestart.onunload();
 });

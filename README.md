@@ -22,6 +22,8 @@ Sync Obsidian notes and attachments through your own Baidu Netdisk account, with
 
 **Preview 0.2.1:** metadata-first local size checks, a blocked-file list, partial-completion reporting, and on-demand upload chunk bodies are implemented on a separate branch. The file cap remains 20 MiB; concurrency already supports 1–32, default 8. See [preview notes](docs/releases/0.2.1.md). The community/default-branch target remains 0.2.0 until promoted.
 
+**Local preview 0.2.2:** adds [persistent per-file sync history](docs/releases/0.2.2.md), with live results, task selection, path search, action/status filters, and pagination. Open Transfer & recovery → View sync history (`查看同步记录`). Records are device/connection-local and excluded from sync, pairing, and redacted diagnostics. This preview does not raise the file-size limit or change the community target.
+
 ## Feature inventory
 
 This inventory describes **0.2.0**, not future releases. **Implemented** means code and automated coverage exist, not complete real-device certification. **Limited** means the listed restrictions apply. **Experimental** requires a separate opt-in.

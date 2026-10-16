@@ -34,6 +34,8 @@ The [large-file plan](LARGE_FILES.md) adds a conditional track: 0.2.x isolates o
 
 Implementation: [separate 0.2.1 preview](releases/0.2.1.md) now includes local oversized-file skips, related-path protection, partial-result lists, and on-demand upload chunks. 168 automated checks pass; native acceptance is pending and the community target remains 0.2.0. Other milestones remain open.
 
+[Local preview 0.2.2](releases/0.2.2.md) adds persistent local sync-task/file records, live status, and filters, with 178 automated checks. This is an activity log, not the planned cloud-content timeline or old-version restore; the 0.5.0 recovery milestone remains open.
+
 ## 0.2.1 / 0.2.x: stabilize the current release
 
 ### Deliverables

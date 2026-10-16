@@ -198,6 +198,8 @@ export class VaultSailSettingTab extends PluginSettingTab {
     transferCard.createEl('p', { cls: 'vaultsail-blocked-summary', text: p.blockedSummary() }).setAttribute('role', 'status');
     new Setting(transferCard).setName('超限与关联保护项').setDesc('超过 20 MiB 的本地文件不读正文，其他独立文件继续。存在未校验附件时，缺失路径的删除或改名可能暂缓。')
       .addButton(button => button.setButtonText('查看跳过文件').onClick(() => p.showBlockedFiles()));
+    new Setting(transferCard).setName('同步记录').setDesc('查看本设备当前云端库最近 30 次任务；逐文件记录实时更新，重启后仍可查看。文件路径只保存在本机内部目录。')
+      .addButton(button => button.setButtonText('查看同步记录').onClick(() => p.showSyncHistory()));
     new Setting(transferCard).setName('待解决冲突').setDesc('查看各版本、逐块合并或保留为两篇；确认后其他设备自动接收解决版本。')
       .addButton(button => button.setButtonText('查看待解决冲突').setDisabled(p.busy).onClick(() => p.openConflicts()));
     let concurrencyDraft = String(p.settings.transferConcurrency);
