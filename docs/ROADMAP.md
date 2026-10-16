@@ -2,7 +2,7 @@
 
 **English** | [简体中文](ROADMAP.zh-CN.md) · [Feature inventory](../README.md#feature-inventory)
 
-Baseline: **0.2.0**, updated **2026-10-16**. This is the proposed implementation order, not a list of completed features or promised dates. Patch versions follow actual findings. If acceptance fails, continue fixing rather than advancing solely to reach a version number.
+Baseline: **0.2.4**, updated **2026-10-16**. This is the proposed implementation order, not a list of completed features or promised dates. Patch versions follow actual findings. If acceptance fails, continue fixing rather than advancing solely to reach a version number.
 
 ## Direction and lasting boundaries
 
@@ -20,7 +20,8 @@ Make notes sync reliably between computers and iPad using the user's own cloud a
 | Version | Status | Focus | Completion evidence |
 | --- | --- | --- | --- |
 | 0.2.0 | Released | Automatic sync and merge foundation | README inventory; 158 automated tests, comprehensive native acceptance pending |
-| 0.2.1 / 0.2.x | Next | Stabilize current behavior | Explainable repeat sync, queue, and recovery; no known blocking loss or cross-vault failures |
+| 0.2.4 | Released | Local sync history, oversized-file isolation, desktop 512 MiB attachments, live upload progress | 186 automated checks; 339/512 MiB simulated integrity checks; native acceptance pending |
+| 0.2.x follow-ups | Ongoing | Stabilize current behavior | Explainable repeat sync, queue, and recovery; no known blocking loss or cross-vault failures |
 | 0.3.0 | Planned | iPad and multi-vault reliability | Native records for two devices/two destinations, lifecycle and credentials |
 | 0.4.0 | Planned | Scan/transfer performance | Reproducible comparisons and integrity regression coverage, no fixed speed promises |
 | 0.5.0 | Planned | History and recovery workspace | Search, preview, and restore cloud history; clearer local recovery |
@@ -30,9 +31,9 @@ Make notes sync reliably between computers and iPad using the user's own cloud a
 
 Version gaps leave room for fixes. Additional providers, large files, and encryption will not all start before the foundation is reliable.
 
-The [large-file plan](LARGE_FILES.md) adds a conditional track: 0.2.x isolates oversized files and removes chunk copies; 0.3.x proves platform capabilities and compatible readers; 0.4.x evaluates higher limits/chunk I/O only after gates pass; 0.5.x or later improves recovery. The default stays 20 MiB. Desktop results do not qualify iPad or promise GB support.
+The [large-file plan](LARGE_FILES.md) adds a conditional track: 0.2.x isolates oversized files and removes chunk copies; 0.3.x proves platform capabilities and compatible readers; 0.4.x evaluates higher limits/chunk I/O only after gates pass; 0.5.x or later improves recovery. Current desktop whole-buffer transfers default to 512 MiB; mobile stays at 20 MiB. Desktop results do not qualify iPad or promise GB support.
 
-Implementation: [separate 0.2.1 preview](releases/0.2.1.md) now includes local oversized-file skips, related-path protection, partial-result lists, and on-demand upload chunks. 168 automated checks pass; native acceptance is pending and the community target remains 0.2.0. Other milestones remain open.
+Implementation: [separate 0.2.1 preview](releases/0.2.1.md) now includes local oversized-file skips, related-path protection, partial-result lists, and on-demand upload chunks. 168 automated checks pass; native acceptance is pending and these features are included in community release 0.2.4. Other milestones remain open.
 
 [Local preview 0.2.2](releases/0.2.2.md) adds persistent local sync-task/file records, live status, and filters, with 178 automated checks. This is an activity log, not the planned cloud-content timeline or old-version restore; the 0.5.0 recovery milestone remains open.
 

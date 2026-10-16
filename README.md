@@ -4,13 +4,9 @@ Sync Obsidian notes and attachments through your own Baidu Netdisk account, with
 
 **English** | [简体中文](README.zh-CN.md)
 
-[Community plugin](https://community.obsidian.md/plugins/vaultsail) · [Download 0.2.0](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.0) · [Release notes](docs/releases/0.2.0.md) · [Version roadmap](docs/ROADMAP.md) · [Report an issue](https://github.com/gongteng0215/obsidian-vaultsail/issues)
+[Community plugin](https://community.obsidian.md/plugins/vaultsail) · [Download 0.2.4](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.4) · [Release notes](docs/releases/0.2.4.md) · [Version roadmap](docs/ROADMAP.md) · [Report an issue](https://github.com/gongteng0215/obsidian-vaultsail/issues)
 
 **Contents:** [All features](#feature-inventory) · [Roadmap](#version-roadmap) · [Install](#install-or-update) · [First connection](#connect-your-first-vault) · [Device pairing](#pair-a-computer-ipad-or-another-vault) · [Automatic sync](#automatic-sync-and-the-queue) · [Conflicts](#versions-and-conflict-resolution) · [Cloud location](#where-the-cloud-data-goes) · [Recovery](#file-scope-deletion-and-recovery) · [FAQ](#performance-and-troubleshooting) · [Privacy](#privacy-and-network-access)
-
-**0.2.3 local preview:** This experimental desktop build allows **512 MiB** (configurable 20–512); files above 20 MiB run alone and use the same verified upload/download/recovery path. Mobile retains a 20 MiB body limit and skips larger heads while independent notes continue. Update every device to 0.2.3 or later before publishing larger attachments: older clients reject these records. The 339 MiB simulated provider benchmark used about 1.73 GiB peak RSS; the real application may use more. This still buffers whole files in memory; streaming and resumable slices remain future work. See [preview notes](docs/releases/0.2.3.md). Community remains on 0.2.0.
-
-**0.2.4 local preview:** Live per-file upload bars show server-acknowledged payload bytes, percent, completed/current slices, preparation, retry attempts, commit and readback stages. Updates arrive after each confirmed slice (up to 4 MiB); a native request has no intermediate socket-byte counter. Upload acknowledgement stays separate from verified task completion. Settings and transfer preview both display this progress. See [preview notes](docs/releases/0.2.4.md).
 
 ## Features
 
@@ -22,15 +18,15 @@ Sync Obsidian notes and attachments through your own Baidu Netdisk account, with
 - Transfer application configuration and authorization through a password-encrypted code or file, avoiding another browser login while authorization remains valid.
 - View live progress, scan/transfer timings, request counts, and token refresh counts.
 
-**0.2.0 supports Baidu Netdisk.** Requests go directly to Baidu, without a developer-operated authorization or sync server. Current settings and messages are primarily in Chinese; this guide includes their UI labels.
+**0.2.4 supports Baidu Netdisk.** Requests go directly to Baidu, without a developer-operated authorization or sync server. Current settings and messages are primarily in Chinese; this guide includes their UI labels.
 
-**Preview 0.2.1:** metadata-first local size checks, a blocked-file list, partial-completion reporting, and on-demand upload chunk bodies are implemented on a separate branch. The file cap remains 20 MiB; concurrency already supports 1–32, default 8. See [preview notes](docs/releases/0.2.1.md). The community/default-branch target remains 0.2.0 until promoted.
+**Release 0.2.4** adds local sync history, unsupported-file isolation, desktop attachments up to 512 MiB, and live per-file acknowledged upload progress. [Release notes](docs/releases/0.2.4.md).
 
-**Local preview 0.2.2:** adds [persistent per-file sync history](docs/releases/0.2.2.md), with live results, task selection, path search, action/status filters, and pagination. Open Transfer & recovery → View sync history (`查看同步记录`). Records are device/connection-local and excluded from sync, pairing, and redacted diagnostics. This preview does not raise the file-size limit or change the community target.
+**Large attachment compatibility:** update all devices sharing the vault before uploading files over 20 MiB. Mobile still skips those files. Uploads use whole-file memory buffers and one large-file job at a time; streaming and resumable slices are not implemented. Real Baidu throughput and native iPad validation remain pending.
 
 ## Feature inventory
 
-This inventory describes **0.2.0**, not future releases. **Implemented** means code and automated coverage exist, not complete real-device certification. **Limited** means the listed restrictions apply. **Experimental** requires a separate opt-in.
+This inventory describes **0.2.4**, not future releases. **Implemented** means code and automated coverage exist, not complete real-device certification. **Limited** means the listed restrictions apply. **Experimental** requires a separate opt-in.
 
 | Area | Capability | Status and scope |
 | --- | --- | --- |
@@ -50,7 +46,7 @@ This inventory describes **0.2.0**, not future releases. **Implemented** means c
 | Pairing | Legacy JSON and encrypted-code compatibility | Limited; old JSON requires login, expired codes need a new export |
 | Manual transfer | Upload, download, and bidirectional previews | Implemented; actions/reasons shown and execution basis rechecked |
 | Manual transfer | One-click bidirectional sync and command/toolbar entry points | Implemented; manual requests share the queue |
-| File scope | Markdown, attachments, Unicode paths, zero-byte files | Limited; 20 MiB per file and cross-platform path validation |
+| File scope | Markdown, attachments, Unicode paths, zero-byte files | Limited; desktop 512 MiB (configurable 20–512), mobile 20 MiB; whole-file buffering |
 | File scope | Internal/configuration/credential/recovery exclusions | Implemented; fixed safety exclusions, not user-defined rules |
 | Scheduling | File create/modify/delete/rename listeners | Implemented; debounce, coalescing, and startup readiness guard |
 | Scheduling | Remote polling and periodic full reconciliation | Implemented; remote checks 30–300 seconds, full check every 10 minutes |
@@ -73,7 +69,9 @@ This inventory describes **0.2.0**, not future releases. **Implemented** means c
 | Recovery | Operation journals and unfinished-task recovery | Implemented; verify actual outcomes and reuse operation IDs |
 | Recovery | Local recovery points, restore, and end stale tasks | Implemented; current content preserved, no automatic cleanup |
 | Deletion | Propagate explicit versioned deletion | Experimental; off by default, recovery retained, no permanent cloud cleanup |
-| Interface | Three-tab settings, live progress, phase/request/cache statistics | Implemented; Chinese UI, English documentation |
+| Interface | Three-tab settings, live upload bytes/slices, phase/request/cache statistics | Implemented; server-acknowledged progress updates after each slice, Chinese UI |
+| Activity | Persistent per-file sync records | Implemented; last 30 tasks, path search, action/status filters, local only |
+| Oversized files | Metadata preflight, skip list and related-path protection | Implemented; unsupported files do not advance baselines; independent files continue |
 | Diagnostics | Redacted report and safe failure-step messages | Implemented; no account identifiers, filenames, note bodies, or credentials |
 | Privacy | Direct Baidu access, no telemetry/server, encrypted credential migration | Implemented; cloud notes themselves are not end-to-end encrypted |
 | Distribution | Community updates, GitHub files/ZIP/checksums, BRAT | Implemented; min Obsidian 1.11.4, plugin installed per vault |
@@ -89,7 +87,7 @@ This inventory describes **0.2.0**, not future releases. **Implemented** means c
 | Full English UI, language selection, and accessible mobile refinements | Planned for 0.6.0 |
 | QR/fragmented pairing and configurable pairing profiles | Backlog; existing encrypted code/file pairing remains available |
 | WebDAV, S3-compatible storage, OneDrive, or other providers | Post-1.0 candidates; only Baidu has a working adapter today |
-| Files larger than 20 MiB and streaming/resumable large-file transfer | [Detailed staged design](docs/LARGE_FILES.md); not implemented, platform gates before size increases |
+| Streaming/resumable large-file transfer and mobile files above 20 MiB | [Detailed staged design](docs/LARGE_FILES.md); desktop whole-buffer support up to 512 MiB is available, streaming and larger mobile transfers remain unimplemented |
 | End-to-end note encryption and safe permanent cloud cleanup | Separate design/migration work; no implementation commitment yet |
 | Live collaborative editing, semantic/AI merges, continuous iPad background sync | Outside the current roadmap |
 
@@ -99,7 +97,7 @@ We will deliver one reviewable milestone at a time. These are proposed scopes, n
 
 | Version | Focus | Main result |
 | --- | --- | --- |
-| **0.2.0 — released** | Automatic sync and merge foundation | Queue, file events, remote checks, conflict editor, and drafts |
+| **0.2.4 — released** | Automatic sync and merge foundation | Queue, file events, remote checks, conflict editor, and drafts |
 | **0.2.1 / 0.2.x — next** | Stabilization | Reproduce real failures, clarify queue/error states, verify recovery and repeat sync |
 | **0.3.0** | iPad and multi-vault reliability | Native pairing, foreground recovery, vault/account isolation acceptance |
 | **0.4.0** | Scan and transfer performance | Benchmarked cold/warm scans, optional verified discovery index, bounded tuning |
@@ -109,7 +107,7 @@ We will deliver one reviewable milestone at a time. These are proposed scopes, n
 
 See the **[full roadmap and acceptance criteria](docs/ROADMAP.md)**. Our next implementation scope is **0.2.1 stabilization**, not all planned features at once. This documentation update does not change the installed plugin or its version.
 
-The **[large-file implementation plan](docs/LARGE_FILES.md)** details metadata-first skipping, memory budgets, compatible readers, platform prototypes, snapshots, chunk I/O, and recovery. Its first step keeps the 20 MiB cap; larger limits are conditional on measurements.
+The **[large-file implementation plan](docs/LARGE_FILES.md)** details metadata-first skipping, memory budgets, compatible readers, platform prototypes, snapshots, chunk I/O, and recovery. Desktop buffered transfers now allow 512 MiB; mobile remains at 20 MiB, with streaming and native acceptance still pending.
 
 ## Requirements and defaults
 
@@ -122,11 +120,11 @@ The **[large-file implementation plan](docs/LARGE_FILES.md)** details metadata-f
 | Local change delay | About **2 seconds** of quiet; coalesced for at most **15 seconds** during continuous editing |
 | Remote checks | **60 seconds** plus a small random delay; configurable **30–300 seconds** |
 | Concurrent files | **8** by default; configurable **1–32**, with smaller batches for large files |
-| Maximum file size | **20 MiB per file** |
+| Maximum file size | **Desktop 512 MiB**, configurable 20–512; **mobile 20 MiB** |
 | Deletion propagation | **Off**, with a separate experimental opt-in |
 | Mobile background operation | Continuous background sync is **not provided** |
 
-Intervals are scheduling targets, not delivery deadlines. Busy tasks, network errors, rate limits, background suspension, and pauses can delay execution. Automated validation passed for 0.2.0; comprehensive Windows/iPad, Baidu throughput, and long-term multi-device validation remain incomplete.
+Intervals are scheduling targets, not delivery deadlines. Busy tasks, network errors, rate limits, background suspension, and pauses can delay execution. Automated validation passed for 0.2.4; comprehensive Windows/iPad, Baidu throughput, and long-term multi-device validation remain incomplete.
 
 ## Install or update
 
@@ -135,15 +133,15 @@ Intervals are scheduling targets, not delivery deadlines. Busy tasks, network er
 1. Open Obsidian **Settings → Community plugins**, enabling community plugins if necessary.
 2. Browse for **VaultSail**, install it, and enable it.
 3. For an existing installation, click **Check for updates**, then update VaultSail.
-4. Disable and re-enable the plugin, and confirm the displayed version is **0.2.0**.
+4. Disable and re-enable the plugin, and confirm the displayed version is **0.2.4**.
 
 Install VaultSail **in every local vault that should sync, on every participating device**. An Obsidian account login does not install it or connect Baidu automatically. Separate vaults can share one account while binding to different cloud vaults.
 
-Update both devices to 0.2.0 before using the new merge workflow. Ordinary upgrades preserve settings and connections. Valid, unexpired pairing codes do not need re-exporting merely because the plugin was updated.
+Update every device sharing a cloud vault to 0.2.4 before uploading attachments over 20 MiB: older readers reject these records. Mobile still skips files over 20 MiB. Ordinary upgrades preserve settings and connections. Valid, unexpired pairing codes do not need re-exporting merely because the plugin was updated.
 
 ### Manual installation and BRAT
 
-Download the ZIP or three files from the [release page](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.0). With VaultSail disabled, place them here, then enable it:
+Download the ZIP or three files from the [release page](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.4). With VaultSail disabled, place them here, then enable it:
 
 ```text
 <your-vault>/.obsidian/plugins/vaultsail/
@@ -154,7 +152,7 @@ Download the ZIP or three files from the [release page](https://github.com/gongt
 
 Use your actual configuration directory if it differs from `.obsidian`. Preserve existing `data.json` when replacing plugin files.
 
-On iPad or desktop, another option is [BRAT](https://github.com/TfTHacker/obsidian42-brat): add `gongteng0215/obsidian-vaultsail` and select `0.2.0`.
+On iPad or desktop, another option is [BRAT](https://github.com/TfTHacker/obsidian42-brat): add `gongteng0215/obsidian-vaultsail` and select `0.2.4`.
 
 ## Connect your first vault
 
@@ -269,7 +267,7 @@ This is version storage. Downloads reconstruct normal note paths; `blobs` is not
 
 ## File scope, deletion, and recovery
 
-Eligible ordinary files include Markdown, images, PDFs, Chinese paths, and zero-byte files, up to 20 MiB each. Exclusions include dot-prefixed path components, the current Obsidian configuration directory, `node_modules`, `Thumbs.db`, `VaultSail-conflicts/`, and `VaultSail-配置/`. Internal `.vaultsail-state/` data is excluded too. Themes, plugins, settings, and credentials are not copied as notes.
+Eligible ordinary files include Markdown, images, PDFs, Chinese paths, and zero-byte files, up to the current device limit (desktop 512 MiB; mobile 20 MiB) each. Exclusions include dot-prefixed path components, the current Obsidian configuration directory, `node_modules`, `Thumbs.db`, `VaultSail-conflicts/`, and `VaultSail-配置/`. Internal `.vaultsail-state/` data is excluded too. Themes, plugins, settings, and credentials are not copied as notes.
 
 Deletion propagation is off. Missing a file alone does not authorize deleting the other side. The experimental option uses versioned deletion records and local recovery data; it does not permanently remove cloud content objects.
 
@@ -283,7 +281,7 @@ After interruption, use **Resume unfinished tasks** (`恢复未完成任务`). I
 | --- | --- |
 | “Application not configured” after typing | Click Save for AppKey and Save secret for SecretKey; check saved-state descriptions |
 | “Account or directory is not bound” | Select a verified cloud vault; authorization and a directory alone are insufficient |
-| No automatic sync | Confirm 0.2.0 is loaded, automatic sync enabled, file checks passed, app foregrounded, and queue not paused or blocked |
+| No automatic sync | Confirm 0.2.4 is loaded, automatic sync enabled, file checks passed, app foregrounded, and queue not paused or blocked |
 | Remote edits are not immediately visible | The other device must publish first; this device discovers them through remote checks or manual sync |
 | Long scan without uploads | Check scan time, request counts, and cache statistics; initial history loading or missing fingerprints can add requests |
 | Slow transfers | Compare scan and transfer time; adjust concurrency from 1–32, default 8. Large files reduce batch concurrency; network/Baidu limits still apply |
@@ -314,9 +312,9 @@ npm run build
 pwsh ./scripts/package-release.ps1
 ```
 
-0.2.0 passed **158 automated tests**, type checking, build, ZIP validation, and public-download hash checks. Coverage includes authorization, pairing, pagination, concurrency, paths, queues, incremental scans, reload serialization, merging, drafts, concurrent renames, and recovery. Tests use simulated providers and a DOM fixture; they do not certify real iPad storage/background execution, Baidu permissions, or long-term shared-token behavior.
+0.2.4 passed **186 automated tests**, type checking, build, ZIP validation, and public-download hash checks. Coverage includes authorization, pairing, pagination, concurrency, paths, queues, incremental scans, reload serialization, merging, drafts, concurrent renames, and recovery. Tests use simulated providers and a DOM fixture; they do not certify real iPad storage/background execution, Baidu permissions, or long-term shared-token behavior.
 
-The ZIP contains only `main.js`, `manifest.json`, and `styles.css`, without tests, user configuration, credentials, or notes. See [release notes](docs/releases/0.2.0.md) for validation limits and [sync design](docs/AUTO_SYNC_PLAN.md) for implementation context.
+The ZIP contains only `main.js`, `manifest.json`, and `styles.css`, without tests, user configuration, credentials, or notes. See [release notes](docs/releases/0.2.4.md) for validation limits and [sync design](docs/AUTO_SYNC_PLAN.md) for implementation context.
 
 ## License and support
 
