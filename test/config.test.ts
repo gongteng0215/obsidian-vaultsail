@@ -1,6 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { migrateSettings } from '../src/config.ts';
+import { effectiveFileLimit, migrateSettings } from '../src/config.ts';
+
+test('desktop defaults to 512 MiB; device preference is validated and mobile stays at 20 MiB', () => {
+  assert.equal(effectiveFileLimit(migrateSettings({}), false), 512 * 1024 * 1024);
+  for (const value of [20, 25, 32, 50, 384, 512]) {
+    const settings = migrateSettings({ maxFileMiB: value }); assert.equal(settings.maxFileMiB, value);
+    assert.equal(effectiveFileLimit(settings, true), 20 * 1024 * 1024);
+  }
+  for (const value of [0, 19, 513, 25.5, '50', null]) assert.equal(migrateSettings({ maxFileMiB: value }).maxFileMiB, 512);
+});
 test('automatic sync requires opt-in and validates the device-local remote check interval', () => {
   assert.equal(migrateSettings({}).autoSyncEnabled, false); assert.equal(migrateSettings({}).remotePollSeconds, 60);
   assert.equal(migrateSettings({ autoSyncEnabled: 'true' }).autoSyncEnabled, false);

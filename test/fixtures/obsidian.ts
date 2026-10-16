@@ -1,6 +1,7 @@
 // Runtime harness for integration tests only. The production bundle externalizes obsidian.
 const element = (parent: HTMLElement, tag: string) => parent.appendChild(document.createElement(tag));
 export class App {}
+export const Platform = { isMobile: false, isDesktop: true };
 export class TFile { path: string; stat: { size: number }; constructor(path: string, size: number) { this.path = path; this.stat = { size }; } }
 export class Notice { static messages: string[] = []; constructor(message: string) { Notice.messages.push(message); } }
 export function requireApiVersion(): boolean { return true; }

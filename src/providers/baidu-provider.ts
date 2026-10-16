@@ -1,13 +1,13 @@
 import { md5 } from '@noble/hashes/legacy';
 import { bytesToHex } from '@noble/hashes/utils';
-import { appRoot, checkSize, hash, record, relativePath, sleep, uuid, VaultSailError } from '../core/safety.ts';
+import { appRoot, checkSize, MAX_FILE_SIZE, hash, record, relativePath, sleep, uuid, VaultSailError } from '../core/safety.ts';
 import { apiSuccess, request, urlWith, type HttpTransport } from './http.ts';
 import type { CloudStorageProvider, RemoteObject, RemotePage } from './cloud-storage-provider';
 import { listAll } from './provider-utils.ts';
 export { listAll } from './provider-utils.ts';
 
 export interface TokenSource { accessToken(forceRefresh?: boolean, rejectedToken?: string): Promise<string>; }
-export interface BaiduRequestPolicy { apiTimeoutMs?: number; transferTimeoutMs?: number; signal?: AbortSignal; onRetry?: (waitedMs: number) => void; }
+export interface BaiduRequestPolicy { apiTimeoutMs?: number; transferTimeoutMs?: number; signal?: AbortSignal; onRetry?: (waitedMs: number) => void; maxFileSize?: number; }
 const XPAN = 'https://pan.baidu.com/rest/2.0/xpan/';
 const CHUNK = 4 * 1024 * 1024;
 export class BaiduProvider implements CloudStorageProvider {
@@ -26,11 +26,17 @@ export class BaiduProvider implements CloudStorageProvider {
     onActivity: (phase: 'verifying' | 'downloading') => void = () => {}, requestPolicy: BaiduRequestPolicy = {}) {
     this.root = appRoot(root); this.transport = transport; this.auth = auth; this.active = active;
     this.requestPolicy = requestPolicy;
+    checkSize(0, requestPolicy.maxFileSize);
     this.onActivity = phase => { try { onActivity(phase); } catch { /* A progress view cannot affect transfer integrity. */ } };
   }
   isConfigured(): boolean { return this.active(); }
   private guard(): void { if (!this.active() || this.requestPolicy.signal?.aborted) throw new VaultSailError('cancelled', '任务已暂停，或账号及目录配置已更改。'); }
   private absolute(path: string): string { return path ? this.root + '/' + relativePath(path) : this.root; }
+  private bodyLimit(path: string): number {
+    // Raising attachment budgets must not permit enormous metadata downloads.
+    return /^vaultsail\/vaults\/[^/]+\/(?:vault\.json|ops\/[^/]+\/[^/]+\.json)$/.test(path)
+      ? 1024 * 1024 : this.requestPolicy.maxFileSize ?? MAX_FILE_SIZE;
+  }
   private etag(value: Record<string, unknown>, size: number): string | undefined {
     if (typeof value.md5 !== 'string' || !/^[a-fA-F0-9]{32}$/.test(value.md5)) return undefined;
     return `${String(value.fs_id ?? '')}:${value.md5.toLowerCase()}:${String(value.server_mtime ?? value.mtime ?? '')}:${size}`;
@@ -139,9 +145,9 @@ export class BaiduProvider implements CloudStorageProvider {
     const verified = files.map(file => {
       const entry = byId.get(file.id!);
       if (!entry || typeof entry.size !== 'number') throw new VaultSailError('response', '下载大小元数据缺失。');
-      checkSize(entry.size);
+      checkSize(entry.size, this.bodyLimit(file.path));
       if (!entry || entry.path !== this.absolute(file.path) || entry.size !== file.size || (entry.isdir !== undefined && entry.isdir !== 0)) throw new VaultSailError('response', '下载元数据与目标文件不一致。');
-      checkSize(file.size);
+      checkSize(file.size, this.bodyLimit(file.path));
       const inspectedTag = this.etag(entry, file.size);
       const prefix = typeof entry.md5 === 'string' ? `${file.id}:${entry.md5.toLowerCase()}:` : undefined;
       const etag = prefix && file.etag?.startsWith(prefix) ? file.etag : inspectedTag ?? file.etag;
@@ -217,7 +223,7 @@ export class BaiduProvider implements CloudStorageProvider {
     return this.retry(async () => {
       const file = await this.find(path);
       if (!file || file.isDirectory || !file.id) throw new VaultSailError('not-found', '远端内容对象不存在。');
-      checkSize(file.size);
+      checkSize(file.size, this.bodyLimit(path));
       let cached = this.downloadLinks.get(path);
       if (!cached || cached.id !== file.id || cached.size !== file.size || cached.etag !== file.etag || cached.expiresAt <= Date.now()) {
         await this.metadata([file]); cached = this.downloadLinks.get(path)!;
@@ -234,7 +240,7 @@ export class BaiduProvider implements CloudStorageProvider {
     });
   }
   async writeImmutable(path: string, data: ArrayBuffer): Promise<void> {
-    relativePath(path); checkSize(data.byteLength); this.guard(); const expected = hash(data);
+    relativePath(path); checkSize(data.byteLength, this.bodyLimit(path)); this.guard(); const expected = hash(data);
     const pending = this.pendingWrites.get(path);
     if (pending) {
       if (pending.hash !== expected) throw new VaultSailError('integrity', '同一不可变对象出现不同内容，已停止写入。');

@@ -64,8 +64,8 @@ async function mkdirs(app: App, path: string): Promise<void> {
   }
 }
 export class ObsidianLocalFiles implements LocalFiles {
-  private app: App; private deviceId: string; readonly internal: string;
-  constructor(app: App, deviceId: string) { this.app = app; this.deviceId = deviceId; this.internal = '.vaultsail-state/' + deviceId; }
+  private app: App; private deviceId: string; readonly internal: string; private fileLimit: () => number;
+  constructor(app: App, deviceId: string, fileLimit: () => number = () => 20 * 1024 * 1024) { this.fileLimit = fileLimit; this.app = app; this.deviceId = deviceId; this.internal = '.vaultsail-state/' + deviceId; }
   private userPath(path: string): void {
     relativePath(path); if (!included(path, this.app.vault.configDir)) throw new VaultSailError('path', '此路径被同步排除。');
   }
@@ -80,11 +80,14 @@ export class ObsidianLocalFiles implements LocalFiles {
     this.userPath(path); const file = this.app.vault.getAbstractFileByPath(path);
     if (!file) return null;
     if (!(file instanceof TFile)) throw new VaultSailError('collision', '目标路径是目录。');
-    checkSize(file.stat.size); return this.app.vault.readBinary(file);
+    const stat = await this.stat(path);
+    if (!stat) throw new VaultSailError('changed', '读取期间文件已变化。');
+    checkSize(stat.size, this.fileLimit());
+    const data = await this.app.vault.readBinary(file); checkSize(data.byteLength, this.fileLimit()); return data;
   }
   async stage(id: string, data: ArrayBuffer): Promise<void> {
     if (!validId(id)) throw new VaultSailError('state', '暂存标识无效。');
-    checkSize(data.byteLength); const dir = this.internal + '/staging'; await mkdirs(this.app, dir);
+    checkSize(data.byteLength, this.fileLimit()); const dir = this.internal + '/staging'; await mkdirs(this.app, dir);
     const path = dir + '/' + id + '.bin';
     if (await this.app.vault.adapter.exists(path)) {
       if (hash(await this.app.vault.adapter.readBinary(path)) !== hash(data)) throw new VaultSailError('integrity', '暂存对象内容不同。'); return;
@@ -96,10 +99,10 @@ export class ObsidianLocalFiles implements LocalFiles {
     this.userPath(path); const target = conflictCopyPath(path, versionKey); const stat = await this.app.vault.adapter.stat(target);
     if (!stat) return null;
     if (stat.type !== 'file') throw new VaultSailError('collision', '冲突副本位置已被目录占用。');
-    checkSize(stat.size); return this.app.vault.adapter.readBinary(target);
+    checkSize(stat.size, this.fileLimit()); return this.app.vault.adapter.readBinary(target);
   }
   async writeConflictCopy(path: string, versionKey: string, data: ArrayBuffer): Promise<void> {
-    this.userPath(path); checkSize(data.byteLength); const target = conflictCopyPath(path, versionKey);
+    this.userPath(path); checkSize(data.byteLength, this.fileLimit()); const target = conflictCopyPath(path, versionKey);
     const old = await this.readConflictCopy(path, versionKey);
     if (old) { if (hash(old) !== hash(data)) throw new VaultSailError('integrity', '已有冲突副本被编辑，已保留它并停止覆盖。'); return; }
     await mkdirs(this.app, target.slice(0, target.lastIndexOf('/')));
@@ -110,11 +113,15 @@ export class ObsidianLocalFiles implements LocalFiles {
   async staged(id: string): Promise<ArrayBuffer | null> {
     if (!validId(id)) throw new VaultSailError('state', '暂存标识无效。');
     const path = this.internal + '/staging/' + id + '.bin';
-    if (!await this.app.vault.adapter.exists(path)) return null;
+    const stat = await this.app.vault.adapter.stat(path);
+    if (!stat) return null;
+    if (stat.type !== 'file') throw new VaultSailError('state', '暂存位置不是文件。');
+    checkSize(stat.size, this.fileLimit());
     return this.app.vault.adapter.readBinary(path);
   }
   async preserve(path: string, data: ArrayBuffer, id: string): Promise<string> {
     this.userPath(path); if (!validId(id)) throw new VaultSailError('state', '恢复点标识无效。');
+    checkSize(data.byteLength, this.fileLimit());
     const target = this.internal + '/recovery/' + id + '/' + path;
     await mkdirs(this.app, target.slice(0, target.lastIndexOf('/')));
     if (await this.app.vault.adapter.exists(target)) {
@@ -165,7 +172,7 @@ export class ObsidianLocalFiles implements LocalFiles {
     const relative = point.slice(prefix.length); const id = relative.split('/')[0];
     if (!validId(id)) throw new VaultSailError('path', '恢复点标识无效。');
     const path = relative.slice(id.length + 1); this.userPath(path);
-    const stat = await this.app.vault.adapter.stat(point); if (!stat || stat.type !== 'file') throw new VaultSailError('not-found', '恢复点不存在。'); checkSize(stat.size);
+    const stat = await this.app.vault.adapter.stat(point); if (!stat || stat.type !== 'file') throw new VaultSailError('not-found', '恢复点不存在。'); checkSize(stat.size, this.fileLimit());
     const data = await this.app.vault.adapter.readBinary(point); const old = await this.read(path);
     await this.apply(path, data, old ? hash(old) : null, uuid());
   }

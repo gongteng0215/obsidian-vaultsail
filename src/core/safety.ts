@@ -2,6 +2,9 @@ import { sha256 } from '@noble/hashes/sha256';
 import { bytesToHex } from '@noble/hashes/utils';
 
 export const MAX_FILE_SIZE = 20 * 1024 * 1024;
+// Logical records must be readable even on a device with a smaller body budget.
+// State/metadata callers keep the separate 20 MiB default above.
+export const MAX_ATTACHMENT_SIZE = 512 * 1024 * 1024;
 export class VaultSailError extends Error {
   code: string;
   retryable: boolean;
@@ -69,9 +72,11 @@ export function validId(id: unknown): id is string { return typeof id === 'strin
 export function checkSizeValue(size: number): void {
   if (!Number.isSafeInteger(size) || size < 0) throw new VaultSailError('size', '文件大小无效。');
 }
-export function checkSize(size: number): void {
+export function checkSize(size: number, limit = MAX_FILE_SIZE): void {
   checkSizeValue(size);
-  if (size > MAX_FILE_SIZE) throw new VaultSailError('size', '文件超过 20 MiB 上限。');
+  checkSizeValue(limit);
+  if (limit < 1 || limit > MAX_ATTACHMENT_SIZE) throw new VaultSailError('configuration', '文件大小上限无效。');
+  if (size > limit) throw new VaultSailError('size', `文件超过本机 ${limit / (1024 * 1024)} MiB 上限。`);
 }
 export const sleep = (ms: number, signal?: AbortSignal): Promise<void> => new Promise(resolve => {
   if (signal?.aborted) { resolve(); return; }

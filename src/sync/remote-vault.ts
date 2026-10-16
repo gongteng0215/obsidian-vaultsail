@@ -1,4 +1,4 @@
-import { checkSize, hash, included, jsonBytes, parseJson, record, relativePath, uuid, validId, VaultSailError } from '../core/safety.ts';
+import { checkSize, MAX_ATTACHMENT_SIZE, hash, included, jsonBytes, parseJson, record, relativePath, uuid, validId, VaultSailError } from '../core/safety.ts';
 import { listAll } from '../providers/provider-utils.ts';
 import { DEFAULT_TRANSFER_CONCURRENCY, MAX_TRANSFER_CONCURRENCY, mapConcurrent, validConcurrency } from '../core/concurrency.ts';
 import type { CloudStorageProvider } from '../providers/cloud-storage-provider';
@@ -17,7 +17,7 @@ export function validateRevision(value: unknown, vaultId: string): Revision {
     || typeof op.path !== 'string' || !Array.isArray(op.parents) || op.parents.some(parent => !validId(parent))
     || new Set(op.parents).size !== op.parents.length || !['update', 'delete'].includes(String(op.kind))
     || typeof op.size !== 'number' || typeof op.createdAt !== 'number' || !Number.isFinite(op.createdAt)) throw new VaultSailError('schema', '操作记录格式未知或损坏，停止写入。');
-  relativePath(op.path); checkSize(op.size);
+  relativePath(op.path); checkSize(op.size, MAX_ATTACHMENT_SIZE);
   if (op.previousPath !== undefined) {
     if (typeof op.previousPath !== 'string' || op.previousPath === op.path || op.kind !== 'update') throw new VaultSailError('schema', '重命名记录无效。');
     relativePath(op.previousPath); if (!included(op.previousPath)) throw new VaultSailError('path', '重命名源路径被排除。');

@@ -1,6 +1,6 @@
-import { Modal, Notice, Plugin, Setting, requireApiVersion } from 'obsidian';
+import { Modal, Notice, Plugin, Setting, Platform, requireApiVersion } from 'obsidian';
 import { VaultSailSettingTab } from './ui/settings-tab';
-import { DEFAULT_SETTINGS, migrateSettings, type VaultSailSettings } from './config';
+import { DEFAULT_SETTINGS, effectiveFileLimit, validFileMiB, migrateSettings, type VaultSailSettings } from './config';
 import { AuthManager, type DeviceSession } from './auth/auth-manager';
 import { ownsCredentialReference, pairingCredentialReferences } from './auth/credential-references';
 import { appRoot, bytes, hash, included, MAX_FILE_SIZE, safeMessage, uuid, VaultSailError } from './core/safety';
@@ -63,7 +63,7 @@ export default class VaultSailPlugin extends Plugin {
     await this.loadSettings();
     if (!this.alive) return;
     if (!requireApiVersion('1.11.4') || !this.app.secretStorage) { new Notice('VaultSail 需要 Obsidian 1.11.4 或更新版本。'); return; }
-    this.deviceId = deviceIdentity(this.app); this.local = new ObsidianLocalFiles(this.app, this.deviceId);
+    this.deviceId = deviceIdentity(this.app); this.local = new ObsidianLocalFiles(this.app, this.deviceId, () => this.fileLimit());
     this.auth = this.makeAuth();
     this.settingTab = new VaultSailSettingTab(this.app, this); this.addSettingTab(this.settingTab);
 
@@ -185,7 +185,7 @@ export default class VaultSailPlugin extends Plugin {
   blockedSummary(): string { const count = this.blockedFiles().length; return count ? `上次扫描有 ${count} 项超限或关联保护，未传输，原文件与基线保留。` : '上次扫描没有超限或关联保护项；尚未扫描时，请先预览或同步。'; }
   showBlockedFiles(): void {
     const files = this.blockedFiles(), modal = new Modal(this.app); modal.titleEl.setText('跳过文件 · 本机扫描结果');
-    modal.contentEl.createEl('p', { text: '当前单文件上限仍为 20 MiB。这里只显示上次扫描的超限及关联保护项，不会读取附件正文。缩小或移走超限附件后可重新检查；没有传输的文件不视为已同步。' });
+    modal.contentEl.createEl('p', { text: `当前本机单文件上限为 ${this.fileLimit() / (1024 * 1024)} MiB。这里只显示上次扫描的超限及关联保护项。调整上限或缩小附件后可重新检查；没有传输的文件不视为已同步。` });
     if (!files.length) modal.contentEl.createEl('p', { text: '暂无跳过项，请先预览或同步检查。' });
     for (const file of files.slice(0, 200)) new Setting(modal.contentEl).setName(file.path).setDesc(`${file.size ? formatBytes(file.size) + ' · ' : ''}${file.message}`);
     if (files.length > 200) modal.contentEl.createEl('p', { text: `共 ${files.length} 项，当前显示前 200 项。` });
@@ -271,12 +271,23 @@ export default class VaultSailPlugin extends Plugin {
     this.engine?.configureConcurrency(value); this.settings.transferConcurrency = value; await this.saveSettings();
     this.statusText = `传输并发已设为 ${value} 路，下次任务生效。`; this.refreshUI();
   }
+  fileLimit(): number { return effectiveFileLimit(this.settings, Platform.isMobile); }
+  async setFileMiB(value: number): Promise<void> {
+    if (this.busy) throw new VaultSailError('busy', '请等待当前任务完成，再修改大小上限。');
+    if (Platform.isMobile || !validFileMiB(value)) throw new VaultSailError('configuration', '电脑端请输入 20–512 之间的整数；移动端上限为 20 MiB。');
+    const previous = this.settings.maxFileMiB; this.busy = true;
+    try { this.settings.maxFileMiB = value; await this.saveSettings(); }
+    catch (error) { this.settings.maxFileMiB = previous; throw error; }
+    finally { this.busy = false; }
+    this.engine?.pause(); this.invalidateConnection(); this.engine = undefined;
+    this.statusText = `本机单文件上限已设为 ${value} MiB，请重新预览或同步。`; this.refreshUI();
+  }
   provider(): BaiduProvider {
     if (this.settings.providerId !== 'baidu') throw new VaultSailError('configuration', '请先选择百度网盘。');
     const root = appRoot(this.settings.appDirectory); const generation = this.generation;
     return new BaiduProvider(root, this.timedTransport, this.auth, () => this.alive && generation === this.generation && !this.pauseRequested, phase => {
       if (this.progress && this.busy && !['scanning-remote', 'checking-remote', 'scanning-local', 'preview-ready', 'completed', 'paused', 'failed'].includes(this.progress.phase)) this.publishProgress({ ...this.progress, phase, updatedAt: Date.now() });
-    }, { signal: this.connectionRequests.signal, onRetry: waited => this.performance.retry(waited) });
+    }, { signal: this.connectionRequests.signal, onRetry: waited => this.performance.retry(waited), maxFileSize: this.fileLimit() });
   }
   async connect(): Promise<void> {
     const issue = this.auth.configurationIssue(); if (issue) throw new VaultSailError('configuration', issue);
@@ -366,7 +377,7 @@ export default class VaultSailPlugin extends Plugin {
       const context = hash(bytes(b.appKey + '|' + b.root + '|' + accountHash + '|' + b.vaultId));
       this.engine = new SyncEngine(new RemoteVaultStore(provider, new ObsidianRevisionCache(this.app, this.deviceId, context), this.settings.transferConcurrency, stats => this.performance.scan(stats)), this.local,
         new ObsidianStateStore(this.app, this.deviceId, b.vaultId, context), b.vaultId, this.app.vault.configDir, event => this.publishProgress(event), this.settings.transferConcurrency,
-        event => this.recordHistoryFile(context, event));
+        event => this.recordHistoryFile(context, event), this.fileLimit());
       return this.engine;
     } catch (error) { this.failTransfer(error); throw error; }
   }
@@ -375,6 +386,7 @@ export default class VaultSailPlugin extends Plugin {
     new PlanModal(this.app, plan, async progress => { if (this.busy) throw new VaultSailError('busy', '当前有其他操作。'); this.busy = true;
       this.beginTransfer(); this.refreshUI();
       try {
+        if (this.engine !== engine) throw new VaultSailError('changed', '本机传输配置已变化，请重新预览。');
         if (!this.settings.deletionEnabled && plan.rows.some(row => row.action === 'delete-local' || row.action === 'delete-remote')) throw new VaultSailError('configuration', '删除传播已关闭，请重新预览。');
         const result = await withVaultTaskLock(this.app, () => this.recorded(mode === 'sync' ? 'manual' : mode, () => engine.execute(plan, progress, true)));
         const key = this.successKey(); if (key && this.progress) this.app.saveLocalStorage(key, { completedAt: Date.now(), mode: plan.mode,
@@ -382,7 +394,7 @@ export default class VaultSailPlugin extends Plugin {
       } catch (error) { this.failTransfer(error); throw error; } finally { this.performance.finish(); this.busy = false; this.refreshUI(); } },
       async (row, choice) => { if (this.busy) throw new VaultSailError('busy', '当前有其他操作。'); this.busy = true;
         this.beginTransfer(); this.refreshUI();
-        try { await withVaultTaskLock(this.app, () => this.recorded('resolve', () => engine.resolve(row.path, choice, row))); } catch (error) { this.failTransfer(error); throw error; }
+        try { if (this.engine !== engine) throw new VaultSailError('changed', '本机传输配置已变化，请重新预览。'); await withVaultTaskLock(this.app, () => this.recorded('resolve', () => engine.resolve(row.path, choice, row))); } catch (error) { this.failTransfer(error); throw error; }
         finally { this.performance.finish(); this.busy = false; this.refreshUI(); } }, () => this.pause(), listener => this.subscribeProgress(listener)).open();
   }
   async startSync(batch?: QueueBatch): Promise<void> {
@@ -536,7 +548,7 @@ export default class VaultSailPlugin extends Plugin {
       advance('integrity');
       if (hash(received) !== hash(probe.buffer)) throw new VaultSailError('integrity', '导入连接的文件校验未通过，原连接已保留。');
       const next: VaultSailSettings = { ...DEFAULT_SETTINGS, providerId: 'baidu', appKey: config.appKey, appDirectory: provider.root,
-        secretRef, sessionRef, transferConcurrency: this.settings.transferConcurrency, remotePollSeconds: this.settings.remotePollSeconds, ...(vault ? { remoteVaultId: vault.vaultId,
+        secretRef, sessionRef, transferConcurrency: this.settings.transferConcurrency, maxFileMiB: this.settings.maxFileMiB, remotePollSeconds: this.settings.remotePollSeconds, ...(vault ? { remoteVaultId: vault.vaultId,
         binding: { vaultId: vault.vaultId, displayName: vault.displayName, appKey: config.appKey, root: provider.root, accountHash } } : {}) };
       await withConfigurationLock(this.app, async () => {
         guard(); options.onCommit?.();
@@ -608,7 +620,7 @@ export default class VaultSailPlugin extends Plugin {
       requestLabels: REQUEST_LABELS,
       autoSyncEnabled: this.settings.autoSyncEnabled, remotePollSeconds: this.settings.remotePollSeconds, queueStatus: this.queueSummary(), blockedFileCount: this.blockedFiles().length,
       lastPairingStep: this.lastPairingStep ?? null,
-      realDeviceValidation: '用户在本设备完成；开发者未验证真实账号或 iPad', maxFileMiB: 20, transferConcurrency: this.settings.transferConcurrency }, null, 2);
+      realDeviceValidation: '用户在本设备完成；开发者未验证真实账号或 iPad', maxFileMiB: this.fileLimit() / (1024 * 1024), transferConcurrency: this.settings.transferConcurrency }, null, 2);
   }
   performanceText(): string { return formatPerformance(this.performance.snapshot()); }
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { bytes, conflictCopyPath, hash, assertNoCollisions, appRoot, included, MAX_FILE_SIZE, uuid, VaultSailError } from '../src/core/safety.ts';
+import { bytes, conflictCopyPath, hash, assertNoCollisions, appRoot, included, MAX_FILE_SIZE, MAX_ATTACHMENT_SIZE, uuid, VaultSailError } from '../src/core/safety.ts';
 import { RemoteVaultStore, buildHeads, validateRevision, type Revision } from '../src/sync/remote-vault.ts';
 import { SyncEngine, newState, type LocalFiles, type StateStore, type SyncState } from '../src/sync/engine.ts';
 import type { CloudStorageProvider, RemotePage } from '../src/providers/cloud-storage-provider.ts';
@@ -63,6 +63,50 @@ async function setup(concurrency = 3) {
   const ea = new SyncEngine(remote, a, sa, vault.vaultId, '.obsidian', () => {}, concurrency); const eb = new SyncEngine(remote, b, sb, vault.vaultId, '.obsidian', () => {}, concurrency);
   return { cloud, remote, vault, a, b, sa, sb, ea, eb };
 }
+
+test('25 MiB MP4 uploads through Baidu slices, publishes, downloads and recovers with the same hash', async () => {
+  const h = baiduHarness();
+  const provider = new BaiduProvider('/apps/中文应用', h.transport, { accessToken: async () => 'private-access' }, undefined, undefined, { maxFileSize: MAX_ATTACHMENT_SIZE });
+  const remote = new RemoteVaultStore(provider), vault = await remote.create('电脑附件');
+  const a = new MemoryLocal(), b = new MemoryLocal(), sa = new MemoryState(), sb = new MemoryState();
+  const file = new Uint8Array(25 * 1024 * 1024 + 17); for (let i = 0; i < file.length; i++) file[i] = i % 251;
+  a.files.set('视频/测试.mp4', file.buffer); a.files.set('note.md', bytes('small note'));
+  const ea = new SyncEngine(remote, a, sa, vault.vaultId, '.obsidian', undefined, 8, undefined, MAX_ATTACHMENT_SIZE);
+  const eb = new SyncEngine(remote, b, sb, vault.vaultId, '.obsidian', undefined, 8, undefined, MAX_ATTACHMENT_SIZE);
+  const result = await ea.sync(); assert.equal(result.blockedFiles, 0); assert.equal(result.uploadedFiles, 2);
+  assert.equal([...h.uploads.values()].find(upload => upload.size === file.byteLength)!.chunks.size, 7);
+  const revisions = await remote.revisions(vault.vaultId), op = revisions.find(op => op.path.endsWith('.mp4'))!;
+  assert.equal(op.size, file.byteLength); assert.equal(op.hash, hash(file.buffer));
+  b.failApply = true; await assert.rejects(eb.sync(), { code: 'network' });
+  assert.ok(sb.value.journals.length); await eb.recover(); assert.equal(sb.value.journals.length, 0);
+  await eb.sync(); assert.equal(hash(b.files.get('视频/测试.mp4')!), hash(file.buffer));
+  const count = revisions.length; await ea.sync(); assert.equal((await remote.revisions(vault.vaultId)).length, count);
+  // A smaller-budget client must not read the big body or interpret its absence as deletion.
+  const mobile = new MemoryLocal(), state = new MemoryState(); let largeReads = 0;
+  const read = provider.read.bind(provider); provider.read = async path => { if (path.endsWith('/' + op.hash)) largeReads++; return read(path); };
+  mobile.files.set('mobile.md', bytes('mobile edit'));
+  const restricted = new SyncEngine(remote, mobile, state, vault.vaultId);
+  const partial = await restricted.sync(true); assert.equal(partial.blockedFiles, 1); assert.equal(largeReads, 0);
+  assert.equal(restricted.blockedFiles()[0].path, '视频/测试.mp4'); assert.equal(state.value.bases['视频/测试.mp4'], undefined);
+  assert.ok(mobile.files.has('note.md')); assert.ok((await remote.revisions(vault.vaultId)).some(op => op.path === 'mobile.md'));
+});
+
+test('large attachments run alone even when 32 file workers are configured', async () => {
+  const { cloud, remote, vault, a, sa } = await setup(32);
+  const data = new Uint8Array(MAX_FILE_SIZE + 1); data.fill(41);
+  a.files.set('a-small.md', bytes('before')); a.files.set('b-large.mp4', data.buffer); a.files.set('c-small.md', bytes('after'));
+  let active = 0, bigActive = false; const overlaps: string[] = [];
+  const write = cloud.writeImmutable.bind(cloud);
+  cloud.writeImmutable = async (path, content) => {
+    const big = content.byteLength > MAX_FILE_SIZE;
+    if ((big && active) || bigActive) overlaps.push(path);
+    active++; if (big) bigActive = true;
+    try { await new Promise(resolve => setTimeout(resolve, 1)); await write(path, content); }
+    finally { active--; if (big) bigActive = false; }
+  };
+  const engine = new SyncEngine(remote, a, sa, vault.vaultId, '.obsidian', undefined, 32, undefined, MAX_ATTACHMENT_SIZE);
+  assert.equal((await engine.sync()).uploadedFiles, 3); assert.deepEqual(overlaps, []);
+});
 
 test('seven unchanged notes scan once, batch missing fingerprints and use persisted cache on later scans', async () => {
   const h = baiduHarness(), writer = new RemoteVaultStore(h.provider), vault = await writer.create('七篇笔记'), deviceId = uuid();
@@ -575,12 +619,12 @@ test('blocked preview changes and malformed metadata require replanning without 
   size = NaN; await assert.rejects(ea.preview('sync'), { code: 'size' });
 });
 
-test('oversized paths still participate in collision checks and remote size validation is unchanged', async () => {
+test('oversized paths participate in collision checks and records enforce an independent ceiling', async () => {
   const { a, ea, vault } = await setup(); a.files.set('Note.md', bytes('normal')); a.files.set('note.md', bytes('oversized placeholder'));
   const stat = a.stat.bind(a); a.stat = async path => path === 'note.md' ? { size: MAX_FILE_SIZE + 1 } : stat(path);
   await assert.rejects(ea.preview('sync'), { code: 'collision' });
   assert.throws(() => validateRevision({ schemaVersion: 1, vaultId: vault.vaultId, opId: uuid(), deviceId: uuid(), fileId: uuid(),
-    path: 'remote.pdf', parents: [], kind: 'update', hash: 'a'.repeat(64), size: MAX_FILE_SIZE + 1, createdAt: 1 }, vault.vaultId), { code: 'size' });
+    path: 'remote.pdf', parents: [], kind: 'update', hash: 'a'.repeat(64), size: MAX_ATTACHMENT_SIZE + 1, createdAt: 1 }, vault.vaultId), { code: 'size' });
 });
 
 test('file history reports parallel successes only after verified baseline commits, and separates skip/noop', async () => {

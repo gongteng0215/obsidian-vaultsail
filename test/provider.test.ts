@@ -3,11 +3,24 @@ import test from 'node:test';
 import { md5 } from '@noble/hashes/legacy';
 import { bytesToHex } from '@noble/hashes/utils';
 import { BaiduProvider, listAll } from '../src/providers/baidu-provider.ts';
-import { bytes, hash, MAX_FILE_SIZE, uuid, VaultSailError } from '../src/core/safety.ts';
+import { bytes, hash, MAX_FILE_SIZE, MAX_ATTACHMENT_SIZE, uuid, VaultSailError } from '../src/core/safety.ts';
 import { RemoteVaultStore, type Revision } from '../src/sync/remote-vault.ts';
 import { apiSuccess, request, type HttpRequest, type HttpResponse } from '../src/providers/http.ts';
 
 import { baiduHarness as harness } from './fixtures/baidu.ts';
+
+test('desktop attachment allowance does not raise operation or vault metadata limits', async () => {
+  const h = harness(), provider = new BaiduProvider('/apps/中文应用', h.transport, { accessToken: async () => 'private-access' }, undefined, undefined, { maxFileSize: MAX_ATTACHMENT_SIZE });
+  const base = 'vaultsail/vaults/' + uuid(), data = new ArrayBuffer(1024 * 1024 + 1);
+  for (const path of [base + '/vault.json', base + '/ops/' + uuid() + '/' + uuid() + '.json']) {
+    await assert.rejects(provider.writeImmutable(path, data), { code: 'size' });
+    await provider.mkdir(path.slice(0, path.lastIndexOf('/')));
+    h.files.set('/apps/中文应用/' + path, data);
+    h.ids.set('/apps/中文应用/' + path, '42');
+    await assert.rejects(provider.read(path), { code: 'size' });
+  }
+  assert.equal(h.counts().createCalls, 0);
+});
 test('a previously verified operation cannot be silently rewritten into a different valid operation', async () => {
   const h = harness(), remote = new RemoteVaultStore(h.provider), vault = await remote.create('不可变历史');
   const data = bytes('same content'); const op: Revision = { schemaVersion: 1, vaultId: vault.vaultId, opId: uuid(), deviceId: uuid(), fileId: uuid(), path: 'note.md', parents: [], kind: 'update', hash: hash(data), size: data.byteLength, createdAt: 1 };

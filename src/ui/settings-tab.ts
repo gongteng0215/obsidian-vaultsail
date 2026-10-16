@@ -1,4 +1,4 @@
-import { App, Modal, Notice, PluginSettingTab, Setting } from 'obsidian';
+import { App, Modal, Notice, Platform, PluginSettingTab, Setting } from 'obsidian';
 import type VaultSailPlugin from '../main';
 import { safeMessage } from '../core/safety';
 import { RemoteVaultStore } from '../sync/remote-vault';
@@ -196,12 +196,17 @@ export class VaultSailSettingTab extends PluginSettingTab {
       .addButton(button => button.setButtonText('保存检查间隔').setDisabled(p.busy).onClick(() => { void p.setAutomatic(p.settings.autoSyncEnabled, Number(interval)).catch(error => new Notice(safeMessage(error))); }));
     transferCard.createEl('p', { cls: 'vaultsail-queue-status', text: p.queueSummary() }).setAttribute('role', 'status');
     transferCard.createEl('p', { cls: 'vaultsail-blocked-summary', text: p.blockedSummary() }).setAttribute('role', 'status');
-    new Setting(transferCard).setName('超限与关联保护项').setDesc('超过 20 MiB 的本地文件不读正文，其他独立文件继续。存在未校验附件时，缺失路径的删除或改名可能暂缓。')
+    new Setting(transferCard).setName('超限与关联保护项').setDesc(`超过本机 ${p.fileLimit() / (1024 * 1024)} MiB 上限的文件跳过，其他独立文件继续。缺失路径的删除或改名可能暂缓。`)
       .addButton(button => button.setButtonText('查看跳过文件').onClick(() => p.showBlockedFiles()));
     new Setting(transferCard).setName('同步记录').setDesc('查看本设备当前云端库最近 30 次任务；逐文件记录实时更新，重启后仍可查看。文件路径只保存在本机内部目录。')
       .addButton(button => button.setButtonText('查看同步记录').onClick(() => p.showSyncHistory()));
     new Setting(transferCard).setName('待解决冲突').setDesc('查看各版本、逐块合并或保留为两篇；确认后其他设备自动接收解决版本。')
       .addButton(button => button.setButtonText('查看待解决冲突').setDisabled(p.busy).onClick(() => p.openConflicts()));
+    let sizeDraft = String(p.fileLimit() / (1024 * 1024));
+    new Setting(transferCard).setName('单文件大小上限（MiB）')
+      .setDesc(Platform.isMobile ? '移动端目前保留 20 MiB 上限；可识别并跳过电脑端的大附件记录。' : '电脑实验版默认 512，可设 20–512；超过 20 MiB 的附件逐个传输。其他设备请先更新至 0.2.3 或更新版本，旧版不能读取这些大附件记录。仍使用整文件内存缓冲，大附件会增加内存占用。')
+      .addText(text => { text.inputEl.type = 'number'; text.inputEl.min = '20'; text.inputEl.max = '512'; text.inputEl.step = '1'; text.inputEl.setAttribute('aria-label', '单文件大小上限'); text.setValue(sizeDraft).setDisabled(p.busy || Platform.isMobile).onChange(value => { sizeDraft = value; }); })
+      .addButton(button => button.setButtonText('保存大小上限').setDisabled(p.busy || Platform.isMobile).onClick(() => { void p.setFileMiB(Number(sizeDraft)).catch(error => new Notice(safeMessage(error))); }));
     let concurrencyDraft = String(p.settings.transferConcurrency);
     const concurrencySetting = new Setting(transferCard).setName('同时传输的文件数')
       .setDesc(`可自行输入 1–${MAX_TRANSFER_CONCURRENCY} 之间的整数，默认 ${DEFAULT_TRANSFER_CONCURRENCY}。大附件自动减少同时传输数量，修改不影响账号或云端库绑定。`);

@@ -444,7 +444,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   assert.ok((await plugin.engine.remote.revisions(plugin.settings.binding.vaultId)).some((op: any) => op.path === 'small-after-large.md'));
   assert.equal(JSON.parse(plugin.diagnostics()).blockedFileCount, 1); assert.equal(plugin.diagnostics().includes('private-large-attachment.pdf'), false);
   ([...plugin.tabs[0].containerEl.querySelectorAll('button')] as HTMLButtonElement[]).find(button => button.textContent === '查看跳过文件')!.click(); const skippedModal = module.Modal.instances.at(-1)!;
-  assert.match(skippedModal.contentEl.textContent!, /private-large-attachment.pdf/); assert.match(skippedModal.contentEl.textContent!, /超过本机 20 MiB/); skippedModal.close();
+  assert.match(skippedModal.contentEl.textContent!, /private-large-attachment.pdf/); assert.match(skippedModal.contentEl.textContent!, /超过本机 512 MiB/); skippedModal.close();
   ([...plugin.tabs[0].containerEl.querySelectorAll('button')] as HTMLButtonElement[]).find(button => button.textContent === '查看同步记录')!.click();
   const historyModal = module.Modal.instances.at(-1)!;
   await new Promise(resolve => setTimeout(resolve, 20));
@@ -457,7 +457,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   const search = historyModal.contentEl.querySelector('input[type=search]') as HTMLInputElement;
   search.value = 'private-large'; search.dispatchEvent(new window.Event('input'));
   assert.equal(historyModal.contentEl.querySelectorAll('.vaultsail-history-row').length, 1);
-  assert.match(historyModal.contentEl.textContent!, /超过 20 MiB/);
+  assert.match(historyModal.contentEl.textContent!, /超过本机大小上限/);
   await new Promise(resolve => setTimeout(resolve, 550)); assert.equal(historyModal.contentEl.querySelector('input[type=search]'), search); assert.equal(search.value, 'private-large');
   historyModal.close();
   const persistedHistory = [...files.keys()].filter(path => path.includes('/history/') && path.endsWith('.json'));
@@ -484,6 +484,22 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
     assert.equal(liveHistory.contentEl.querySelector('input[type=search]'), liveSearch);
     assert.equal(liveHistory.contentEl.querySelector('.vaultsail-history-row')!.getAttribute('data-state'), 'succeeded');
   } finally { releaseHistoryPublish(); await syncing; liveHistory.close(); plugin.engine.remote.publish = originalHistoryPublish; }
+  // Exercise the actual plugin entry, Obsidian binary adapter and state store at
+  // a real size above the former cap, rather than a fake stat-only placeholder.
+  const video = new Uint8Array(21 * 1024 * 1024 + 37); video.fill(79);
+  files.set('actual-video.mp4', video.buffer);
+  await plugin.run('同步视频…', () => plugin.startSync());
+  assert.equal(plugin.lastSuccess().blockedFiles, 0);
+  const videoOp = (await plugin.engine.remote.revisions(plugin.settings.binding.vaultId)).find((op: any) => op.path === 'actual-video.mp4');
+  assert.equal(videoOp.size, video.byteLength); assert.equal(videoOp.hash, hash(video.buffer));
+  const recoveryPoint = await plugin.local.preserve('actual-video.mp4', video.buffer, crypto.randomUUID());
+  files.set('actual-video.mp4', new TextEncoder().encode('temporary edit').buffer);
+  await plugin.local.restore(recoveryPoint); assert.equal(hash(files.get('actual-video.mp4')!), hash(video.buffer));
+  const bindingBeforeLimit = structuredClone(plugin.settings.binding), authBeforeLimit = plugin.auth.status();
+  await plugin.setFileMiB(20); assert.deepEqual(plugin.settings.binding, bindingBeforeLimit); assert.equal(plugin.auth.status(), authBeforeLimit);
+  await assert.rejects(plugin.local.read('actual-video.mp4'), { code: 'size' });
+  await plugin.setFileMiB(50); assert.equal((await plugin.local.read('actual-video.mp4')).byteLength, video.byteLength);
+  assert.equal(JSON.parse(plugin.diagnostics()).maxFileMiB, 50);
   plugin.onunload();
   const historyRestart = new module.Plugin(app); historyRestart.saved = structuredClone(plugin.saved); await historyRestart.onload();
   historyRestart.showSyncHistory(); const reopened = module.Modal.instances.at(-1)!;
