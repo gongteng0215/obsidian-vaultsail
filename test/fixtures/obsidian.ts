@@ -46,15 +46,21 @@ class Component {
 }
 export class SecretComponent extends Component { constructor(_app: unknown, parent: HTMLElement) { super(parent); this.inputEl.setAttribute('data-secret-reference', 'true'); } }
 export class Setting {
-  private el: HTMLElement;
-  constructor(parent: HTMLElement) { this.el = element(parent, 'div'); this.el.className = 'setting-item'; }
-  setName(value: string): this { element(this.el, 'label').textContent = value; return this; }
+  private el: HTMLElement; private name: HTMLElement; private description: HTMLElement; private control: HTMLElement;
+  constructor(parent: HTMLElement) {
+    this.el = element(parent, 'div'); this.el.className = 'setting-item';
+    const info = element(this.el, 'div'); info.className = 'setting-item-info';
+    this.name = element(info, 'div'); this.name.className = 'setting-item-name';
+    this.description = element(info, 'div'); this.description.className = 'setting-item-description';
+    this.control = element(this.el, 'div'); this.control.className = 'setting-item-control';
+  }
+  setName(value: string): this { this.name.textContent = value; return this; }
   setHeading(): this { this.el.classList.add('setting-item-heading'); return this; }
   setClass(value: string): this { this.el.classList.add(value); return this; }
-  setDesc(value: string): this { element(this.el, 'p').textContent = value; return this; }
-  addText(callback: (input: Component) => unknown): this { callback(new Component(this.el, 'input', 'input')); return this; }
-  addDropdown(callback: (input: Component) => unknown): this { callback(new Component(this.el, 'select')); return this; }
-  addButton(callback: (input: Component) => unknown): this { callback(new Component(this.el, 'button')); return this; }
-  addToggle(callback: (input: Component) => unknown): this { const input = new Component(this.el); input.inputEl.type = 'checkbox'; callback(input); return this; }
-  addComponent(callback: (el: HTMLElement) => unknown): this { callback(this.el); return this; }
+  setDesc(value: string): this { this.description.textContent = value; return this; }
+  addText(callback: (input: Component) => unknown): this { callback(new Component(this.control, 'input', 'input')); return this; }
+  addDropdown(callback: (input: Component) => unknown): this { callback(new Component(this.control, 'select')); return this; }
+  addButton(callback: (input: Component) => unknown): this { callback(new Component(this.control, 'button')); return this; }
+  addToggle(callback: (input: Component) => unknown): this { const input = new Component(this.control); input.inputEl.type = 'checkbox'; callback(input); return this; }
+  addComponent(callback: (el: HTMLElement) => unknown): this { callback(this.control); return this; }
 }

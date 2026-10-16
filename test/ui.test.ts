@@ -157,7 +157,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   const enter = (label: string, text: string) => { const input = document.querySelector('input[aria-label="' + label + '"]') as HTMLInputElement; input.value = text; input.dispatchEvent(new window.Event('input')); };
   const until = async (condition: () => boolean) => { for (let i = 0; i < 300 && !condition(); i++) await new Promise(resolve => setTimeout(resolve, 10)); assert.ok(condition(), 'async operation must complete'); };
   const toggleSetting = (label: string, checked?: boolean) => {
-    const row = [...document.querySelectorAll('.setting-item')].filter(row => row.querySelector('label')?.textContent === label).at(-1)!;
+    const row = [...document.querySelectorAll('.setting-item')].filter(row => row.querySelector('.setting-item-name')?.textContent === label).at(-1)!;
     const input = row.querySelector('input[type=checkbox]') as HTMLInputElement;
     if (checked !== undefined) { input.checked = checked; input.dispatchEvent(new window.Event('change')); }
     return input;

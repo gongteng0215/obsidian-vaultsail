@@ -114,7 +114,7 @@ export class VaultSailSettingTab extends PluginSettingTab {
     const accessCard = card(panels.get('connect')!, 'CHECKPOINT', '连接之后，验证通路', '先检查访问，再验证校验文件能否完整往返。');
     const configCard = card(panels.get('connect')!, 'PAIRING', '在其他 Vault 使用账号', '默认只迁移应用配置和百度授权，不携带云端库绑定。每个 Vault 单独创建或选择云端库；同步同一库时再明确选择复用。');
     const vaultCard = card(panels.get('vault')!, 'DESTINATION', '为这份知识，选择一个泊位', '云端库 ID 用来配对设备，本地笔记库可以有不同名称。');
-    const transferCard = card(panels.get('transfer')!, 'WORKSPACE', '先看清变化，再开始传输', `20 MiB / 文件 · 最多 ${p.settings.transferConcurrency} 个文件同时传输 · 并发改动自动保留双方副本。`);
+    const transferCard = card(panels.get('transfer')!, 'WORKSPACE', '先看清变化，再开始传输', `${p.fileLimit() / (1024 * 1024)} MiB / 文件 · 最多 ${p.settings.transferConcurrency} 个文件同时传输 · 并发改动自动保留双方副本。`);
     const recoveryCard = card(panels.get('transfer')!, 'RECOVERY', '每一次修改，都有回程', '未完成的任务可以恢复，旧内容以恢复副本保留。');
     const advanced = panels.get('transfer')!.createEl('details', { cls: 'vaultsail-advanced' }); advanced.createEl('summary', { text: '实验功能与诊断' });
     const advancedCard = advanced.createDiv({ cls: 'vaultsail-card' });
