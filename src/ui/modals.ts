@@ -3,6 +3,7 @@ import { safeMessage, VaultSailError } from '../core/safety';
 import type { SyncPlan, PlanRow } from '../sync/engine';
 import type { RemoteVault } from '../sync/remote-vault';
 import { formatProgress, type SyncProgress } from '../sync/progress';
+import { renderUploads } from './transfer-progress';
 
 export class CloudVaultSetupModal extends Modal {
   constructor(app: App, private localName: string, private actions: {
@@ -96,8 +97,9 @@ export class PlanModal extends Modal {
     const status = this.contentEl.createEl('p', { cls: 'vaultsail-progress-text' }); status.setAttribute('role', 'status');
     const meter = this.contentEl.createEl('progress', { cls: 'vaultsail-progress-meter' }); meter.max = Math.max(1, this.plan.rows.length); meter.value = 0;
     meter.setAttribute('aria-label', '文件处理进度');
+    const uploads = this.contentEl.createDiv({ cls: 'vaultsail-upload-progress' });
     let executing = false;
-    if (this.subscribe) this.unsubscribe = this.subscribe(progress => { if (executing) { status.setText(formatProgress(progress)); meter.max = Math.max(1, progress.totalFiles); meter.value = progress.doneFiles; } });
+    if (this.subscribe) this.unsubscribe = this.subscribe(progress => { if (executing) { status.setText(formatProgress(progress)); meter.max = Math.max(1, progress.totalFiles); meter.value = progress.doneFiles; renderUploads(uploads, progress); } });
     const list = this.contentEl.createDiv({ cls: 'vaultsail-plan' });
     for (const row of changed) {
       const item = list.createDiv({ cls: 'vaultsail-plan-row' });

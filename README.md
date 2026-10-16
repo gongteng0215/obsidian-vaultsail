@@ -10,6 +10,8 @@ Sync Obsidian notes and attachments through your own Baidu Netdisk account, with
 
 **0.2.3 local preview:** This experimental desktop build allows **512 MiB** (configurable 20–512); files above 20 MiB run alone and use the same verified upload/download/recovery path. Mobile retains a 20 MiB body limit and skips larger heads while independent notes continue. Update every device to 0.2.3 or later before publishing larger attachments: older clients reject these records. The 339 MiB simulated provider benchmark used about 1.73 GiB peak RSS; the real application may use more. This still buffers whole files in memory; streaming and resumable slices remain future work. See [preview notes](docs/releases/0.2.3.md). Community remains on 0.2.0.
 
+**0.2.4 local preview:** Live per-file upload bars show server-acknowledged payload bytes, percent, completed/current slices, preparation, retry attempts, commit and readback stages. Updates arrive after each confirmed slice (up to 4 MiB); a native request has no intermediate socket-byte counter. Upload acknowledgement stays separate from verified task completion. Settings and transfer preview both display this progress. See [preview notes](docs/releases/0.2.4.md).
+
 ## Features
 
 - Sync Markdown, images, PDFs, and other ordinary files manually or automatically.

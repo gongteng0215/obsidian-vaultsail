@@ -2,7 +2,7 @@ import { md5 } from '@noble/hashes/legacy';
 import { bytesToHex } from '@noble/hashes/utils';
 import { appRoot, checkSize, MAX_FILE_SIZE, hash, record, relativePath, sleep, uuid, VaultSailError } from '../core/safety.ts';
 import { apiSuccess, request, urlWith, type HttpTransport } from './http.ts';
-import type { CloudStorageProvider, RemoteObject, RemotePage } from './cloud-storage-provider';
+import type { CloudStorageProvider, ObjectTransferProgress, TransferObserver, RemoteObject, RemotePage } from './cloud-storage-provider';
 import { listAll } from './provider-utils.ts';
 export { listAll } from './provider-utils.ts';
 
@@ -19,7 +19,7 @@ export class BaiduProvider implements CloudStorageProvider {
   private onActivity: (phase: 'verifying' | 'downloading') => void;
   private requestPolicy: BaiduRequestPolicy;
   private pendingDirectories = new Map<string, Promise<void>>();
-  private pendingWrites = new Map<string, { hash: string; operation: Promise<void> }>();
+  private pendingWrites = new Map<string, { hash: string; operation: Promise<void>; observers: Set<TransferObserver>; latest: ObjectTransferProgress }>();
   private pendingLookups = new Map<string, Promise<RemoteObject[]>>();
   private downloadLinks = new Map<string, { id: string; size: number; etag?: string; url: string; expiresAt: number }>();
   constructor(root: string, transport: HttpTransport, auth: TokenSource, active = () => true,
@@ -239,53 +239,78 @@ export class BaiduProvider implements CloudStorageProvider {
       return response.bytes;
     });
   }
-  async writeImmutable(path: string, data: ArrayBuffer): Promise<void> {
+  private observe(observer: TransferObserver | undefined, progress: ObjectTransferProgress): void {
+    try { observer?.({ ...progress }); } catch { /* A detached view cannot interrupt an immutable write. */ }
+  }
+  async writeImmutable(path: string, data: ArrayBuffer, onProgress?: TransferObserver): Promise<void> {
     relativePath(path); checkSize(data.byteLength, this.bodyLimit(path)); this.guard(); const expected = hash(data);
     const pending = this.pendingWrites.get(path);
     if (pending) {
       if (pending.hash !== expected) throw new VaultSailError('integrity', '同一不可变对象出现不同内容，已停止写入。');
-      return pending.operation;
+      if (onProgress) { pending.observers.add(onProgress); this.observe(onProgress, pending.latest); }
+      try { await pending.operation; } finally { if (onProgress) pending.observers.delete(onProgress); }
+      return;
     }
-    const operation = this.writeObject(path, data, expected); this.pendingWrites.set(path, { hash: expected, operation });
+    const latest: ObjectTransferProgress = { stage: 'preparing', uploadedBytes: 0, totalBytes: data.byteLength, completedParts: 0, totalParts: Math.max(1, Math.ceil(data.byteLength / CHUNK)), preparedParts: 0, attempt: 1 };
+    const entry = { hash: expected, operation: Promise.resolve(), observers: new Set(onProgress ? [onProgress] : []), latest };
+    const notify: TransferObserver = progress => { entry.latest = { ...progress }; for (const observer of entry.observers) this.observe(observer, progress); };
+    const operation = this.writeObject(path, data, expected, notify); entry.operation = operation; this.pendingWrites.set(path, entry); notify(latest);
     try { await operation; } finally { if (this.pendingWrites.get(path)?.operation === operation) this.pendingWrites.delete(path); }
   }
-  private async writeObject(path: string, data: ArrayBuffer, expected: string): Promise<void> {
+  private async writeObject(path: string, data: ArrayBuffer, expected: string, onProgress: TransferObserver): Promise<void> {
+    let progress: ObjectTransferProgress = { stage: 'preparing', uploadedBytes: 0, totalBytes: data.byteLength, completedParts: 0, totalParts: Math.max(1, Math.ceil(data.byteLength / CHUNK)), preparedParts: 0, attempt: 1 };
+    const report = (update: Partial<ObjectTransferProgress>) => { progress = { ...progress, ...update }; onProgress(progress); };
     const verify = async (fresh = false): Promise<boolean> => {
       // Reuse a prior full SHA-256 verification only after fresh server metadata
       // confirms the same object ID, digest, size and modification fingerprint.
       const file = await this.find(path, fresh || this.verified.has(path));
       if (!file) return false;
-      if (this.verifiedContentHash(file) === expected) return true;
+      if (this.verifiedContentHash(file) === expected) { report({ stage: 'verified', uploadedBytes: data.byteLength, completedParts: progress.totalParts, currentPart: undefined }); return true; }
+      report({ stage: 'verifying', currentPart: undefined });
       if (hash(await this.read(path, 'verifying')) !== expected) throw new VaultSailError('integrity', '不可变对象已存在但内容不同，禁止覆盖。');
       const object = this.objects.get(path); const fingerprint = object && this.fingerprint(object);
       if (fingerprint) this.verified.set(path, { fingerprint, hash: expected });
+      report({ stage: 'verified', uploadedBytes: data.byteLength, completedParts: progress.totalParts, currentPart: undefined });
       return true;
     };
     if (await verify()) return;
     if (path.includes('/')) await this.mkdir(path.slice(0, path.lastIndexOf('/')));
     let firstAttempt = true;
+    let attempt = 0;
     await this.retry(async () => {
       if (!firstAttempt && await verify(true)) return;
       firstAttempt = false;
+      report({ stage: 'preparing', uploadedBytes: 0, completedParts: 0, preparedParts: 0, currentPart: undefined, attempt: ++attempt });
       try {
         // Keep only block digests. Views borrow the original bounded source;
         // copying every slice here would retain a second entire file per job.
         const source = new Uint8Array(data), blocks: string[] = [];
-        for (let offset = 0; offset < data.byteLength; offset += CHUNK) blocks.push(bytesToHex(md5(source.subarray(offset, offset + CHUNK))));
+        for (let offset = 0; offset < data.byteLength; offset += CHUNK) {
+          this.guard(); blocks.push(bytesToHex(md5(source.subarray(offset, offset + CHUNK)))); report({ preparedParts: blocks.length });
+          if (data.byteLength > CHUNK) await sleep(0, this.requestPolicy.signal);
+        }
         if (!blocks.length) blocks.push(bytesToHex(md5(new Uint8Array())));
         const base = { path: this.absolute(path), size: String(data.byteLength), isdir: '0', rtype: '0', block_list: JSON.stringify(blocks) };
         const pre = await this.api(XPAN + 'file', { method: 'precreate' }, { ...base, autoinit: '1' });
         if (pre.return_type === 2) { if (!await verify()) throw new VaultSailError('visibility', '秒传结果尚不可见，请稍后重试。', true); return; }
         if (typeof pre.uploadid !== 'string' || !pre.uploadid || !Array.isArray(pre.block_list) || new Set(pre.block_list).size !== pre.block_list.length) throw new VaultSailError('response', '预上传响应缺少有效分片信息。');
+        if (pre.block_list.some(index => !Number.isInteger(index) || index < 0 || index >= blocks.length)) throw new VaultSailError('response', '接口返回无效分片序号。');
+        const requested = new Set<number>(pre.block_list as number[]), acknowledged = new Set<number>(); let acknowledgedBytes = 0;
+        for (let index = 0; index < blocks.length; index++) if (!requested.has(index)) { acknowledged.add(index); acknowledgedBytes += Math.max(0, Math.min(CHUNK, data.byteLength - index * CHUNK)); }
+        report({ stage: 'uploading', uploadedBytes: acknowledgedBytes, completedParts: acknowledged.size });
         for (const index of pre.block_list) {
           if (!Number.isInteger(index) || index < 0 || index >= blocks.length) throw new VaultSailError('response', '接口返回无效分片序号。');
           const boundary = 'vaultsail-' + uuid();
           const head = new TextEncoder().encode(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="chunk"\r\nContent-Type: application/octet-stream\r\n\r\n`);
           const tail = new TextEncoder().encode(`\r\n--${boundary}--\r\n`); const chunk = source.subarray(index * CHUNK, (index + 1) * CHUNK);
           const body = new Uint8Array(head.length + chunk.length + tail.length); body.set(head); body.set(chunk, head.length); body.set(tail, head.length + chunk.length);
+          report({ stage: 'uploading', currentPart: index + 1 });
           const result = await this.api('https://d.pcs.baidu.com/rest/2.0/pcs/superfile2', { method: 'upload', type: 'tmpfile', path: this.absolute(path), uploadid: pre.uploadid, partseq: String(index) }, undefined, body.buffer, 'multipart/form-data; boundary=' + boundary);
           if (String(result.md5).toLowerCase() !== blocks[index]) throw new VaultSailError('integrity', '上传分片 Hash 不一致。');
+          acknowledged.add(index); acknowledgedBytes += chunk.byteLength;
+          report({ uploadedBytes: acknowledgedBytes, completedParts: acknowledged.size, currentPart: undefined });
         }
+        report({ stage: 'committing', currentPart: undefined });
         const result = await this.api(XPAN + 'file', { method: 'create' }, { ...base, uploadid: pre.uploadid });
         if (result.path !== this.absolute(path) || result.size !== data.byteLength) throw new VaultSailError('response', '创建文件结果与请求不一致。');
         const id = typeof result.fs_id === 'string' && /^\d+$/.test(result.fs_id) ? result.fs_id

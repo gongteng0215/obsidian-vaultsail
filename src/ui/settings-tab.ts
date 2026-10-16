@@ -6,6 +6,7 @@ import { ConfirmModal } from './modals';
 import { DEFAULT_APP_DIRECTORY } from '../config';
 import { formatBytes, formatProgress, progressRunning } from '../sync/progress';
 import { copyText } from './config-modals';
+import { renderUploads } from './transfer-progress';
 import { DEFAULT_TRANSFER_CONCURRENCY, MAX_TRANSFER_CONCURRENCY } from '../core/concurrency';
 
 const AUTH_LABELS = { unconfigured: '应用未配置', disconnected: '未授权', pending: '等待授权', connected: '已授权', reauthorize: '需要重新授权' };
@@ -30,6 +31,8 @@ export class VaultSailSettingTab extends PluginSettingTab {
     const meter = this.containerEl.querySelector<HTMLProgressElement>('.vaultsail-progress-meter');
     const detail = progress ? formatProgress(progress) : '点击开始同步，或先预览文件变化。';
     if (text && text.textContent !== detail) text.setText(detail);
+    const uploads = this.containerEl.querySelector<HTMLElement>('.vaultsail-upload-progress');
+    if (uploads) renderUploads(uploads, progress);
     const queue = this.containerEl.querySelector<HTMLElement>('.vaultsail-queue-status');
     if (queue) queue.setText(p.queueSummary());
     const blocked = this.containerEl.querySelector<HTMLElement>('.vaultsail-blocked-summary');
@@ -73,6 +76,7 @@ export class VaultSailSettingTab extends PluginSettingTab {
     const progressCard = el.createDiv({ cls: 'vaultsail-progress-card' });
     progressCard.createEl('span', { cls: 'vaultsail-progress-state' });
     progressCard.createEl('p', { cls: 'vaultsail-progress-text' }); progressCard.createEl('progress', { cls: 'vaultsail-progress-meter' }).setAttribute('aria-label', '文件处理进度');
+    progressCard.createDiv({ cls: 'vaultsail-upload-progress' });
     progressCard.createEl('p', { cls: 'vaultsail-performance-text' }).setAttribute('aria-label', '同步耗时统计');
     const progressActions = progressCard.createDiv({ cls: 'vaultsail-progress-actions' });
     new Setting(progressActions)

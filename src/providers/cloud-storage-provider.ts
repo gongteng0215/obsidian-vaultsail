@@ -21,6 +21,13 @@ export interface CloudProviderCapabilities {
   canDelete: boolean;
   supportsConditionalWrites: boolean;
 }
+/** Payload confirmed by the server, never estimated socket bytes or retries. */
+export interface ObjectTransferProgress {
+  stage: 'preparing' | 'uploading' | 'committing' | 'verifying' | 'verified';
+  uploadedBytes: number; totalBytes: number; completedParts: number; totalParts: number;
+  currentPart?: number; preparedParts?: number; attempt: number;
+}
+export type TransferObserver = (progress: ObjectTransferProgress) => void;
 export interface CloudStorageProvider {
   readonly id: string;
   readonly displayName: string;
@@ -29,7 +36,7 @@ export interface CloudStorageProvider {
   readonly root: string;
   list(directory: string, cursor?: string): Promise<RemotePage>;
   read(path: string): Promise<ArrayBuffer>;
-  writeImmutable(path: string, data: ArrayBuffer): Promise<void>;
+  writeImmutable(path: string, data: ArrayBuffer, onProgress?: TransferObserver): Promise<void>;
   mkdir(directory: string): Promise<void>;
   exists(path: string): Promise<boolean>;
   /** Fresh metadata for listed files whose listing omitted a content fingerprint. */

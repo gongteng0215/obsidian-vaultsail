@@ -1,19 +1,31 @@
-export type ProgressPhase = 'connecting' | 'scanning-remote' | 'checking-remote' | 'scanning-local' | 'checking' | 'uploading' | 'verifying' | 'publishing' | 'downloading' | 'applying' | 'preview-ready' | 'completed' | 'paused' | 'failed';
+import type { ObjectTransferProgress } from '../providers/cloud-storage-provider';
+export type FileUploadProgress = Omit<ObjectTransferProgress, 'stage'> & { path: string; stage: ObjectTransferProgress['stage'] | 'publishing' };
+export type ProgressPhase = 'connecting' | 'scanning-remote' | 'checking-remote' | 'scanning-local' | 'checking' | 'preparing-upload' | 'uploading' | 'verifying' | 'publishing' | 'downloading' | 'applying' | 'preview-ready' | 'completed' | 'paused' | 'failed';
 export interface SyncProgress {
   phase: ProgressPhase; path?: string; doneFiles: number; totalFiles: number; doneBytes: number; totalBytes: number; startedAt: number; updatedAt: number;
   message?: string;
   activeFiles?: number; concurrency?: number;
   blockedFiles?: number;
+  uploads?: FileUploadProgress[];
 }
 export const PROGRESS_LABELS: Record<ProgressPhase, string> = {
   connecting: '检查百度连接与云端库',
   'checking-remote': '复查云端版本',
   'scanning-remote': '读取云端版本', 'scanning-local': '扫描本地文件', checking: '重新核验变更', uploading: '上传笔记内容', verifying: '回读并校验内容',
   publishing: '发布版本记录', downloading: '下载云端内容', applying: '写入本地文件', 'preview-ready': '预览已就绪，尚未传输', completed: '处理完成', paused: '已暂停，任务可恢复', failed: '操作未完成',
+  'preparing-upload': '准备附件与本地恢复副本',
 };
 export function progressRunning(progress: SyncProgress): boolean { return !['preview-ready', 'completed', 'paused', 'failed'].includes(progress.phase); }
 export function formatBytes(value: number): string {
   return value < 1024 ? `${value} B` : value < 1024 * 1024 ? `${(value / 1024).toFixed(1)} KiB` : `${(value / (1024 * 1024)).toFixed(2)} MiB`;
+}
+export function formatUpload(upload: FileUploadProgress): string {
+  const labels = { preparing: '准备附件与分片', uploading: '上传分片', committing: '提交云端文件', verifying: '回读并校验（等待完整响应）', verified: '内容校验通过，等待发布记录', publishing: '发布版本记录' };
+  const percent = upload.totalBytes ? Math.floor(Math.min(1, upload.uploadedBytes / upload.totalBytes) * 100) : upload.completedParts === upload.totalParts && upload.totalParts > 0 ? 100 : 0;
+  const parts = upload.totalParts ? ` · 分片 ${upload.completedParts}/${upload.totalParts}` : '';
+  const current = upload.currentPart ? ` · 正在传第 ${upload.currentPart} 片` : '';
+  const preparing = upload.stage === 'preparing' && upload.preparedParts !== undefined ? ` · 已准备 ${upload.preparedParts}/${upload.totalParts} 片` : '';
+  return `${labels[upload.stage]}${upload.attempt > 1 ? ` · 第 ${upload.attempt} 次尝试` : ''}\n已确认上传 ${formatBytes(upload.uploadedBytes)} / ${formatBytes(upload.totalBytes)} · ${percent}%${parts}${current}${preparing}`;
 }
 export function formatProgress(progress: SyncProgress, now = Date.now()): string {
   const ended = !progressRunning(progress);

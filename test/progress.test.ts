@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { formatProgress, progressRunning, type SyncProgress } from '../src/sync/progress.ts';
+import { formatProgress, formatUpload, progressRunning, type SyncProgress } from '../src/sync/progress.ts';
+
+test('server-acknowledged slice progress is distinct from completed verified file bytes', () => {
+  const upload = { path: '视频.mp4', stage: 'uploading' as const, uploadedBytes: 4 * 1024 * 1024, totalBytes: 25 * 1024 * 1024, completedParts: 1, totalParts: 7, currentPart: 2, attempt: 1 };
+  assert.match(formatUpload(upload), /4.00 MiB \/ 25.00 MiB · 16%/);
+  assert.match(formatUpload(upload), /分片 1\/7/); assert.match(formatUpload(upload), /正在传第 2 片/);
+  assert.match(formatUpload({ ...upload, stage: 'verifying', uploadedBytes: upload.totalBytes, completedParts: 7, currentPart: undefined }), /回读并校验（等待完整响应）/);
+  assert.match(formatUpload({ ...upload, attempt: 2 }), /第 2 次尝试/);
+  assert.equal(formatUpload({ ...upload, stage: 'preparing', preparedParts: 2 }).includes('已准备 2/7'), true);
+});
 
 const sample: SyncProgress = { phase: 'uploading', path: 'note.md', doneFiles: 1, totalFiles: 7, doneBytes: 1024, totalBytes: 8192, startedAt: 1000, updatedAt: 2000 };
 test('live progress advances elapsed and waiting time without inventing verified files or bytes', () => {

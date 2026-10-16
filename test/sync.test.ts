@@ -64,6 +64,31 @@ async function setup(concurrency = 3) {
   return { cloud, remote, vault, a, b, sa, sb, ea, eb };
 }
 
+test('parallel engine progress attributes acknowledged bytes to each unfinished file, without advancing baselines', async () => {
+  const h = baiduHarness(), data = new Uint8Array(9 * 1024 * 1024); data.fill(31);
+  let entered!: () => void, release!: () => void, enteredFiles = 0;
+  const ready = new Promise<void>(resolve => { entered = resolve; }), gate = new Promise<void>(resolve => { release = resolve; });
+  const provider = new BaiduProvider('/apps/中文应用', async input => {
+    const query = new URL(input.url).searchParams;
+    if (query.get('method') === 'upload' && query.get('partseq') === '1') { if (++enteredFiles === 2) entered(); await gate; }
+    return h.transport(input);
+  }, { accessToken: async () => 'private-access' });
+  const remote = new RemoteVaultStore(provider), vault = await remote.create('实时进度');
+  const local = new MemoryLocal(), state = new MemoryState(), samples: SyncProgress[] = [];
+  local.files.set('video.mp4', data.buffer);
+  const other = new Uint8Array(5 * 1024 * 1024); other.fill(79); local.files.set('other.mp4', other.buffer);
+  const engine = new SyncEngine(remote, local, state, vault.vaultId, '.obsidian', progress => samples.push(progress));
+  const syncing = engine.sync(); await ready;
+  try {
+    const live = samples.at(-1)!; assert.equal(live.doneBytes, 0); assert.equal(live.doneFiles, 0);
+    assert.equal(live.uploads!.length, 2); assert.deepEqual(live.uploads!.map(upload => upload.path).sort(), ['other.mp4', 'video.mp4']);
+    for (const upload of live.uploads!) { assert.equal(upload.uploadedBytes, 4 * 1024 * 1024); assert.equal(upload.completedParts, 1); assert.equal(upload.currentPart, 2); }
+    assert.equal(state.value.bases['video.mp4'], undefined); assert.equal(h.counts().createCalls, 1, 'only the vault metadata is published so far');
+  } finally { release(); await syncing; }
+  assert.equal(samples.at(-1)!.doneBytes, data.byteLength + other.byteLength); assert.equal(samples.at(-1)!.doneFiles, 2);
+  assert.deepEqual(samples.at(-1)!.uploads, []); assert.ok(samples.some(sample => sample.uploads?.[0]?.stage === 'publishing'));
+});
+
 test('25 MiB MP4 uploads through Baidu slices, publishes, downloads and recovers with the same hash', async () => {
   const h = baiduHarness();
   const provider = new BaiduProvider('/apps/中文应用', h.transport, { accessToken: async () => 'private-access' }, undefined, undefined, { maxFileSize: MAX_ATTACHMENT_SIZE });

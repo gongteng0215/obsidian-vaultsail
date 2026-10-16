@@ -15,10 +15,15 @@ const provider = new BaiduProvider('/apps/中文应用', async input => { sample
 const remote = new RemoteVaultStore(provider), vault = await remote.create('synthetic-desktop-benchmark');
 const file = new Uint8Array(sizeMiB * 1024 * 1024); file.fill(83); sample();
 const revision = { schemaVersion: 1, vaultId: vault.vaultId, opId: uuid(), deviceId: uuid(), fileId: uuid(), path: 'synthetic.mp4', parents: [], kind: 'update', hash: hash(file.buffer), size: file.byteLength, createdAt: Date.now() };
-await remote.publish(vault.vaultId, revision, file.buffer); sample();
+let confirmedSteps = 0, confirmedBytes = 0, boundedProgress = true;
+await remote.publish(vault.vaultId, revision, file.buffer, undefined, progress => {
+  boundedProgress &&= progress.uploadedBytes >= 0 && progress.uploadedBytes <= file.byteLength;
+  if (progress.stage === 'uploading' && progress.uploadedBytes > confirmedBytes) { confirmedSteps++; confirmedBytes = progress.uploadedBytes; }
+}); sample();
+assert.equal(confirmedSteps, Math.ceil(sizeMiB / 4)); assert.equal(confirmedBytes, file.byteLength); assert.equal(boundedProgress, true);
 const revisions = await remote.revisions(vault.vaultId); assert.equal(revisions.length, 1); assert.equal(revisions[0].size, file.byteLength);
 const downloaded = await remote.blob(vault.vaultId, revisions[0]); sample();
 assert.equal(hash(downloaded), revision.hash);
 assert.equal([...h.uploads.values()].find(upload => upload.size === file.byteLength).chunks.size, Math.ceil(sizeMiB / 4));
 assert.equal(h.counts().refreshes, 0);
-console.log(JSON.stringify({ simulated: true, sizeMiB, chunks: Math.ceil(sizeMiB / 4), hashVerified: true, publishedRecords: revisions.length, refreshes: h.counts().refreshes, elapsedSeconds: Math.round((performance.now() - started) / 100) / 10, peakRssMiB: Math.ceil(peakRss / 1024 / 1024), peakArrayBuffersMiB: Math.ceil(peakBuffers / 1024 / 1024) }));
+console.log(JSON.stringify({ simulated: true, sizeMiB, chunks: Math.ceil(sizeMiB / 4), confirmedProgressUpdates: confirmedSteps, hashVerified: true, publishedRecords: revisions.length, refreshes: h.counts().refreshes, elapsedSeconds: Math.round((performance.now() - started) / 100) / 10, peakRssMiB: Math.ceil(peakRss / 1024 / 1024), peakArrayBuffersMiB: Math.ceil(peakBuffers / 1024 / 1024) }));

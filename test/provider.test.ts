@@ -8,6 +8,51 @@ import { RemoteVaultStore, type Revision } from '../src/sync/remote-vault.ts';
 import { apiSuccess, request, type HttpRequest, type HttpResponse } from '../src/providers/http.ts';
 
 import { baiduHarness as harness } from './fixtures/baidu.ts';
+import type { ObjectTransferProgress } from '../src/providers/cloud-storage-provider.ts';
+
+test('slice acknowledgements reach all observers before completion, with exact tail bytes and safe callbacks', async () => {
+  const h = harness(), data = new Uint8Array(4 * 1024 * 1024 + 7); data.fill(23);
+  const events: ObjectTransferProgress[] = [], second: ObjectTransferProgress[] = [];
+  let entered!: () => void, release!: () => void;
+  const ready = new Promise<void>(resolve => { entered = resolve; }), gate = new Promise<void>(resolve => { release = resolve; });
+  const provider = new BaiduProvider('/apps/中文应用', async input => {
+    const query = new URL(input.url).searchParams;
+    if (query.get('method') === 'upload' && query.get('partseq') === '0') { entered(); await gate; }
+    const response = await h.transport(input);
+    if (query.get('method') === 'precreate') (response.json as { block_list: number[] }).block_list.reverse();
+    return response;
+  }, { accessToken: async () => 'private-access' });
+  const operation = provider.writeImmutable('live/video.mp4', data.buffer, progress => { events.push(progress); throw new Error('detached view'); });
+  await ready;
+  const duplicate = provider.writeImmutable('live/video.mp4', data.buffer, progress => { second.push({ ...progress }); progress.uploadedBytes = -123; });
+  try {
+    assert.equal(events.at(-1)!.uploadedBytes, 7); assert.equal(events.at(-1)!.completedParts, 1); assert.equal(events.at(-1)!.currentPart, 1);
+    assert.equal(second[0].uploadedBytes, 7); assert.equal(h.files.has('/apps/中文应用/live/video.mp4'), false);
+  } finally { release(); await Promise.all([operation, duplicate]); }
+  for (const stage of ['preparing', 'uploading', 'committing', 'verifying', 'verified']) assert.ok(events.some(progress => progress.stage === stage));
+  assert.equal(events.at(-1)!.uploadedBytes, data.byteLength); assert.equal(events.at(-1)!.completedParts, 2);
+  assert.ok(events.every(progress => progress.uploadedBytes >= 0 && progress.uploadedBytes <= data.byteLength));
+  assert.equal(second.at(-1)!.uploadedBytes, data.byteLength); assert.equal(h.counts().createCalls, 1);
+});
+
+test('retries reset their own acknowledged bytes and rejected slice hashes never advance the counter', async () => {
+  for (const fault of ['retry', 'hash'] as const) {
+    const h = harness(), data = new Uint8Array(4 * 1024 * 1024 + 7); const events: ObjectTransferProgress[] = []; let injected = false;
+    const provider = new BaiduProvider('/apps/中文应用', async input => {
+      const query = new URL(input.url).searchParams;
+      if (query.get('method') === 'upload' && query.get('partseq') === '1' && !injected) {
+        injected = true;
+        if (fault === 'retry') return { status: 429, headers: {}, bytes: new ArrayBuffer(0) };
+        const response = await h.transport(input); (response.json as { md5: string }).md5 = '0'.repeat(32); return response;
+      }
+      return h.transport(input);
+    }, { accessToken: async () => 'private-access' });
+    const operation = provider.writeImmutable('retry/video.mp4', data.buffer, progress => events.push(progress));
+    if (fault === 'hash') { await assert.rejects(operation, { code: 'integrity' }); assert.equal(events.at(-1)!.uploadedBytes, 4 * 1024 * 1024); assert.equal(events.some(progress => progress.stage === 'verified'), false); }
+    else { await operation; assert.equal(events.find(progress => progress.attempt === 2)!.uploadedBytes, 0); assert.equal(events.at(-1)!.uploadedBytes, data.byteLength); }
+    assert.ok(events.every(progress => progress.uploadedBytes <= data.byteLength));
+  }
+});
 
 test('desktop attachment allowance does not raise operation or vault metadata limits', async () => {
   const h = harness(), provider = new BaiduProvider('/apps/中文应用', h.transport, { accessToken: async () => 'private-access' }, undefined, undefined, { maxFileSize: MAX_ATTACHMENT_SIZE });

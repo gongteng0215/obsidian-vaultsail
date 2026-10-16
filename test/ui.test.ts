@@ -405,6 +405,17 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   try {
     Date.now = () => clock; plugin.busy = true; plugin.beginTransfer();
     plugin.publishProgress({ phase: 'uploading', path: 'pending.md', doneFiles: 1, totalFiles: 7, doneBytes: 1024, totalBytes: 8192, startedAt: clock, updatedAt: clock });
+    const currentUpload = { path: 'video.mp4', stage: 'uploading', uploadedBytes: 4 * 1024 * 1024, totalBytes: 25 * 1024 * 1024, completedParts: 1, totalParts: 7, currentPart: 2, attempt: 1 };
+    plugin.publishProgress({ ...plugin.progress, uploads: [currentUpload] });
+    const uploadHost = document.querySelector('.vaultsail-upload-progress')!, uploadMeter = uploadHost.querySelector('.vaultsail-upload-meter') as HTMLProgressElement;
+    assert.match(uploadHost.textContent!, /4.00 MiB \/ 25.00 MiB · 16%/); assert.match(uploadHost.textContent!, /分片 1\/7/);
+    assert.equal(uploadMeter.value, currentUpload.uploadedBytes); assert.equal(uploadMeter.max, currentUpload.totalBytes);
+    plugin.publishProgress({ ...plugin.progress, uploads: [{ ...currentUpload, uploadedBytes: 8 * 1024 * 1024, completedParts: 2, currentPart: 3 }] });
+    assert.match(uploadHost.textContent!, /8.00 MiB \/ 25.00 MiB · 32%/);
+    plugin.publishProgress({ ...plugin.progress, phase: 'verifying', uploads: [{ ...currentUpload, stage: 'verifying', uploadedBytes: currentUpload.totalBytes, completedParts: 7, currentPart: undefined }] });
+    assert.match(uploadHost.textContent!, /回读并校验/); assert.match(uploadHost.textContent!, /100%/);
+    assert.match(document.querySelector('.vaultsail-progress-text')!.textContent!, /已处理 1\/7/);
+    assert.match(uploadHost.textContent!, /校验并发布记录后/);
     const progressNode = document.querySelector('.vaultsail-progress-text')!;
     const draft = document.querySelector('input:not([type=password])') as HTMLInputElement; draft.value = 'unsaved-app-draft';
     Date.now = () => clock + 4000; await new Promise(resolve => setTimeout(resolve, 650));
@@ -416,7 +427,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
     assert.equal(timingReport.stages.transfer, 4000);
     assert.equal(JSON.stringify(timingReport).includes('pending.md'), false);
     assert.match(progressNode.textContent!, /耗时 4 秒/); assert.match(progressNode.textContent!, /已等待新进度 4 秒/);
-    assert.match(progressNode.textContent!, /已处理 1\/7/); assert.match(document.querySelector('.vaultsail-status-text')!.textContent!, /上传笔记内容/);
+    assert.match(progressNode.textContent!, /已处理 1\/7/); assert.match(document.querySelector('.vaultsail-status-text')!.textContent!, /回读并校验/);
     plugin.publishProgress({ ...plugin.progress, phase: 'failed', message: '网络请求超时，请检查网络后重试。', updatedAt: clock + 4000 });
     plugin.busy = false; plugin.statusText = '操作完成。'; plugin.refreshUI();
     assert.match(document.querySelector('.vaultsail-status-text')!.textContent!, /网络请求超时/);
@@ -426,6 +437,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
     Date.now = () => clock + 20000; plugin.tabs[0].updateProgress();
     assert.match(document.querySelector('.vaultsail-progress-text')!.textContent!, /耗时 4 秒/);
     plugin.beginTransfer();
+    assert.equal(document.querySelector('.vaultsail-upload-progress')!.hasAttribute('hidden'), true);
     assert.equal(document.querySelector('.vaultsail-progress-meter')!.hasAttribute('value'), false);
     assert.equal(document.querySelector('.vaultsail-progress-text')!.textContent!.includes('网络请求超时'), false);
     plugin.publishProgress({ ...plugin.progress, phase: 'completed', updatedAt: Date.now() });

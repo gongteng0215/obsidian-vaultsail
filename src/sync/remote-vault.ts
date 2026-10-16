@@ -1,7 +1,7 @@
 import { checkSize, MAX_ATTACHMENT_SIZE, hash, included, jsonBytes, parseJson, record, relativePath, uuid, validId, VaultSailError } from '../core/safety.ts';
 import { listAll } from '../providers/provider-utils.ts';
 import { DEFAULT_TRANSFER_CONCURRENCY, MAX_TRANSFER_CONCURRENCY, mapConcurrent, validConcurrency } from '../core/concurrency.ts';
-import type { CloudStorageProvider } from '../providers/cloud-storage-provider';
+import type { CloudStorageProvider, TransferObserver } from '../providers/cloud-storage-provider';
 
 export interface RemoteVault { schemaVersion: 1; vaultId: string; displayName: string; createdAt: number; }
 export interface RevisionCache { load(): Promise<unknown>; save(value: unknown): Promise<void>; }
@@ -199,11 +199,11 @@ export class RemoteVaultStore {
     if (data.byteLength !== op.size || hash(data) !== op.hash) throw new VaultSailError('integrity', '云端内容 Hash 不匹配，未应用文件。');
     return data;
   }
-  async publish(id: string, op: Revision, data?: ArrayBuffer, onPhase: (phase: 'uploading' | 'publishing') => void = () => {}): Promise<void> {
+  async publish(id: string, op: Revision, data?: ArrayBuffer, onPhase: (phase: 'uploading' | 'publishing') => void = () => {}, onProgress?: TransferObserver): Promise<void> {
     validateRevision(op, id);
     if (op.kind === 'update') {
       if (!data || data.byteLength !== op.size || hash(data) !== op.hash) throw new VaultSailError('integrity', '待上传内容与操作记录不一致。');
-      onPhase('uploading'); await this.provider.writeImmutable(this.base(id) + '/blobs/' + op.hash, data);
+      onPhase('uploading'); await this.provider.writeImmutable(this.base(id) + '/blobs/' + op.hash, data, onProgress);
     }
     const path = this.base(id) + '/ops/' + op.deviceId + '/' + op.opId + '.json'; const recordData = jsonBytes(op);
     onPhase('publishing'); await this.provider.writeImmutable(path, recordData);

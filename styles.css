@@ -96,3 +96,8 @@
 .vaultsail-history-row p { margin: 5px 0; color: var(--text-muted); }
 .vaultsail-history-row[data-state="failed"] strong { color: var(--text-error); }
 .vaultsail-history-row[data-state="unconfirmed"] strong { color: var(--text-warning, var(--text-muted)); }
+.vaultsail-upload-progress[hidden] { display: none; }
+.vaultsail-upload-row { padding: 12px 0; border-top: 1px solid var(--background-modifier-border); overflow-wrap: anywhere; }
+.vaultsail-upload-text { white-space: pre-wrap; line-height: 1.7; margin: 6px 0; }
+.vaultsail-upload-meter { display: block; width: 100%; height: 8px; accent-color: #43b6ad; }
+.vaultsail-upload-note { color: var(--text-muted); font-size: var(--font-smaller); margin: 6px 0; }

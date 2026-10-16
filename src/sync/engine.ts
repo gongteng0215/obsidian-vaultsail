@@ -1,7 +1,7 @@
 import { assertNoCollisions, checkSize, checkSizeValue, hash, included, jsonBytes, MAX_FILE_SIZE, safeMessage, uuid, validId, VaultSailError } from '../core/safety.ts';
 import { reconcileFile } from '../core/reconcile.ts';
 import { buildHeads, RemoteVaultStore, validateRevision, type Revision } from './remote-vault.ts';
-import type { SyncProgress, ProgressPhase } from './progress.ts';
+import type { SyncProgress, ProgressPhase, FileUploadProgress } from './progress.ts';
 import { DEFAULT_TRANSFER_CONCURRENCY, MAX_TRANSFER_CONCURRENCY, mapConcurrent, TRANSFER_BATCH_BYTES, validConcurrency } from '../core/concurrency.ts';
 import { AUTO_MERGE_DEVICE, automaticMergeId, commonAncestor, mergeText, threeWayMerge, type TextMerge } from './merge.ts';
 import { failureState, historyCode, type FileHistoryEvent, type HistoryAction, type HistoryReason, type HistoryState } from './history.ts';
@@ -80,6 +80,7 @@ export class SyncEngine {
   private fileRecords = new Map<string, FileHistoryEvent>();
   private onFile: (event: FileHistoryEvent) => void;
   private fileLimit: number;
+  private uploads = new Map<string, FileUploadProgress>();
   blockedFiles(): BlockedFile[] { return [...this.blocked.values()].map(file => ({ ...file })); }
   constructor(remote: RemoteVaultStore, local: LocalFiles, store: StateStore, vaultId: string, configDir = '.obsidian', report: (progress: SyncProgress) => void = () => {}, concurrency = DEFAULT_TRANSFER_CONCURRENCY,
     onFile: (event: FileHistoryEvent) => void = () => {}, fileLimit = MAX_FILE_SIZE) {
@@ -99,9 +100,23 @@ export class SyncEngine {
     this.recordFile(row.path, action, row.size, state, reason, error);
   }
   private emit(phase: ProgressPhase, update: Partial<SyncProgress> = {}): void {
-    this.progress = { ...this.progress, ...update, phase, updatedAt: Date.now() };
+    this.progress = { ...this.progress, ...update, phase, updatedAt: Date.now(), uploads: [...this.uploads.values()].map(upload => ({ ...upload })) };
     // Observers must never interrupt a journaled write or affect its result.
     try { this.report({ ...this.progress }); } catch { /* UI is advisory. */ }
+  }
+  private async publishRevision(op: Revision, data?: ArrayBuffer, onPhase: (phase: 'uploading' | 'publishing') => void = phase => this.emit(phase)): Promise<void> {
+    if (op.kind === 'update') this.uploads.set(op.opId, { path: op.path, stage: 'preparing', uploadedBytes: 0, totalBytes: op.size, completedParts: 0, totalParts: 0, attempt: 1 });
+    this.emit(op.kind === 'update' ? 'preparing-upload' : 'publishing', { path: op.path });
+    await this.remote.publish(this.vaultId, op, data, phase => {
+      const upload = this.uploads.get(op.opId);
+      if (upload) this.uploads.set(op.opId, { ...upload, stage: phase === 'publishing' ? 'publishing' : upload.stage });
+      onPhase(phase);
+    }, progress => {
+      if (!this.running) return;
+      this.uploads.set(op.opId, { ...progress, path: op.path });
+      this.emit(progress.stage === 'preparing' ? 'preparing-upload' : ['verifying', 'verified'].includes(progress.stage) ? 'verifying' : 'uploading', { path: op.path });
+    });
+    this.uploads.delete(op.opId); this.emit(this.progress.phase);
   }
   pause(): void { this.stopped = true; }
   configureConcurrency(value: number): void {
@@ -114,6 +129,7 @@ export class SyncEngine {
   private async exclusive<T>(run: () => Promise<T>, successPhase: 'completed' | 'preview-ready' = 'completed'): Promise<T> {
     if (this.running) throw new VaultSailError('busy', '当前库已有任务在运行。');
     this.running = true; this.stopped = false; this.fileRecords.clear();
+    this.uploads.clear();
     this.progress = { phase: 'checking', doneFiles: 0, totalFiles: 0, doneBytes: 0, totalBytes: 0, startedAt: Date.now(), updatedAt: Date.now(), activeFiles: 0, concurrency: this.concurrency, blockedFiles: this.blocked.size };
     this.emit('checking');
     try { const value = await run(); this.emit(successPhase, { path: undefined }); return value; }
@@ -334,6 +350,7 @@ export class SyncEngine {
         const jobs: { row: PlanRow; journal: Journal; data: ArrayBuffer | null }[] = [];
         for (const row of rows) {
           this.recordRow(row, 'running');
+          this.emit(row.action === 'upload' ? 'preparing-upload' : 'checking', { path: row.path });
           try {
           this.guard(); const data = await this.local.read(row.path);
           if ((data === null ? null : hash(data)) !== row.localHash) throw new VaultSailError('changed', '传输前本地内容已变化，请重新预览。');
@@ -368,7 +385,7 @@ export class SyncEngine {
           try {
             this.recordRow(row, 'running');
             let downloaded: ArrayBuffer | undefined;
-            if (row.action === 'upload') await this.remote.publish(this.vaultId, op, data!, report);
+            if (row.action === 'upload') await this.publishRevision(op, data!, report);
             else { report('downloading'); downloaded = await this.remote.blob(this.vaultId, op, () => report('verifying')); }
             await commit(async () => {
               this.guard();
@@ -441,7 +458,7 @@ export class SyncEngine {
             const journal: Journal = { id: op.opId, path: row.path, action: 'publish', stage: 'prepared', revision: op, expectedLocal: row.localHash };
             if (localData) { await this.local.stage(op.opId, localData); await this.local.preserve(row.path, localData, op.opId); }
             state.journals.push(journal); await this.store.save(state); this.guard();
-            await this.remote.publish(this.vaultId, op, localData ?? undefined, phase => this.emit(phase)); journal.stage = 'published'; await this.store.save(state); this.guard();
+            await this.publishRevision(op, localData ?? undefined, phase => this.emit(phase)); journal.stage = 'published'; await this.store.save(state); this.guard();
             published.add(op.opId);
             state.bases[row.path] = { hash: op.hash ?? null, heads: [op.opId], fileId: op.fileId };
             state.knownOps = [...new Set([...state.knownOps, op.opId])]; state.journals = []; await this.store.save(state);
@@ -588,7 +605,7 @@ export class SyncEngine {
     await this.local.stage(op.opId, local); await this.local.preserve(row.path, local, op.opId);
     const journal: Journal = { id: op.opId, path: row.path, action: 'publish', stage: 'prepared', revision: op, expectedLocal: localHash, allowBranch: true };
     state.journals.push(journal); await this.store.save(state); this.guard();
-    await this.remote.publish(this.vaultId, op, local, phase => this.emit(phase)); journal.stage = 'published'; await this.store.save(state); this.guard();
+    await this.publishRevision(op, local, phase => this.emit(phase)); journal.stage = 'published'; await this.store.save(state); this.guard();
     state.bases[row.path] = { hash: localHash, heads: [op.opId], fileId: op.fileId }; state.knownOps = [...new Set([...state.knownOps, op.opId])];
     state.journals = []; await this.store.save(state); return op.opId;
   }
@@ -611,7 +628,7 @@ export class SyncEngine {
             const heads = journal.action === 'resolve' ? this.conflictHeads(snapshot, op.path) : snapshot.heads.get(op.previousPath ?? op.path) ?? [];
             if (journal.allowBranch) buildHeads([...visible, op], true);
             else if (!sameIds(ids(heads), [...op.parents].sort())) throw new VaultSailError('changed', '待发布操作的远端依据已变化，恢复暂停。');
-            await this.remote.publish(this.vaultId, op, data ?? undefined, phase => this.emit(phase));
+            await this.publishRevision(op, data ?? undefined, phase => this.emit(phase));
           }
           state.knownOps = [...new Set([...state.knownOps, op.opId])];
         }
@@ -685,7 +702,7 @@ export class SyncEngine {
       const journal: Journal = { id: op.opId, path: copyPath, action: 'resolve', stage: 'prepared', revision: op, expectedLocal: null };
       this.recordFile(copyPath, 'upload', other.byteLength, 'running');
       await this.local.stage(op.opId, other); state.journals.push(journal); await this.store.save(state); this.guard();
-      await this.remote.publish(this.vaultId, op, other); journal.stage = 'published'; await this.store.save(state); this.guard();
+      await this.publishRevision(op, other); journal.stage = 'published'; await this.store.save(state); this.guard();
       await this.applyLocal(copyPath, other, null, op.opId); journal.stage = 'applied'; await this.store.save(state);
       state.bases[copyPath] = { hash: op.hash!, heads: [op.opId], fileId: op.fileId }; state.knownOps = [...new Set([...state.knownOps, op.opId])];
       state.journals = state.journals.filter(item => item.id !== op.opId); await this.store.save(state);
@@ -736,7 +753,7 @@ export class SyncEngine {
       if (freshIdentity) journal.allowBranch = true;
       if (selected !== null) await this.local.stage(op.opId, selected);
       state.journals.push(journal); await this.store.save(state); this.guard();
-      await this.remote.publish(this.vaultId, op, selected ?? undefined, phase => this.emit(phase)); journal.stage = 'published'; await this.store.save(state); this.guard();
+      await this.publishRevision(op, selected ?? undefined, phase => this.emit(phase)); journal.stage = 'published'; await this.store.save(state); this.guard();
       this.emit('applying');
       await this.applyLocal(path, selected, expected, op.opId); journal.stage = 'applied'; await this.store.save(state);
       state.bases[path] = { hash: op.hash ?? null, heads: [op.opId], fileId: op.fileId }; state.knownOps = [...new Set([...state.knownOps, ...snapshot.ops.map(item => item.opId), op.opId])];
