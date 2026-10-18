@@ -121,6 +121,10 @@ export class SyncHistory {
     return [...tasks.values()].sort((a, b) => b.startedAt - a.startedAt || b.id.localeCompare(a.id)).slice(0, HISTORY_TASK_LIMIT);
   }
   current(): SyncHistoryTask | undefined { return this.active ? structuredClone(this.active) : undefined; }
+  latest(): SyncHistoryTask | undefined {
+    const task = this.active ?? [...this.recent.values()].sort((a, b) => b.startedAt - a.startedAt || b.id.localeCompare(a.id))[0];
+    return task ? structuredClone(task) : undefined;
+  }
   snapshots(): SyncHistoryTask[] { return [...this.recent.values(), ...(this.active ? [this.active] : [])].map(task => structuredClone(task)); }
   dispose(): void { if (this.timer) clearTimeout(this.timer); this.timer = undefined; void this.flush(); this.listeners.clear(); }
 }

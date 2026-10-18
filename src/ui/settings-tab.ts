@@ -76,8 +76,11 @@ export class VaultSailSettingTab extends PluginSettingTab {
     const progressCard = el.createDiv({ cls: 'vaultsail-progress-card' });
     progressCard.createEl('span', { cls: 'vaultsail-progress-state' });
     progressCard.createEl('p', { cls: 'vaultsail-progress-text' }); progressCard.createEl('progress', { cls: 'vaultsail-progress-meter' }).setAttribute('aria-label', '文件处理进度');
-    progressCard.createDiv({ cls: 'vaultsail-upload-progress' });
-    progressCard.createEl('p', { cls: 'vaultsail-performance-text' }).setAttribute('aria-label', '同步耗时统计');
+    new Setting(progressCard).addButton(button => button.setButtonText('打开传输中心').onClick(() => { void p.openTransferCenter(); }));
+    const progressDetails = progressCard.createEl('details', { cls: 'vaultsail-progress-details' });
+    progressDetails.createEl('summary', { text: '本轮进度详情' });
+    progressDetails.createDiv({ cls: 'vaultsail-upload-progress' });
+    progressDetails.createEl('p', { cls: 'vaultsail-performance-text' }).setAttribute('aria-label', '同步耗时统计');
     const progressActions = progressCard.createDiv({ cls: 'vaultsail-progress-actions' });
     new Setting(progressActions)
       .addButton(button => button.setButtonText('恢复未完成任务').onClick(() => { void p.run('核验并恢复任务…', () => p.recover()); }))
@@ -202,6 +205,8 @@ export class VaultSailSettingTab extends PluginSettingTab {
     transferCard.createEl('p', { cls: 'vaultsail-blocked-summary', text: p.blockedSummary() }).setAttribute('role', 'status');
     new Setting(transferCard).setName('超限与关联保护项').setDesc(`超过本机 ${p.fileLimit() / (1024 * 1024)} MiB 上限的文件跳过，其他独立文件继续。缺失路径的删除或改名可能暂缓。`)
       .addButton(button => button.setButtonText('查看跳过文件').onClick(() => p.showBlockedFiles()));
+    new Setting(transferCard).setName('传输中心').setDesc('独立查看本轮等待、上传、校验和完成的文件。关闭设置后仍可边写笔记边查看。')
+      .addButton(button => button.setButtonText('打开传输中心').onClick(() => { void p.openTransferCenter(); }));
     new Setting(transferCard).setName('同步记录').setDesc('查看本设备当前云端库最近 30 次任务；逐文件记录实时更新，重启后仍可查看。文件路径只保存在本机内部目录。')
       .addButton(button => button.setButtonText('查看同步记录').onClick(() => p.showSyncHistory()));
     new Setting(transferCard).setName('待解决冲突').setDesc('查看各版本、逐块合并或保留为两篇；确认后其他设备自动接收解决版本。')

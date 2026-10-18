@@ -251,14 +251,14 @@ export class BaiduProvider implements CloudStorageProvider {
       try { await pending.operation; } finally { if (onProgress) pending.observers.delete(onProgress); }
       return;
     }
-    const latest: ObjectTransferProgress = { stage: 'preparing', uploadedBytes: 0, totalBytes: data.byteLength, completedParts: 0, totalParts: Math.max(1, Math.ceil(data.byteLength / CHUNK)), preparedParts: 0, attempt: 1 };
+    const latest: ObjectTransferProgress = { stage: 'preparing', uploadedBytes: 0, transferredBytes: 0, totalBytes: data.byteLength, completedParts: 0, totalParts: Math.max(1, Math.ceil(data.byteLength / CHUNK)), preparedParts: 0, attempt: 1 };
     const entry = { hash: expected, operation: Promise.resolve(), observers: new Set(onProgress ? [onProgress] : []), latest };
     const notify: TransferObserver = progress => { entry.latest = { ...progress }; for (const observer of entry.observers) this.observe(observer, progress); };
     const operation = this.writeObject(path, data, expected, notify); entry.operation = operation; this.pendingWrites.set(path, entry); notify(latest);
     try { await operation; } finally { if (this.pendingWrites.get(path)?.operation === operation) this.pendingWrites.delete(path); }
   }
   private async writeObject(path: string, data: ArrayBuffer, expected: string, onProgress: TransferObserver): Promise<void> {
-    let progress: ObjectTransferProgress = { stage: 'preparing', uploadedBytes: 0, totalBytes: data.byteLength, completedParts: 0, totalParts: Math.max(1, Math.ceil(data.byteLength / CHUNK)), preparedParts: 0, attempt: 1 };
+    let progress: ObjectTransferProgress = { stage: 'preparing', uploadedBytes: 0, transferredBytes: 0, totalBytes: data.byteLength, completedParts: 0, totalParts: Math.max(1, Math.ceil(data.byteLength / CHUNK)), preparedParts: 0, attempt: 1 };
     const report = (update: Partial<ObjectTransferProgress>) => { progress = { ...progress, ...update }; onProgress(progress); };
     const verify = async (fresh = false): Promise<boolean> => {
       // Reuse a prior full SHA-256 verification only after fresh server metadata
@@ -275,21 +275,21 @@ export class BaiduProvider implements CloudStorageProvider {
     };
     if (await verify()) return;
     if (path.includes('/')) await this.mkdir(path.slice(0, path.lastIndexOf('/')));
+    // This call owns one stable source. Retry the session without repeating all block hashing.
+    const source = new Uint8Array(data), blocks: string[] = [];
+    report({ stage: 'preparing' });
+    for (let offset = 0; offset < data.byteLength; offset += CHUNK) {
+      this.guard(); blocks.push(bytesToHex(md5(source.subarray(offset, offset + CHUNK)))); report({ preparedParts: blocks.length });
+      if (data.byteLength > CHUNK) await sleep(0, this.requestPolicy.signal);
+    }
+    if (!blocks.length) blocks.push(bytesToHex(md5(new Uint8Array())));
     let firstAttempt = true;
     let attempt = 0;
     await this.retry(async () => {
       if (!firstAttempt && await verify(true)) return;
       firstAttempt = false;
-      report({ stage: 'preparing', uploadedBytes: 0, completedParts: 0, preparedParts: 0, currentPart: undefined, attempt: ++attempt });
+      report({ stage: 'preparing', uploadedBytes: 0, transferredBytes: 0, completedParts: 0, preparedParts: blocks.length, currentPart: undefined, attempt: ++attempt });
       try {
-        // Keep only block digests. Views borrow the original bounded source;
-        // copying every slice here would retain a second entire file per job.
-        const source = new Uint8Array(data), blocks: string[] = [];
-        for (let offset = 0; offset < data.byteLength; offset += CHUNK) {
-          this.guard(); blocks.push(bytesToHex(md5(source.subarray(offset, offset + CHUNK)))); report({ preparedParts: blocks.length });
-          if (data.byteLength > CHUNK) await sleep(0, this.requestPolicy.signal);
-        }
-        if (!blocks.length) blocks.push(bytesToHex(md5(new Uint8Array())));
         const base = { path: this.absolute(path), size: String(data.byteLength), isdir: '0', rtype: '0', block_list: JSON.stringify(blocks) };
         const pre = await this.api(XPAN + 'file', { method: 'precreate' }, { ...base, autoinit: '1' });
         if (pre.return_type === 2) { if (!await verify()) throw new VaultSailError('visibility', '秒传结果尚不可见，请稍后重试。', true); return; }
@@ -308,7 +308,7 @@ export class BaiduProvider implements CloudStorageProvider {
           const result = await this.api('https://d.pcs.baidu.com/rest/2.0/pcs/superfile2', { method: 'upload', type: 'tmpfile', path: this.absolute(path), uploadid: pre.uploadid, partseq: String(index) }, undefined, body.buffer, 'multipart/form-data; boundary=' + boundary);
           if (String(result.md5).toLowerCase() !== blocks[index]) throw new VaultSailError('integrity', '上传分片 Hash 不一致。');
           acknowledged.add(index); acknowledgedBytes += chunk.byteLength;
-          report({ uploadedBytes: acknowledgedBytes, completedParts: acknowledged.size, currentPart: undefined });
+          report({ uploadedBytes: acknowledgedBytes, transferredBytes: (progress.transferredBytes ?? 0) + chunk.byteLength, completedParts: acknowledged.size, currentPart: undefined });
         }
         report({ stage: 'committing', currentPart: undefined });
         const result = await this.api(XPAN + 'file', { method: 'create' }, { ...base, uploadid: pre.uploadid });

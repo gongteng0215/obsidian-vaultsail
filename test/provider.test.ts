@@ -49,7 +49,11 @@ test('retries reset their own acknowledged bytes and rejected slice hashes never
     }, { accessToken: async () => 'private-access' });
     const operation = provider.writeImmutable('retry/video.mp4', data.buffer, progress => events.push(progress));
     if (fault === 'hash') { await assert.rejects(operation, { code: 'integrity' }); assert.equal(events.at(-1)!.uploadedBytes, 4 * 1024 * 1024); assert.equal(events.some(progress => progress.stage === 'verified'), false); }
-    else { await operation; assert.equal(events.find(progress => progress.attempt === 2)!.uploadedBytes, 0); assert.equal(events.at(-1)!.uploadedBytes, data.byteLength); }
+    else {
+      await operation; assert.equal(events.find(progress => progress.attempt === 2)!.uploadedBytes, 0); assert.equal(events.at(-1)!.uploadedBytes, data.byteLength);
+      assert.equal(events.find(progress => progress.attempt === 2)!.preparedParts, 2, 'session retries reuse prepared block digests');
+      assert.equal(events.at(-1)!.transferredBytes, data.byteLength, 'actual acknowledgement bytes reset with the attempt');
+    }
     assert.ok(events.every(progress => progress.uploadedBytes <= data.byteLength));
   }
 });

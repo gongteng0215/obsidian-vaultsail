@@ -81,6 +81,7 @@ export class SyncEngine {
   private onFile: (event: FileHistoryEvent) => void;
   private fileLimit: number;
   private uploads = new Map<string, FileUploadProgress>();
+  private sourcePreparations = new Map<string, number>();
   blockedFiles(): BlockedFile[] { return [...this.blocked.values()].map(file => ({ ...file })); }
   constructor(remote: RemoteVaultStore, local: LocalFiles, store: StateStore, vaultId: string, configDir = '.obsidian', report: (progress: SyncProgress) => void = () => {}, concurrency = DEFAULT_TRANSFER_CONCURRENCY,
     onFile: (event: FileHistoryEvent) => void = () => {}, fileLimit = MAX_FILE_SIZE) {
@@ -105,7 +106,7 @@ export class SyncEngine {
     try { this.report({ ...this.progress }); } catch { /* UI is advisory. */ }
   }
   private async publishRevision(op: Revision, data?: ArrayBuffer, onPhase: (phase: 'uploading' | 'publishing') => void = phase => this.emit(phase)): Promise<void> {
-    if (op.kind === 'update') this.uploads.set(op.opId, { path: op.path, stage: 'preparing', uploadedBytes: 0, totalBytes: op.size, completedParts: 0, totalParts: 0, attempt: 1 });
+    if (op.kind === 'update') this.uploads.set(op.opId, { path: op.path, contentHash: op.hash, stage: 'preparing', uploadedBytes: 0, totalBytes: op.size, completedParts: 0, totalParts: 0, attempt: 1, sourcePreparationMs: this.sourcePreparations.get(op.path) });
     this.emit(op.kind === 'update' ? 'preparing-upload' : 'publishing', { path: op.path });
     await this.remote.publish(this.vaultId, op, data, phase => {
       const upload = this.uploads.get(op.opId);
@@ -113,7 +114,7 @@ export class SyncEngine {
       onPhase(phase);
     }, progress => {
       if (!this.running) return;
-      this.uploads.set(op.opId, { ...progress, path: op.path });
+      this.uploads.set(op.opId, { ...progress, path: op.path, contentHash: op.hash, sourcePreparationMs: this.sourcePreparations.get(op.path) });
       this.emit(progress.stage === 'preparing' ? 'preparing-upload' : ['verifying', 'verified'].includes(progress.stage) ? 'verifying' : 'uploading', { path: op.path });
     });
     this.uploads.delete(op.opId); this.emit(this.progress.phase);
@@ -130,6 +131,7 @@ export class SyncEngine {
     if (this.running) throw new VaultSailError('busy', '当前库已有任务在运行。');
     this.running = true; this.stopped = false; this.fileRecords.clear();
     this.uploads.clear();
+    this.sourcePreparations.clear();
     this.progress = { phase: 'checking', doneFiles: 0, totalFiles: 0, doneBytes: 0, totalBytes: 0, startedAt: Date.now(), updatedAt: Date.now(), activeFiles: 0, concurrency: this.concurrency, blockedFiles: this.blocked.size };
     this.emit('checking');
     try { const value = await run(); this.emit(successPhase, { path: undefined }); return value; }
@@ -349,22 +351,25 @@ export class SyncEngine {
       const transferBatch = async (rows: PlanRow[]) => {
         const jobs: { row: PlanRow; journal: Journal; data: ArrayBuffer | null }[] = [];
         for (const row of rows) {
+          const preparationStarted = Date.now();
           this.recordRow(row, 'running');
           this.emit(row.action === 'upload' ? 'preparing-upload' : 'checking', { path: row.path });
           try {
           this.guard(); const data = await this.local.read(row.path);
-          if ((data === null ? null : hash(data)) !== row.localHash) throw new VaultSailError('changed', '传输前本地内容已变化，请重新预览。');
+          const sourceHash = data === null ? null : hash(data);
+          if (sourceHash !== row.localHash) throw new VaultSailError('changed', '传输前本地内容已变化，请重新预览。');
           if (!sameIds(ids(row.heads), ids(snapshot.heads.get(row.path) ?? []))) throw new VaultSailError('changed', '传输依据已变化，请重新预览。');
           const upload = row.action === 'upload';
           if (upload && !data) throw new VaultSailError('changed', '待上传文件已不存在，请重新预览。');
           const freshIdentity = upload && this.retiredSource(snapshot, row.path, row.heads);
           const revision: Revision = upload ? { schemaVersion: 1, vaultId: this.vaultId, opId: uuid(), deviceId: state.deviceId,
             fileId: freshIdentity ? uuid() : row.heads[0]?.fileId ?? state.bases[row.path]?.fileId ?? uuid(), path: row.path, parents: freshIdentity ? [] : ids(row.heads),
-            kind: 'update', size: data!.byteLength, hash: hash(data!), createdAt: Date.now() } : row.heads[0];
+            kind: 'update', size: data!.byteLength, hash: sourceHash!, createdAt: Date.now() } : row.heads[0];
           const journal: Journal = { id: revision.opId, path: row.path, action: upload ? 'publish' : 'apply', stage: 'prepared', revision, expectedLocal: row.localHash };
           if (freshIdentity) journal.allowBranch = true;
           if (upload) { await this.local.stage(revision.opId, data!); await this.local.preserve(row.path, data!, revision.opId); }
           state.journals.push(journal); await this.store.save(state);
+          if (upload) this.sourcePreparations.set(row.path, Math.max(0, Date.now() - preparationStarted));
           jobs.push({ row, journal, data: upload ? data : null });
           this.recordRow(row, 'queued');
           } catch (error) { this.recordRow(row, failureState(error), row.action, 'stopped', error); throw error; }

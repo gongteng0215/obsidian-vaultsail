@@ -14,6 +14,11 @@ export class Plugin {
   addSettingTab(tab: unknown): void { this.tabs.push(tab); }
   addCommand(command: unknown): void { this.commands.push(command); }
   addRibbonIcon(): void {} registerEvent(): void {} registerDomEvent(): void {}
+  registerView(): void {}
+}
+export class ItemView {
+  contentEl: HTMLElement; app: any;
+  constructor(leaf: any) { this.app = leaf.app; this.contentEl = element(document.body, 'section'); }
 }
 export class PluginSettingTab {
   app: any; containerEl: HTMLElement;

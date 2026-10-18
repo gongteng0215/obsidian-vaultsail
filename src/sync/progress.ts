@@ -1,5 +1,5 @@
 import type { ObjectTransferProgress } from '../providers/cloud-storage-provider';
-export type FileUploadProgress = Omit<ObjectTransferProgress, 'stage'> & { path: string; stage: ObjectTransferProgress['stage'] | 'publishing' };
+export type FileUploadProgress = Omit<ObjectTransferProgress, 'stage'> & { path: string; contentHash?: string; sourcePreparationMs?: number; stage: ObjectTransferProgress['stage'] | 'publishing' };
 export type ProgressPhase = 'connecting' | 'scanning-remote' | 'checking-remote' | 'scanning-local' | 'checking' | 'preparing-upload' | 'uploading' | 'verifying' | 'publishing' | 'downloading' | 'applying' | 'preview-ready' | 'completed' | 'paused' | 'failed';
 export interface SyncProgress {
   phase: ProgressPhase; path?: string; doneFiles: number; totalFiles: number; doneBytes: number; totalBytes: number; startedAt: number; updatedAt: number;

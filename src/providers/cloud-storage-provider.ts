@@ -25,6 +25,8 @@ export interface CloudProviderCapabilities {
 export interface ObjectTransferProgress {
   stage: 'preparing' | 'uploading' | 'committing' | 'verifying' | 'verified';
   uploadedBytes: number; totalBytes: number; completedParts: number; totalParts: number;
+  /** Newly acknowledged request payload in this attempt, excluding server-reused parts. */
+  transferredBytes?: number;
   currentPart?: number; preparedParts?: number; attempt: number;
 }
 export type TransferObserver = (progress: ObjectTransferProgress) => void;

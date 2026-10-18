@@ -20,7 +20,9 @@ import { SyncQueue, type QueueBatch } from './sync/queue';
 import { withVaultTaskLock } from './platform/task-lock';
 import { ConflictDrafts } from './platform/conflict-drafts';
 import { ConflictInbox } from './ui/conflicts';
-import { SyncHistory, type FileHistoryEvent, type HistoryMode } from './sync/history';
+import { SyncHistory, type FileHistoryEvent, type HistoryMode, type SyncHistoryTask } from './sync/history';
+import { UploadTelemetry, type TransferCenterSnapshot } from './sync/transfer-center';
+import { openTransferCenter, TransferCenterView, TRANSFER_CENTER_VIEW } from './ui/transfer-center';
 import { ObsidianHistoryStore } from './platform/sync-history-store';
 import { SyncHistoryModal } from './ui/sync-history';
 import { decryptPairing, encryptPairing, isEncryptedPairing, PAIRING_LIFETIME_MS, validateAuthorizedPairing, validatePairingCode, type AuthorizedPairing, type PairingImportOptions } from './encrypted-pairing';
@@ -58,6 +60,8 @@ export default class VaultSailPlugin extends Plugin {
   private queue?: SyncQueue; private queueContext?: string; private automaticRun = false;
   private layoutReady = false; private pendingManualSync = false;
   private histories = new Map<string, SyncHistory>(); private activeHistory?: SyncHistory;
+  private transferListeners = new Set<() => void>(); private uploadTelemetry = new UploadTelemetry();
+  private loadedTransferTask?: { context: string; task?: SyncHistoryTask }; private progressContext?: string;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -66,6 +70,9 @@ export default class VaultSailPlugin extends Plugin {
     this.deviceId = deviceIdentity(this.app); this.local = new ObsidianLocalFiles(this.app, this.deviceId, () => this.fileLimit());
     this.auth = this.makeAuth();
     this.settingTab = new VaultSailSettingTab(this.app, this); this.addSettingTab(this.settingTab);
+    this.registerView(TRANSFER_CENTER_VIEW, leaf => new TransferCenterView(leaf, this));
+    this.addCommand({ id: 'transfer-center', name: '打开传输中心', callback: () => { void this.openTransferCenter(); } });
+    this.addRibbonIcon('list-start', 'VaultSail：传输中心', () => { void this.openTransferCenter(); });
 
     this.addCommand({
       id: 'local-inventory-preview',
@@ -110,10 +117,11 @@ export default class VaultSailPlugin extends Plugin {
     await this.auditLocalRecovery();
   }
 
-  onunload(): void { this.alive = false; this.queue?.dispose(); this.performance.finish(); this.connectionRequests.abort(); this.pause(false); this.auth?.cancel(); if (this.progressTimer) clearInterval(this.progressTimer); this.progressTimer = undefined; this.progressListeners.clear(); for (const history of this.histories.values()) history.dispose(); }
+  onunload(): void { this.alive = false; this.queue?.dispose(); this.performance.finish(); this.connectionRequests.abort(); this.pause(false); this.auth?.cancel(); if (this.progressTimer) clearInterval(this.progressTimer); this.progressTimer = undefined; this.progressListeners.clear(); this.transferListeners.clear(); for (const history of this.histories.values()) history.dispose(); for (const leaf of this.app.workspace?.getLeavesOfType?.(TRANSFER_CENTER_VIEW) ?? []) leaf.detach(); }
   private invalidateConnection(): void {
     this.queue?.dispose(); this.queue = undefined; this.queueContext = undefined;
     this.generation++; this.connectionRequests.abort(); this.connectionRequests = new AbortController();
+    this.progress = undefined; this.progressContext = undefined; this.uploadTelemetry.reset(); this.loadedTransferTask = undefined; this.notifyTransfers();
   }
   subscribeProgress(listener: (progress: SyncProgress) => void): () => void {
     this.progressListeners.add(listener); if (this.progress) listener(this.progress); return () => this.progressListeners.delete(listener);
@@ -126,6 +134,7 @@ export default class VaultSailPlugin extends Plugin {
     else this.statusText = progress.message ?? (progress.phase === 'completed' && progress.blockedFiles ? '部分完成，请查看跳过文件。' : PROGRESS_LABELS[progress.phase]);
     if (!progressRunning(progress)) this.transferPauseRequested = false;
     const notify = () => {
+      this.uploadTelemetry.observe(this.progress!); this.notifyTransfers();
       try { this.settingTab?.updateProgress(); } catch { /* A detached view cannot prevent heartbeats or other observers. */ }
       for (const listener of this.progressListeners) { try { listener(this.progress!); } catch { /* UI observers cannot affect writes. */ } }
     };
@@ -135,6 +144,7 @@ export default class VaultSailPlugin extends Plugin {
   }
   private beginTransfer(): void {
     this.performance.begin();
+    this.uploadTelemetry.reset(); this.progressContext = this.context();
     this.transferStartedAt = Date.now(); this.transferPauseRequested = false;
     this.publishProgress({ phase: 'connecting', doneFiles: 0, totalFiles: 0, doneBytes: 0, totalBytes: 0,
       startedAt: this.transferStartedAt, updatedAt: this.transferStartedAt });
@@ -144,7 +154,7 @@ export default class VaultSailPlugin extends Plugin {
       phase: error instanceof VaultSailError && ['paused', 'cancelled'].includes(error.code) ? 'paused' : 'failed', message: safeMessage(error), updatedAt: Date.now() });
   }
   get pauseRequested(): boolean { return this.transferPauseRequested || (this.engine?.pauseRequested ?? false); }
-  refreshUI(): void { if (this.alive) { this.ensureQueue(); if (this.settingTab?.containerEl.isConnected) this.settingTab.display(); } }
+  refreshUI(): void { if (this.alive) { this.ensureQueue(); if (this.settingTab?.containerEl.isConnected) this.settingTab.display(); this.notifyTransfers(); } }
   private context(): string | undefined { const b = this.settings.binding; return b && hash(bytes(b.appKey + '|' + b.root + '|' + b.accountHash + '|' + b.vaultId)); }
   private ensureQueue(): void {
     if (typeof this.app.workspace?.onLayoutReady === 'function' && !this.layoutReady) return;
@@ -157,7 +167,7 @@ export default class VaultSailPlugin extends Plugin {
       enabled: () => this.settings.autoSyncEnabled, pollMs: () => this.settings.remotePollSeconds * 1000,
       canRun: () => this.alive && !this.busy && !document.hidden && globalThis.navigator?.onLine !== false,
       run: async batch => { this.automaticRun = !batch.manual; try { await this.run(batch.manual ? '正在同步…' : '自动检查与同步…', () => this.startSync(batch), true, !batch.manual); } finally { this.automaticRun = false; } },
-      change: () => { try { this.settingTab?.updateProgress(); } catch { /* Detached view. */ } } });
+      change: () => { try { this.settingTab?.updateProgress(); } catch { /* Detached view. */ } this.notifyTransfers(); } });
     if (document.hidden) this.queue.suspend(true);
   }
   requestSync(): void {
@@ -168,18 +178,48 @@ export default class VaultSailPlugin extends Plugin {
   private history(context = this.context()): SyncHistory | undefined {
     if (!context) return;
     let history = this.histories.get(context);
-    if (!history) { history = new SyncHistory(new ObsidianHistoryStore(this.app, this.deviceId, context), context, this.deviceId, this.app.vault.configDir); this.histories.set(context, history); }
+    if (!history) { history = new SyncHistory(new ObsidianHistoryStore(this.app, this.deviceId, context), context, this.deviceId, this.app.vault.configDir); history.subscribe(() => this.notifyTransfers()); this.histories.set(context, history); }
     return history;
   }
   private async recorded<T>(mode: HistoryMode, action: () => Promise<T>): Promise<T> {
     if (this.activeHistory) return action();
     const history = this.history(); if (!history) return action();
     history.begin(mode); this.activeHistory = history;
+    this.notifyTransfers();
     try { const result = await action(); await history.finish(); return result; }
     catch (error) { await history.finish(error, true); throw error; }
-    finally { this.activeHistory = undefined; }
+    finally { this.activeHistory = undefined; this.notifyTransfers(); }
   }
-  private recordHistoryFile(context: string, event: FileHistoryEvent): void { if (this.activeHistory?.context === context) this.activeHistory.file(event); }
+  private recordHistoryFile(context: string, event: FileHistoryEvent): void {
+    if (this.activeHistory?.context !== context) return;
+    this.activeHistory.file(event);
+    if (!['running', 'queued'].includes(event.state)) this.uploadTelemetry.finish(event.path);
+    this.notifyTransfers();
+  }
+  private notifyTransfers(): void { if (this.alive) for (const listener of this.transferListeners) { try { listener(); } catch { /* Views cannot affect synchronization. */ } } }
+  subscribeTransfers(listener: () => void): () => void { this.transferListeners.add(listener); return () => { this.transferListeners.delete(listener); }; }
+  async openTransferCenter(): Promise<void> { try { await openTransferCenter(this); } catch { new Notice('打开传输中心失败，请重新启用插件后再试。'); } }
+  async loadTransferHistory(): Promise<void> {
+    const context = this.context(), history = this.history(); if (!context || !history) return;
+    const tasks = await history.list(); if (!this.alive || this.context() !== context) return;
+    this.loadedTransferTask = { context, task: tasks[0] }; this.notifyTransfers();
+  }
+  transferSnapshot(): TransferCenterSnapshot {
+    const context = this.context(), history = this.history(); let task = history?.latest();
+    const loaded = this.loadedTransferTask && this.loadedTransferTask.context === context ? this.loadedTransferTask.task : undefined;
+    if (!task || loaded && loaded.startedAt > task.startedAt) task = loaded;
+    const progress = context && this.progressContext === context ? this.progress : undefined;
+    if (this.busy && progress && progressRunning(progress) && task?.status !== 'running') task = undefined;
+    const now = Date.now(), timings: TransferCenterSnapshot['timings'] = Object.create(null);
+    for (const row of task?.files ?? []) { const timing = this.uploadTelemetry.timing(row.path, now); if (timing) timings[row.path] = timing; }
+    return { context, target: this.settings.binding ? `${this.app.vault.getName()} → ${this.settings.binding.displayName} · 百度网盘` : '尚未绑定云端库', busy: this.busy, pauseRequested: this.pauseRequested,
+      queue: this.queueSummary(), task, progress, performance: progress ? this.performance.snapshot() : undefined,
+      timings, bytesPerSecond: this.uploadTelemetry.rate(now), historyWarning: history?.warning ?? false };
+  }
+  resumeTransfers(): void {
+    if (this.busy) return;
+    void this.run('核验并继续同步…', () => this.recover(), true).then(() => this.requestSync()).catch(() => { /* run already reports the safe error. */ });
+  }
   showSyncHistory(): void { const history = this.history(); if (!history) { new Notice('请先绑定云端库，再查看当前库的本机同步记录。'); return; } new SyncHistoryModal(this.app, history).open(); }
   blockedFiles(): BlockedFile[] { return this.engine?.blockedFiles() ?? []; }
   blockedSummary(): string { const count = this.blockedFiles().length; return count ? `上次扫描有 ${count} 项超限或关联保护，未传输，原文件与基线保留。` : '上次扫描没有超限或关联保护项；尚未扫描时，请先预览或同步。'; }
@@ -252,6 +292,7 @@ export default class VaultSailPlugin extends Plugin {
       this.transferPauseRequested = true; this.statusText = '已请求暂停，等待当前请求结束。';
       try { this.settingTab?.updateProgress(); } catch { /* Pausing must survive a detached settings view. */ }
     }
+    this.notifyTransfers();
   }
   async changeConfiguration(update: Partial<VaultSailSettings>): Promise<void> {
     this.pause(); this.invalidateConnection(); this.engine = undefined; this.auth?.disconnect(); this.deviceSession = undefined;
