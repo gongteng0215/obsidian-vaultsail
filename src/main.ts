@@ -1,6 +1,6 @@
 import { Modal, Notice, Plugin, Setting, Platform, requireApiVersion } from 'obsidian';
 import { VaultSailSettingTab } from './ui/settings-tab';
-import { DEFAULT_SETTINGS, effectiveFileLimit, validFileMiB, migrateSettings, type VaultSailSettings } from './config';
+import { DEFAULT_SETTINGS, effectiveFileLimit, validFileMiB, validChunkConcurrency, migrateSettings, type VaultSailSettings } from './config';
 import { AuthManager, type DeviceSession } from './auth/auth-manager';
 import { ownsCredentialReference, pairingCredentialReferences } from './auth/credential-references';
 import { appRoot, bytes, hash, included, MAX_FILE_SIZE, safeMessage, uuid, VaultSailError } from './core/safety';
@@ -15,7 +15,8 @@ import { formatBytes, progressRunning, PROGRESS_LABELS, type SyncProgress } from
 import { withConfigurationLock } from './platform/configuration-lock';
 import { MAX_TRANSFER_CONCURRENCY, validConcurrency } from './core/concurrency';
 import { TransferPerformance, formatPerformance, REQUEST_LABELS } from './sync/performance';
-import type { HttpTransport } from './providers/http';
+import type { HttpTransport, HttpRequest, RequestPolicy } from './providers/http';
+import { requestPools } from './platform/request-pools';
 import { SyncQueue, type QueueBatch } from './sync/queue';
 import { withVaultTaskLock } from './platform/task-lock';
 import { ConflictDrafts } from './platform/conflict-drafts';
@@ -45,7 +46,13 @@ export default class VaultSailPlugin extends Plugin {
   busy = false;
   progress?: SyncProgress;
   private performance = new TransferPerformance();
-  private timedTransport: HttpTransport = input => this.performance.transport(obsidianTransport, input);
+  private timedTransport: HttpTransport = Object.assign((input: HttpRequest) => this.performance.transport(obsidianTransport, input), {
+    cooldown: (until: number) => requestPools(this.app).requests.cooldown(until),
+    reserve: (_input: HttpRequest, policy: RequestPolicy) => {
+      const pool = requestPools(this.app).requests; pool.configure(this.settings.transferConcurrency);
+      return pool.acquire(policy.signal, policy.timeoutMs, policy.onQueued);
+    },
+  });
   private progressListeners = new Set<(progress: SyncProgress) => void>();
   private progressTimer?: ReturnType<typeof setInterval>;
   private transferStartedAt?: number;
@@ -313,6 +320,14 @@ export default class VaultSailPlugin extends Plugin {
     this.statusText = `传输并发已设为 ${value} 路，下次任务生效。`; this.refreshUI();
   }
   fileLimit(): number { return effectiveFileLimit(this.settings, Platform.isMobile); }
+  async setUploadChunkConcurrency(value: number): Promise<void> {
+    if (this.busy) throw new VaultSailError('busy', '请等待当前任务完成。');
+    if (!validChunkConcurrency(value)) throw new VaultSailError('configuration', '分片并发请输入 1–4 之间的整数。');
+    const previous = this.settings.uploadChunkConcurrency; this.busy = true; this.settings.uploadChunkConcurrency = value;
+    try { await this.saveSettings(); this.engine = undefined; this.statusText = '分片并发设置已保存，下次任务生效。'; }
+    catch (error) { this.settings.uploadChunkConcurrency = previous; throw error; }
+    finally { this.busy = false; this.refreshUI(); }
+  }
   async setFileMiB(value: number): Promise<void> {
     if (this.busy) throw new VaultSailError('busy', '请等待当前任务完成，再修改大小上限。');
     if (Platform.isMobile || !validFileMiB(value)) throw new VaultSailError('configuration', '电脑端请输入 20–512 之间的整数；移动端上限为 20 MiB。');
@@ -328,7 +343,8 @@ export default class VaultSailPlugin extends Plugin {
     const root = appRoot(this.settings.appDirectory); const generation = this.generation;
     return new BaiduProvider(root, this.timedTransport, this.auth, () => this.alive && generation === this.generation && !this.pauseRequested, phase => {
       if (this.progress && this.busy && !['scanning-remote', 'checking-remote', 'scanning-local', 'preview-ready', 'completed', 'paused', 'failed'].includes(this.progress.phase)) this.publishProgress({ ...this.progress, phase, updatedAt: Date.now() });
-    }, { signal: this.connectionRequests.signal, onRetry: waited => this.performance.retry(waited), maxFileSize: this.fileLimit() });
+    }, { signal: this.connectionRequests.signal, onRetry: waited => this.performance.retry(waited), maxFileSize: this.fileLimit(),
+      chunkConcurrency: Platform.isMobile ? 1 : this.settings.uploadChunkConcurrency, uploadSlots: requestPools(this.app).bodies });
   }
   async connect(): Promise<void> {
     const issue = this.auth.configurationIssue(); if (issue) throw new VaultSailError('configuration', issue);
@@ -518,7 +534,7 @@ export default class VaultSailPlugin extends Plugin {
   }
   // A staged provider never reads or changes the currently connected account.
   pairingProvider(root: string, auth: AuthManager, active: () => boolean, signal?: AbortSignal): BaiduProvider {
-    return new BaiduProvider(root, obsidianTransport, auth, active, undefined, { signal });
+    return new BaiduProvider(root, this.timedTransport, auth, active, undefined, { signal, uploadSlots: requestPools(this.app).bodies });
   }
   async importConfiguration(text: string, password?: string, options: PairingImportOptions = {}): Promise<void> {
     if (isEncryptedPairing(text)) {
@@ -562,7 +578,7 @@ export default class VaultSailPlugin extends Plugin {
     guard(); this.statusText = '正在验证导入的百度连接与云端库…'; this.refreshUI();
     const { secretRef, sessionRef } = pairingCredentialReferences(this.deviceId);
     const staged = new Map<string, string>([[secretRef, payload.secretKey]]);
-    const auth = new AuthManager(obsidianTransport, { get: id => staged.get(id) ?? null, set: (id, data) => { staged.set(id, data); }, remove: id => { staged.delete(id); } },
+    const auth = new AuthManager(this.timedTransport, { get: id => staged.get(id) ?? null, set: (id, data) => { staged.set(id, data); }, remove: id => { staged.delete(id); } },
       () => ({ appKey: config.appKey, secretRef, sessionRef }));
     const controller = new AbortController(); const cancel = () => { controller.abort(); auth.cancel(); };
     const signals = [options.signal, this.connectionRequests.signal].filter((signal): signal is AbortSignal => Boolean(signal));
@@ -589,7 +605,7 @@ export default class VaultSailPlugin extends Plugin {
       advance('integrity');
       if (hash(received) !== hash(probe.buffer)) throw new VaultSailError('integrity', '导入连接的文件校验未通过，原连接已保留。');
       const next: VaultSailSettings = { ...DEFAULT_SETTINGS, providerId: 'baidu', appKey: config.appKey, appDirectory: provider.root,
-        secretRef, sessionRef, transferConcurrency: this.settings.transferConcurrency, maxFileMiB: this.settings.maxFileMiB, remotePollSeconds: this.settings.remotePollSeconds, ...(vault ? { remoteVaultId: vault.vaultId,
+        secretRef, sessionRef, transferConcurrency: this.settings.transferConcurrency, uploadChunkConcurrency: this.settings.uploadChunkConcurrency, maxFileMiB: this.settings.maxFileMiB, remotePollSeconds: this.settings.remotePollSeconds, ...(vault ? { remoteVaultId: vault.vaultId,
         binding: { vaultId: vault.vaultId, displayName: vault.displayName, appKey: config.appKey, root: provider.root, accountHash } } : {}) };
       await withConfigurationLock(this.app, async () => {
         guard(); options.onCommit?.();
@@ -661,7 +677,8 @@ export default class VaultSailPlugin extends Plugin {
       requestLabels: REQUEST_LABELS,
       autoSyncEnabled: this.settings.autoSyncEnabled, remotePollSeconds: this.settings.remotePollSeconds, queueStatus: this.queueSummary(), blockedFileCount: this.blockedFiles().length,
       lastPairingStep: this.lastPairingStep ?? null,
-      realDeviceValidation: '用户在本设备完成；开发者未验证真实账号或 iPad', maxFileMiB: this.fileLimit() / (1024 * 1024), transferConcurrency: this.settings.transferConcurrency }, null, 2);
+      realDeviceValidation: '用户在本设备完成；开发者未验证真实账号或 iPad', maxFileMiB: this.fileLimit() / (1024 * 1024), transferConcurrency: this.settings.transferConcurrency,
+      uploadChunkConcurrency: Platform.isMobile ? 1 : this.settings.uploadChunkConcurrency, requestBudget: requestPools(this.app).requests.snapshot(), multipartBudget: requestPools(this.app).bodies.snapshot() }, null, 2);
   }
   performanceText(): string { return formatPerformance(this.performance.snapshot()); }
 

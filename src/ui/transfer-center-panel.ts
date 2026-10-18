@@ -125,7 +125,8 @@ export class TransferCenterPanel {
     const parts = row.path.split('/'), upload = this.uploads.get(row.path), active = row.state === 'running' && snapshot.busy;
     const timing = snapshot.timings[row.path]; const stage = upload?.stage;
     text(elements.name, parts.pop()!); text(elements.directory, parts.join('/') || '笔记库根目录'); elements.name.title = row.path;
-    const label = active && stage ? STAGES[stage] : active && snapshot.progress?.path === row.path ? PROGRESS_LABELS[snapshot.progress.phase] : STATES[row.state];
+    const label = active && upload?.requestPending ? '等待请求结束' : active && (upload?.retryAt || upload?.waitingParts?.length && !upload.activeParts?.length) ? '等待重试' : active && upload?.waitingForSlot && !upload.activeParts?.length ? '等待请求空位'
+      : active && stage ? STAGES[stage] : active && snapshot.progress?.path === row.path ? PROGRESS_LABELS[snapshot.progress.phase] : STATES[row.state];
     text(elements.state, label); elements.el.setAttribute('data-state', row.state); elements.el.setAttribute('data-action', row.action);
     const percent = upload ? upload.totalBytes ? Math.floor(Math.min(1, upload.uploadedBytes / upload.totalBytes) * 100) : upload.completedParts === upload.totalParts && upload.totalParts > 0 ? 100 : 0 : undefined;
     text(elements.action, `${HISTORY_ACTIONS[row.action]} · ${formatBytes(row.size)}${active && percent !== undefined ? ` · 上传 ${percent}%` : ''}${active && upload && upload.attempt > 1 ? ` · 第 ${upload.attempt} 次尝试` : ''}`);
@@ -133,13 +134,16 @@ export class TransferCenterPanel {
     elements.meter.value = upload?.totalBytes ? upload.uploadedBytes : percent === 100 ? 1 : 0;
     elements.meter.setAttribute('aria-label', `${row.path}：服务端已确认上传内容`);
     const rate = active && stage === 'uploading' ? timing?.bytesPerSecond : undefined;
-    const note = active && upload ? stage === 'uploading'
+    const retryUntil = Math.max(upload?.retryAt ?? 0, ...(upload?.waitingParts?.map(part => part.until) ?? []));
+    const retryNote = retryUntil > 0 ? ` · ${Math.max(0, Math.ceil((retryUntil - Date.now()) / 1000))} 秒后重试${upload?.waitingParts?.length ? `（${upload.waitingParts.length} 片等待）` : ''}` : '';
+    const note = active && upload?.requestPending ? '原生请求仍未结束，保留并发与缓冲额度；结果核验前不会提交文件。'
+      : active && upload ? (stage === 'uploading'
       ? `${formatBytes(upload.uploadedBytes)} / ${formatBytes(upload.totalBytes)}${rate ? ` · ${formatBytes(rate)}/s · 上传约剩 ${eta(timing!.uploadRemainingSeconds!)}` : ' · 速度估算中'}${timing && timing.waitingMs >= 2000 ? ` · 等待分片确认 ${seconds(timing.waitingMs)}` : ''}；校验另计`
       : stage === 'verifying' ? `正在回读云端内容并校验${timing ? ` · 本阶段 ${seconds(timing.elapsedMs)}` : ''}`
-      : `${STAGES[stage!]}${timing ? ` · 本阶段 ${seconds(timing.elapsedMs)}` : ''}`
+      : `${STAGES[stage!]}${timing ? ` · 本阶段 ${seconds(timing.elapsedMs)}` : ''}`) + retryNote
       : row.state === 'succeeded' ? ['upload', 'download'].includes(row.action) ? '已校验并保存版本' : '已完成并保存结果' : row.state === 'queued' ? '等待本轮任务调度' : row.code ? HISTORY_CODES[row.code] : HISTORY_REASONS[row.reason];
     text(elements.note, note);
-    text(elements.detail, `${row.path}\n${HISTORY_REASONS[row.reason]}${row.code ? '\n' + HISTORY_CODES[row.code] : ''}${upload ? `\n已确认分片 ${upload.completedParts} / ${upload.totalParts}${upload.currentPart ? ` · 正在传第 ${upload.currentPart} 片` : ''} · 第 ${upload.attempt} 次尝试\n进度按服务端确认更新，正在传输的分片尚未计入。` : ''}`);
+    text(elements.detail, `${row.path}\n${HISTORY_REASONS[row.reason]}${row.code ? '\n' + HISTORY_CODES[row.code] : ''}${upload ? `\n已确认分片 ${upload.completedParts} / ${upload.totalParts}${upload.activeParts?.length ? ` · 正在传第 ${upload.activeParts.join('、')} 片` : upload.currentPart ? ` · 正在传第 ${upload.currentPart} 片` : ''} · 第 ${upload.attempt} 次尝试 · 重试 ${upload.retryCount ?? 0} 次\n进度按服务端确认更新，正在传输的分片尚未计入。` : ''}`);
     text(elements.timings, timing ? [timing.sourcePreparationMs !== undefined ? `本地核验与恢复准备 ${seconds(timing.sourcePreparationMs)}` : '', ...Object.entries(timing.stages).map(([name, ms]) => `${STAGES[name as keyof typeof STAGES]} ${seconds(ms!)}`)].filter(Boolean).join(' · ') : '');
   }
 }

@@ -15,7 +15,7 @@ export interface TransferCenterSnapshot {
   timings: Record<string, UploadTiming>; bytesPerSecond: number; historyWarning: boolean;
 }
 type Measurement = { stage: FileUploadProgress['stage']; since: number; ended?: number; stages: UploadTiming['stages'];
-  attempt: number; hash?: string; sourcePreparationMs?: number; lastAcknowledgedAt: number; bytes: number; total: number; uploaded: number; samples: { at: number; bytes: number }[] };
+  attempt: number; blocked?: boolean; hash?: string; sourcePreparationMs?: number; lastAcknowledgedAt: number; bytes: number; total: number; uploaded: number; samples: { at: number; bytes: number }[] };
 
 /** Session-only observations. Never used for baselines, recovery, or persisted credentials. */
 export class UploadTelemetry {
@@ -34,6 +34,7 @@ export class UploadTelemetry {
       }
       if (entry.ended !== undefined) continue;
       entry.hash ??= upload.contentHash;
+      entry.blocked = Boolean(upload.requestPending || upload.retryAt && upload.retryAt > now || !upload.activeParts?.length && (upload.waitingParts?.length || upload.waitingForSlot));
       if (entry.stage !== upload.stage) {
         entry.stages[entry.stage] = (entry.stages[entry.stage] ?? 0) + Math.max(0, now - entry.since);
         entry.stage = upload.stage; entry.since = now; entry.lastAcknowledgedAt = now; entry.samples = [];
@@ -61,7 +62,7 @@ export class UploadTelemetry {
     const result: UploadTiming = { stage: entry.stage, since: entry.since, elapsedMs, stages, sourcePreparationMs: entry.sourcePreparationMs, waitingMs: Math.max(0, (entry.ended ?? now) - entry.lastAcknowledgedAt) };
     const samples = entry.samples.filter(sample => sample.at >= now - 6000);
     const first = samples[0], last = samples.at(-1);
-    if (entry.ended === undefined && entry.stage === 'uploading' && samples.length >= 3 && first && last && now - first.at >= 1500 && now - last.at <= 5000 && last.bytes > first.bytes) {
+    if (entry.ended === undefined && !entry.blocked && entry.stage === 'uploading' && samples.length >= 3 && first && last && now - first.at >= 1500 && now - last.at <= 5000 && last.bytes > first.bytes) {
       result.bytesPerSecond = (last.bytes - first.bytes) / ((now - first.at) / 1000);
       result.uploadRemainingSeconds = Math.ceil(Math.max(0, entry.total - entry.uploaded) / result.bytesPerSecond);
     }

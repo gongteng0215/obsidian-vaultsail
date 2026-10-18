@@ -35,7 +35,7 @@ test('slice acknowledgements reach all observers before completion, with exact t
   assert.equal(second.at(-1)!.uploadedBytes, data.byteLength); assert.equal(h.counts().createCalls, 1);
 });
 
-test('retries reset their own acknowledged bytes and rejected slice hashes never advance the counter', async () => {
+test('slice retries keep the session and acknowledged bytes; rejected slice hashes never advance the counter', async () => {
   for (const fault of ['retry', 'hash'] as const) {
     const h = harness(), data = new Uint8Array(4 * 1024 * 1024 + 7); const events: ObjectTransferProgress[] = []; let injected = false;
     const provider = new BaiduProvider('/apps/中文应用', async input => {
@@ -50,9 +50,10 @@ test('retries reset their own acknowledged bytes and rejected slice hashes never
     const operation = provider.writeImmutable('retry/video.mp4', data.buffer, progress => events.push(progress));
     if (fault === 'hash') { await assert.rejects(operation, { code: 'integrity' }); assert.equal(events.at(-1)!.uploadedBytes, 4 * 1024 * 1024); assert.equal(events.some(progress => progress.stage === 'verified'), false); }
     else {
-      await operation; assert.equal(events.find(progress => progress.attempt === 2)!.uploadedBytes, 0); assert.equal(events.at(-1)!.uploadedBytes, data.byteLength);
-      assert.equal(events.find(progress => progress.attempt === 2)!.preparedParts, 2, 'session retries reuse prepared block digests');
-      assert.equal(events.at(-1)!.transferredBytes, data.byteLength, 'actual acknowledgement bytes reset with the attempt');
+      await operation; assert.equal(events.some(progress => progress.attempt === 2), false); assert.equal(events.at(-1)!.uploadedBytes, data.byteLength);
+      assert.equal(h.uploads.size, 1, 'retry uses the same session and retains successful slices');
+      assert.ok(events.some(progress => progress.waitingParts?.length === 1));
+      assert.equal(events.at(-1)!.transferredBytes, data.byteLength, 'retry does not double count acknowledgement bytes');
     }
     assert.ok(events.every(progress => progress.uploadedBytes <= data.byteLength));
   }

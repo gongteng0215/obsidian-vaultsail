@@ -1,13 +1,16 @@
 import { md5 } from '@noble/hashes/legacy';
 import { bytesToHex } from '@noble/hashes/utils';
 import { appRoot, checkSize, MAX_FILE_SIZE, hash, record, relativePath, sleep, uuid, VaultSailError } from '../core/safety.ts';
-import { apiSuccess, request, urlWith, type HttpTransport } from './http.ts';
+import { apiSuccess, request, urlWith, type HttpTransport, type RequestPolicy } from './http.ts';
+import { RequestPool } from '../core/request-pool.ts';
+import { mapConcurrent } from '../core/concurrency.ts';
+import { validChunkConcurrency } from '../config.ts';
 import type { CloudStorageProvider, ObjectTransferProgress, TransferObserver, RemoteObject, RemotePage } from './cloud-storage-provider';
 import { listAll } from './provider-utils.ts';
 export { listAll } from './provider-utils.ts';
 
 export interface TokenSource { accessToken(forceRefresh?: boolean, rejectedToken?: string): Promise<string>; }
-export interface BaiduRequestPolicy { apiTimeoutMs?: number; transferTimeoutMs?: number; signal?: AbortSignal; onRetry?: (waitedMs: number) => void; maxFileSize?: number; }
+export interface BaiduRequestPolicy { apiTimeoutMs?: number; transferTimeoutMs?: number; signal?: AbortSignal; onRetry?: (waitedMs: number) => void; maxFileSize?: number; chunkConcurrency?: number; uploadSlots?: RequestPool; }
 const XPAN = 'https://pan.baidu.com/rest/2.0/xpan/';
 const CHUNK = 4 * 1024 * 1024;
 export class BaiduProvider implements CloudStorageProvider {
@@ -18,6 +21,7 @@ export class BaiduProvider implements CloudStorageProvider {
   private verified = new Map<string, { fingerprint: string; hash: string }>();
   private onActivity: (phase: 'verifying' | 'downloading') => void;
   private requestPolicy: BaiduRequestPolicy;
+  private uploadSlots: RequestPool;
   private pendingDirectories = new Map<string, Promise<void>>();
   private pendingWrites = new Map<string, { hash: string; operation: Promise<void>; observers: Set<TransferObserver>; latest: ObjectTransferProgress }>();
   private pendingLookups = new Map<string, Promise<RemoteObject[]>>();
@@ -26,6 +30,8 @@ export class BaiduProvider implements CloudStorageProvider {
     onActivity: (phase: 'verifying' | 'downloading') => void = () => {}, requestPolicy: BaiduRequestPolicy = {}) {
     this.root = appRoot(root); this.transport = transport; this.auth = auth; this.active = active;
     this.requestPolicy = requestPolicy;
+    if (!validChunkConcurrency(requestPolicy.chunkConcurrency ?? 1)) throw new VaultSailError('configuration', '分片并发必须为 1–4。');
+    this.uploadSlots = requestPolicy.uploadSlots ?? new RequestPool(8);
     checkSize(0, requestPolicy.maxFileSize);
     this.onActivity = phase => { try { onActivity(phase); } catch { /* A progress view cannot affect transfer integrity. */ } };
   }
@@ -48,7 +54,8 @@ export class BaiduProvider implements CloudStorageProvider {
     const fingerprint = this.fingerprint(object); const verified = this.verified.get(object.path);
     return fingerprint && verified?.fingerprint === fingerprint ? verified.hash : undefined;
   }
-  private async api(endpoint: string, params: Record<string, string>, form?: Record<string, string>, body?: ArrayBuffer, contentType?: string): Promise<Record<string, unknown>> {
+  private async api(endpoint: string, params: Record<string, string>, form?: Record<string, string>, body?: ArrayBuffer, contentType?: string,
+    activity?: Pick<RequestPolicy, 'onPending' | 'onQueued' | 'onStarted'>): Promise<Record<string, unknown>> {
     const sliceUpload = endpoint === 'https://d.pcs.baidu.com/rest/2.0/pcs/superfile2' && params.method === 'upload';
     const stage = sliceUpload ? '上传文件分片' : params.method === 'uinfo' ? '读取百度账号' : params.method === 'list' ? '读取云端目录'
       : params.method === 'precreate' ? '申请文件上传' : params.method === 'filemetas' ? '读取下载信息'
@@ -62,6 +69,8 @@ export class BaiduProvider implements CloudStorageProvider {
           body: form ? new URLSearchParams(form).toString() : body }, true, {
           timeoutMs: sliceUpload ? this.requestPolicy.transferTimeoutMs ?? 120_000 : this.requestPolicy.apiTimeoutMs ?? 30_000,
           signal: this.requestPolicy.signal,
+          beforeStart: () => this.guard(),
+          ...activity,
         });
         this.guard(); const value = apiSuccess(response.json, sliceUpload ? 'pcs-upload' : 'xpan');
         if (response.status >= 400) throw new VaultSailError('http', `接口请求未通过（HTTP ${response.status}）。`);
@@ -74,9 +83,9 @@ export class BaiduProvider implements CloudStorageProvider {
     }
     throw new VaultSailError('authentication', '令牌刷新后仍不可用，请重新授权。');
   }
-  private async retry<T>(operation: () => Promise<T>): Promise<T> {
+  private async retry<T>(operation: () => Promise<T>, options: { onWait?: (until: number, nextAttempt: number) => void; guard?: () => void; } = {}): Promise<T> {
     for (let attempt = 0; ; attempt++) {
-      this.guard(); try { return await operation(); }
+      this.guard(); options.guard?.(); try { return await operation(); }
       catch (error) {
         if (!(error instanceof VaultSailError) || !error.retryable || attempt >= 3) throw error;
         this.guard();
@@ -84,10 +93,12 @@ export class BaiduProvider implements CloudStorageProvider {
         // backoff instead of keeping the task busy until the countdown expires.
         let remaining = Math.max(error.retryAfter, 1000 * 2 ** attempt);
         const started = Date.now();
+        this.transport.cooldown?.(started + remaining);
+        try { options.onWait?.(started + remaining, attempt + 2); } catch { /* UI only. */ }
         try {
           while (remaining > 0) {
             const interval = Math.min(remaining, 250);
-            await sleep(interval, this.requestPolicy.signal); this.guard(); remaining -= interval;
+            await sleep(interval, this.requestPolicy.signal); this.guard(); options.guard?.(); remaining -= interval;
           }
         } finally { try { this.requestPolicy.onRetry?.(Math.max(0, Date.now() - started)); } catch { /* Diagnostics are advisory. */ } }
       }
@@ -233,14 +244,15 @@ export class BaiduProvider implements CloudStorageProvider {
       this.guard(); link.searchParams.set('access_token', await this.auth.accessToken()); this.guard();
       let response;
       try { response = await request(this.transport, { url: link.toString(), headers: { 'User-Agent': 'pan.baidu.com' } }, false,
-        { timeoutMs: this.requestPolicy.transferTimeoutMs ?? 120_000, signal: this.requestPolicy.signal }); }
+        { timeoutMs: this.requestPolicy.transferTimeoutMs ?? 120_000, signal: this.requestPolicy.signal, beforeStart: () => this.guard() }); }
       catch (error) { this.downloadLinks.delete(path); throw error; }
       this.guard(); if (response.bytes.byteLength !== file.size) throw new VaultSailError('integrity', '下载长度校验失败，未应用文件。');
       return response.bytes;
     });
   }
   private observe(observer: TransferObserver | undefined, progress: ObjectTransferProgress): void {
-    try { observer?.({ ...progress }); } catch { /* A detached view cannot interrupt an immutable write. */ }
+    try { observer?.({ ...progress, ...(progress.activeParts ? { activeParts: [...progress.activeParts] } : {}),
+      ...(progress.waitingParts ? { waitingParts: progress.waitingParts.map(part => ({ ...part })) } : {}) }); } catch { /* A detached view cannot interrupt an immutable write. */ }
   }
   async writeImmutable(path: string, data: ArrayBuffer, onProgress?: TransferObserver): Promise<void> {
     relativePath(path); checkSize(data.byteLength, this.bodyLimit(path)); this.guard(); const expected = hash(data);
@@ -285,33 +297,75 @@ export class BaiduProvider implements CloudStorageProvider {
     if (!blocks.length) blocks.push(bytesToHex(md5(new Uint8Array())));
     let firstAttempt = true;
     let attempt = 0;
+    let sessionCreated = false;
     await this.retry(async () => {
       if (!firstAttempt && await verify(true)) return;
       firstAttempt = false;
-      report({ stage: 'preparing', uploadedBytes: 0, transferredBytes: 0, completedParts: 0, preparedParts: blocks.length, currentPart: undefined, attempt: ++attempt });
+      report({ stage: 'preparing', uploadedBytes: 0, transferredBytes: 0, completedParts: 0, preparedParts: blocks.length, currentPart: undefined, activeParts: [], waitingParts: [], retryAt: undefined, waitingForSlot: false, requestPending: false, retryCount: 0, attempt: ++attempt });
       try {
         const base = { path: this.absolute(path), size: String(data.byteLength), isdir: '0', rtype: '0', block_list: JSON.stringify(blocks) };
         const pre = await this.api(XPAN + 'file', { method: 'precreate' }, { ...base, autoinit: '1' });
         if (pre.return_type === 2) { if (!await verify()) throw new VaultSailError('visibility', '秒传结果尚不可见，请稍后重试。', true); return; }
         if (typeof pre.uploadid !== 'string' || !pre.uploadid || !Array.isArray(pre.block_list) || new Set(pre.block_list).size !== pre.block_list.length) throw new VaultSailError('response', '预上传响应缺少有效分片信息。');
         if (pre.block_list.some(index => !Number.isInteger(index) || index < 0 || index >= blocks.length)) throw new VaultSailError('response', '接口返回无效分片序号。');
+        sessionCreated = true;
         const requested = new Set<number>(pre.block_list as number[]), acknowledged = new Set<number>(); let acknowledgedBytes = 0;
         for (let index = 0; index < blocks.length; index++) if (!requested.has(index)) { acknowledged.add(index); acknowledgedBytes += Math.max(0, Math.min(CHUNK, data.byteLength - index * CHUNK)); }
         report({ stage: 'uploading', uploadedBytes: acknowledgedBytes, completedParts: acknowledged.size });
-        for (const index of pre.block_list) {
-          if (!Number.isInteger(index) || index < 0 || index >= blocks.length) throw new VaultSailError('response', '接口返回无效分片序号。');
-          const boundary = 'vaultsail-' + uuid();
-          const head = new TextEncoder().encode(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="chunk"\r\nContent-Type: application/octet-stream\r\n\r\n`);
-          const tail = new TextEncoder().encode(`\r\n--${boundary}--\r\n`); const chunk = source.subarray(index * CHUNK, (index + 1) * CHUNK);
-          const body = new Uint8Array(head.length + chunk.length + tail.length); body.set(head); body.set(chunk, head.length); body.set(tail, head.length + chunk.length);
-          report({ stage: 'uploading', currentPart: index + 1 });
-          const result = await this.api('https://d.pcs.baidu.com/rest/2.0/pcs/superfile2', { method: 'upload', type: 'tmpfile', path: this.absolute(path), uploadid: pre.uploadid, partseq: String(index) }, undefined, body.buffer, 'multipart/form-data; boundary=' + boundary);
-          if (String(result.md5).toLowerCase() !== blocks[index]) throw new VaultSailError('integrity', '上传分片 Hash 不一致。');
-          acknowledged.add(index); acknowledgedBytes += chunk.byteLength;
-          report({ uploadedBytes: acknowledgedBytes, transferredBytes: (progress.transferredBytes ?? 0) + chunk.byteLength, completedParts: acknowledged.size, currentPart: undefined });
-        }
+        const activeParts = new Set<number>(), queuedParts = new Set<number>(), pendingParts = new Set<number>();
+        const waiting = new Map<number, { part: number; until: number; attempt: number }>(); let retries = 0; let batchFailure: unknown;
+        const detail = () => { const active = [...activeParts].sort((a, b) => a - b); report({ activeParts: active, currentPart: active[0],
+          waitingParts: [...waiting.values()], waitingForSlot: queuedParts.size > 0, requestPending: pendingParts.size > 0, retryCount: retries }); };
+        const check = () => { this.guard(); if (batchFailure) throw batchFailure; };
+        await mapConcurrent(pre.block_list as number[], this.requestPolicy.chunkConcurrency ?? 1, async index => {
+          const part = index + 1;
+          try {
+            await this.retry(async () => {
+              check(); waiting.delete(part); queuedParts.add(part); detail();
+              let release: (() => void) | undefined; const natives: Promise<void>[] = []; let nativeCount = 0;
+              try {
+                release = await this.uploadSlots.acquire(this.requestPolicy.signal, this.requestPolicy.transferTimeoutMs ?? 120000);
+                check();
+                const boundary = 'vaultsail-' + uuid();
+                const head = new TextEncoder().encode(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="chunk"\r\nContent-Type: application/octet-stream\r\n\r\n`);
+                const tail = new TextEncoder().encode(`\r\n--${boundary}--\r\n`); const chunk = source.subarray(index * CHUNK, (index + 1) * CHUNK);
+                const body = new Uint8Array(head.length + chunk.length + tail.length); body.set(head); body.set(chunk, head.length); body.set(tail, head.length + chunk.length);
+                let result;
+                try { result = await this.api('https://d.pcs.baidu.com/rest/2.0/pcs/superfile2', { method: 'upload', type: 'tmpfile', path: this.absolute(path), uploadid: pre.uploadid as string, partseq: String(index) }, undefined, body.buffer, 'multipart/form-data; boundary=' + boundary, {
+                  onQueued: () => { queuedParts.add(part); activeParts.delete(part); detail(); },
+                  onStarted: () => { queuedParts.delete(part); activeParts.add(part); detail(); },
+                  onPending: settled => { nativeCount++; const done = settled.then(() => { nativeCount--; }); natives.push(done); },
+                }); } catch (error) {
+                  if (error instanceof VaultSailError && error.code === 'network') throw new VaultSailError('write-timeout', '分片请求异常，远端结果待核验；本轮未提交文件，任务已保留。');
+                  throw error;
+                }
+                if (String(result.md5).toLowerCase() !== blocks[index]) throw new VaultSailError('integrity', '上传分片 Hash 不一致。');
+                check();
+                if (!acknowledged.has(index)) { acknowledged.add(index); acknowledgedBytes += chunk.byteLength;
+                  report({ uploadedBytes: acknowledgedBytes, transferredBytes: (progress.transferredBytes ?? 0) + chunk.byteLength, completedParts: acknowledged.size }); }
+              } catch (error) {
+                // Stop sibling workers before draining an uncertain native write.
+                // A timed-out request may otherwise hold this worker while siblings start more slices.
+                if (!(error instanceof VaultSailError) || !error.retryable) batchFailure ??= error;
+                throw error;
+              } finally {
+                if (nativeCount) { pendingParts.add(part); detail(); }
+                await Promise.allSettled(natives); release?.();
+                pendingParts.delete(part); activeParts.delete(part); queuedParts.delete(part); detail();
+              }
+            }, { guard: check, onWait: (until, nextAttempt) => { retries++; waiting.set(part, { part, until, attempt: nextAttempt }); detail(); } });
+          } catch (error) {
+            const failure = error instanceof VaultSailError && error.retryable ? new VaultSailError(error.code, error.message, false, error.retryAfter) : error;
+            batchFailure ??= failure; waiting.delete(part); detail(); throw failure;
+          }
+        });
         report({ stage: 'committing', currentPart: undefined });
-        const result = await this.api(XPAN + 'file', { method: 'create' }, { ...base, uploadid: pre.uploadid });
+        const result = await this.retry(async () => {
+          report({ retryAt: undefined });
+          try { return await this.api(XPAN + 'file', { method: 'create' }, { ...base, uploadid: pre.uploadid as string }); }
+          catch (error) { if (error instanceof VaultSailError && error.retryable && await verify(true)) return undefined; throw error; }
+        }, { onWait: until => report({ stage: 'committing', retryAt: until, retryCount: (progress.retryCount ?? 0) + 1 }) });
+        if (!result) return;
         if (result.path !== this.absolute(path) || result.size !== data.byteLength) throw new VaultSailError('response', '创建文件结果与请求不一致。');
         const id = typeof result.fs_id === 'string' && /^\d+$/.test(result.fs_id) ? result.fs_id
           : typeof result.fs_id === 'number' && Number.isSafeInteger(result.fs_id) ? String(result.fs_id) : undefined;
@@ -325,8 +379,9 @@ export class BaiduProvider implements CloudStorageProvider {
           throw error;
         }
         if (error instanceof VaultSailError && (error.retryable || error.code === 'exists')) { if (await verify(true)) return; }
+        if (sessionCreated && error instanceof VaultSailError && error.retryable) throw new VaultSailError(error.code, error.message, false, error.retryAfter);
         throw error;
       }
-    });
+    }, { onWait: until => report({ retryAt: until, retryCount: (progress.retryCount ?? 0) + 1 }) });
   }
 }

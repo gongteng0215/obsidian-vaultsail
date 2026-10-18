@@ -48,6 +48,8 @@ if (params.get('view') === 'transfers') {
     timings:{[progress.path]:{stage:'uploading',since:now-50000,elapsedMs:50000,stages:{preparing:4300,uploading:50000},sourcePreparationMs:5200,bytesPerSecond:838860,uploadRemainingSeconds:264}},bytesPerSecond:838860,historyWarning:false};
   if (params.get('phase') === 'verifying') { sample.progress.phase='verifying'; sample.progress.uploads[0].stage='verifying'; sample.progress.uploads[0].uploadedBytes=355100000; sample.progress.uploads[0].completedParts=85; sample.timings[progress.path].stage='verifying'; sample.timings[progress.path].elapsedMs=12000; sample.bytesPerSecond=0; }
   if (params.get('phase') === 'paused') { sample.busy=false; sample.task.status='paused'; sample.progress.phase='paused'; sample.task.files.forEach(row=>{if(row.state==='running')row.state='paused';if(row.state==='queued')row.state='not-run';});sample.bytesPerSecond=0; }
+  if (params.get('phase') === 'parallel') sample.progress.uploads[0].activeParts=[33,34];
+  if (params.get('phase') === 'retry') { sample.progress.uploads[0].activeParts=[];sample.progress.uploads[0].waitingParts=[{part:33,until:now+30000,attempt:2}];sample.progress.uploads[0].retryCount=1;sample.bytesPerSecond=0;delete sample.timings[progress.path].bytesPerSecond; }
   const host = document.createElement('section'); document.querySelector('#settings-host').append(host);
   new TransferCenterPanel(host,{snapshot:()=>sample,subscribe:()=>()=>{},refresh:async()=>{},sync:()=>{},pause:()=>{sample.pauseRequested=true;},resume:()=>{},history:()=>{}});
 } else {

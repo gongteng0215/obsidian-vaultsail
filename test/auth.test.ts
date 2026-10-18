@@ -27,9 +27,11 @@ test('device authorization honors pending and slow_down and persists one private
 });
 test('cancelled authorization response cannot save tokens', async () => {
   let finish!: (value: HttpResponse) => void;
-  const { auth, map } = setup(async request => request.url.includes('/device/code') ? response(device) : new Promise(resolve => { finish = resolve; }), async () => {});
+  let pollStarted!: () => void;
+  const started = new Promise<void>(resolve => { pollStarted = resolve; });
+  const { auth, map } = setup(async request => request.url.includes('/device/code') ? response(device) : new Promise(resolve => { finish = resolve; pollStarted(); }), async () => {});
   const pending = auth.connect(() => {});
-  for (let i = 0; i < 10 && !finish; i++) await Promise.resolve();
+  await started;
   auth.cancel(); finish(response(tokens)); await assert.rejects(pending, { code: 'cancelled' }); assert.equal(map.size, 1);
 });
 test('configuration changes invalidate late device response', async () => {

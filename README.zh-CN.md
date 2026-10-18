@@ -4,7 +4,7 @@
 
 [English](README.md) | **简体中文**
 
-本地开发预览 **0.2.6**：新增独立传输中心与上传准备优化，尚未发布社区。用法与边界见 [预览说明](docs/releases/0.2.6.md)。
+本地开发预览 **0.2.7**：在独立传输中心基础上增加分片并发、失败片单独重试及共享请求与缓冲额度，尚未发布社区。用法、模拟对比与边界见 [预览说明](docs/releases/0.2.7.md)。
 
 [社区插件页面](https://community.obsidian.md/plugins/vaultsail) · [下载 0.2.5](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.5) · [版本说明](docs/releases/0.2.5.md) · [版本规划](docs/ROADMAP.zh-CN.md) · [反馈问题](https://github.com/gongteng0215/obsidian-vaultsail/issues)
 

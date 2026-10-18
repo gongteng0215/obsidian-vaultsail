@@ -28,6 +28,8 @@ export interface ObjectTransferProgress {
   /** Newly acknowledged request payload in this attempt, excluding server-reused parts. */
   transferredBytes?: number;
   currentPart?: number; preparedParts?: number; attempt: number;
+  activeParts?: number[]; waitingParts?: { part: number; until: number; attempt: number }[];
+  retryCount?: number; retryAt?: number; waitingForSlot?: boolean; requestPending?: boolean;
 }
 export type TransferObserver = (progress: ObjectTransferProgress) => void;
 export interface CloudStorageProvider {

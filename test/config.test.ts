@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { effectiveFileLimit, migrateSettings } from '../src/config.ts';
+test('chunk parallelism defaults to two and only accepts the device-local range one through four', () => {
+  assert.equal(migrateSettings({}).uploadChunkConcurrency, 2);
+  for (const value of [1, 2, 3, 4]) assert.equal(migrateSettings({ uploadChunkConcurrency: value }).uploadChunkConcurrency, value);
+  for (const value of [0, 5, -1, 2.5, '4', null]) assert.equal(migrateSettings({ uploadChunkConcurrency: value }).uploadChunkConcurrency, 2);
+});
 
 test('desktop defaults to 512 MiB; device preference is validated and mobile stays at 20 MiB', () => {
   assert.equal(effectiveFileLimit(migrateSettings({}), false), 512 * 1024 * 1024);

@@ -6,17 +6,20 @@ export interface VaultSailSettings {
   pendingVaultName?: string;
   sessionRef?: string;
   transferConcurrency: number;
+  uploadChunkConcurrency: number;
   maxFileMiB: number;
   autoSyncEnabled: boolean; remotePollSeconds: number;
 }
 export const DEFAULT_APP_DIRECTORY = '/apps/VaultSail';
-export const DEFAULT_SETTINGS: VaultSailSettings = { providerId: 'none', remoteVaultId: '', appKey: '', appDirectory: DEFAULT_APP_DIRECTORY, secretRef: '', experimentalSync: false, deletionEnabled: false, transferConcurrency: DEFAULT_TRANSFER_CONCURRENCY, maxFileMiB: 512, autoSyncEnabled: false, remotePollSeconds: 60 };
+export const DEFAULT_SETTINGS: VaultSailSettings = { providerId: 'none', remoteVaultId: '', appKey: '', appDirectory: DEFAULT_APP_DIRECTORY, secretRef: '', experimentalSync: false, deletionEnabled: false, transferConcurrency: DEFAULT_TRANSFER_CONCURRENCY, uploadChunkConcurrency: 2, maxFileMiB: 512, autoSyncEnabled: false, remotePollSeconds: 60 };
+export function validChunkConcurrency(value: unknown): value is number { return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 4; }
 export function validFileMiB(value: unknown): value is number { return typeof value === 'number' && Number.isInteger(value) && value >= 20 && value <= 512; }
 export function effectiveFileLimit(settings: VaultSailSettings, mobile: boolean): number { return (mobile ? 20 : settings.maxFileMiB) * 1024 * 1024; }
 export function migrateSettings(value: unknown): VaultSailSettings {
   const source = value && typeof value === 'object' ? value as Record<string, unknown> : {};
   const result: VaultSailSettings = { ...DEFAULT_SETTINGS };
   if (validConcurrency(source.transferConcurrency)) result.transferConcurrency = source.transferConcurrency;
+  if (validChunkConcurrency(source.uploadChunkConcurrency)) result.uploadChunkConcurrency = source.uploadChunkConcurrency;
   if (validFileMiB(source.maxFileMiB)) result.maxFileMiB = source.maxFileMiB;
   result.autoSyncEnabled = source.autoSyncEnabled === true;
   if (typeof source.remotePollSeconds === 'number' && Number.isInteger(source.remotePollSeconds) && source.remotePollSeconds >= 30 && source.remotePollSeconds <= 300) result.remotePollSeconds = source.remotePollSeconds;

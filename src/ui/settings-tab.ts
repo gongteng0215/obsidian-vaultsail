@@ -217,8 +217,13 @@ export class VaultSailSettingTab extends PluginSettingTab {
       .addText(text => { text.inputEl.type = 'number'; text.inputEl.min = '20'; text.inputEl.max = '512'; text.inputEl.step = '1'; text.inputEl.setAttribute('aria-label', '单文件大小上限'); text.setValue(sizeDraft).setDisabled(p.busy || Platform.isMobile).onChange(value => { sizeDraft = value; }); })
       .addButton(button => button.setButtonText('保存大小上限').setDisabled(p.busy || Platform.isMobile).onClick(() => { void p.setFileMiB(Number(sizeDraft)).catch(error => new Notice(safeMessage(error))); }));
     let concurrencyDraft = String(p.settings.transferConcurrency);
+    new Setting(transferCard).setName('单文件分片并发')
+      .setDesc(Platform.isMobile ? '移动端固定为 1 片。本机文件上限保持 20 MiB。' : '本机预览：默认 2，可选 1–4。与其他请求共享总上限；遇到限流会等待。设为 1 可对比串行上传。')
+      .addDropdown(dropdown => dropdown.addOptions({ '1': '1 片', '2': '2 片（默认）', '3': '3 片', '4': '4 片' })
+        .setValue(String(Platform.isMobile ? 1 : p.settings.uploadChunkConcurrency)).setDisabled(p.busy || Platform.isMobile)
+        .onChange(value => { void p.setUploadChunkConcurrency(Number(value)).catch(error => new Notice(safeMessage(error))); }));
     const concurrencySetting = new Setting(transferCard).setName('同时传输的文件数')
-      .setDesc(`可自行输入 1–${MAX_TRANSFER_CONCURRENCY} 之间的整数，默认 ${DEFAULT_TRANSFER_CONCURRENCY}。大附件自动减少同时传输数量，修改不影响账号或云端库绑定。`);
+      .setDesc(`可输入 1–${MAX_TRANSFER_CONCURRENCY}，默认 ${DEFAULT_TRANSFER_CONCURRENCY}。也是本库所有百度请求共享的上限；分片不会成倍突破此上限。大附件一次一个。`);
     concurrencySetting.addText(text => {
       text.inputEl.type = 'number'; text.inputEl.min = '1'; text.inputEl.max = String(MAX_TRANSFER_CONCURRENCY); text.inputEl.step = '1';
       text.inputEl.setAttribute('inputmode', 'numeric'); text.inputEl.setAttribute('aria-label', '传输并发数');

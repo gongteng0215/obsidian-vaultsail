@@ -19,6 +19,8 @@ test('upload rate excludes reused bytes, deduplicates shared content, resets att
   assert.equal(telemetry.timing(file.path, 3000)?.bytesPerSecond, 1000);
   assert.equal(telemetry.timing(file.path, 3000)?.uploadRemainingSeconds, 8);
   assert.equal(telemetry.rate(3000), 1000, 'two observers of one shared write count once');
+  telemetry.observe(progress({ ...file, uploadedBytes: 2000, transferredBytes: 2000, activeParts: [], waitingParts: [{ part: 2, until: 9000, attempt: 2 }] }), 3500);
+  assert.equal(telemetry.timing(file.path, 3500)?.bytesPerSecond, undefined, 'a fully blocked upload has no current speed or ETA');
   telemetry.observe(progress({ ...file, attempt: 2 }), 4000);
   assert.equal(telemetry.timing(file.path, 4000)?.bytesPerSecond, undefined);
   telemetry.observe(progress({ ...file, stage: 'verifying', uploadedBytes: 10000, attempt: 2 }), 5000);
@@ -53,6 +55,11 @@ test('transfer center keeps file rows, focus drafts and expanded details through
   assert.equal(host.querySelector('[data-file-id=video]'), row); assert.equal(details.hasAttribute('open'), true); assert.equal(search.value, 'video');
   assert.match(row.textContent!, /上传 40%/); assert.equal((row.querySelector('progress') as any).value, 4000);
   snapshot.progress!.uploads![0].attempt = 2; panel.render(); assert.match(row.textContent!, /第 2 次尝试/);
+  snapshot.progress!.uploads![0].activeParts = [3, 4]; panel.render(); assert.match(row.textContent!, /正在传第 3、4 片/);
+  snapshot.progress!.uploads![0].activeParts = [];
+  snapshot.progress!.uploads![0].waitingParts = [{ part: 3, until: Date.now() + 30000, attempt: 2 }]; panel.render();
+  assert.match(row.textContent!, /等待重试/); assert.match(row.textContent!, /秒后重试（1 片等待）/);
+  snapshot.progress!.uploads![0].requestPending = true; panel.render(); assert.match(row.textContent!, /等待请求结束/);
   snapshot.progress!.uploads![0] = { ...file, stage: 'verifying', uploadedBytes: 10000, completedParts: 5 }; panel.render();
   assert.match(row.textContent!, /回读校验中/); assert.equal(snapshot.task!.files[0].state, 'running'); assert.match(host.querySelector('.vs-transfer-metrics')!.textContent!, /已完成 0 \/ 2/);
   snapshot.task!.files[0].state = 'succeeded'; snapshot.progress!.uploads = []; panel.render();

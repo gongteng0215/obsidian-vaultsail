@@ -23,9 +23,11 @@ export function formatUpload(upload: FileUploadProgress): string {
   const labels = { preparing: '准备附件与分片', uploading: '上传分片', committing: '提交云端文件', verifying: '回读并校验（等待完整响应）', verified: '内容校验通过，等待发布记录', publishing: '发布版本记录' };
   const percent = upload.totalBytes ? Math.floor(Math.min(1, upload.uploadedBytes / upload.totalBytes) * 100) : upload.completedParts === upload.totalParts && upload.totalParts > 0 ? 100 : 0;
   const parts = upload.totalParts ? ` · 分片 ${upload.completedParts}/${upload.totalParts}` : '';
-  const current = upload.currentPart ? ` · 正在传第 ${upload.currentPart} 片` : '';
+  const current = upload.activeParts?.length ? ` · 正在传第 ${upload.activeParts.join('、')} 片` : upload.currentPart ? ` · 正在传第 ${upload.currentPart} 片` : '';
+  const until = Math.max(upload.retryAt ?? 0, ...(upload.waitingParts?.map(part => part.until) ?? []));
+  const retry = until ? ` · ${Math.max(0, Math.ceil((until - Date.now()) / 1000))} 秒后重试` : '';
   const preparing = upload.stage === 'preparing' && upload.preparedParts !== undefined ? ` · 已准备 ${upload.preparedParts}/${upload.totalParts} 片` : '';
-  return `${labels[upload.stage]}${upload.attempt > 1 ? ` · 第 ${upload.attempt} 次尝试` : ''}\n已确认上传 ${formatBytes(upload.uploadedBytes)} / ${formatBytes(upload.totalBytes)} · ${percent}%${parts}${current}${preparing}`;
+  return `${upload.requestPending ? '等待原生请求结束，结果待核验' : labels[upload.stage]}${upload.attempt > 1 ? ` · 第 ${upload.attempt} 次尝试` : ''}\n已确认上传 ${formatBytes(upload.uploadedBytes)} / ${formatBytes(upload.totalBytes)} · ${percent}%${parts}${current}${preparing}${retry}`;
 }
 export function formatProgress(progress: SyncProgress, now = Date.now()): string {
   const ended = !progressRunning(progress);
