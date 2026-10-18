@@ -4,7 +4,7 @@ Sync Obsidian notes and attachments through your own Baidu Netdisk account, with
 
 **English** | [简体中文](README.zh-CN.md)
 
-Local development preview **0.2.7** adds parallel upload slices, per-slice retries and shared request/buffer budgets, alongside the dedicated transfer center. It is not a community release; see [preview notes and simulated benchmarks](docs/releases/0.2.7.md).
+Local development preview **0.2.8** makes the transfer center and settings more compact, alongside the parallel upload improvements from 0.2.7. It is not a community release; see [compact layout notes](docs/releases/0.2.8.md) and [upload benchmarks](docs/releases/0.2.7.md).
 
 [Community plugin](https://community.obsidian.md/plugins/vaultsail) · [Download 0.2.5](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.5) · [Release notes](docs/releases/0.2.5.md) · [Version roadmap](docs/ROADMAP.md) · [Report an issue](https://github.com/gongteng0215/obsidian-vaultsail/issues)
 

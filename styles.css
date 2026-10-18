@@ -2,62 +2,66 @@
 .vaultsail-plan { max-height: 55vh; overflow-y: auto; }
 .vaultsail-plan-row { padding: 0.6em 0; border-bottom: 1px solid var(--background-modifier-border); overflow-wrap: anywhere; }
 .vaultsail-plan-row p { margin: 0.3em 0; color: var(--text-muted); }
-.vaultsail-workspace { --vs-accent: #38b5aa; --vs-ink: #102e36; width: 100%; min-width: 0; max-width: 1040px; box-sizing: border-box; margin: 0 auto; padding-inline: clamp(12px, 3%, 32px); padding-bottom: 28px; overflow-wrap: anywhere; container: vaultsail / inline-size; }
+.vaultsail-workspace { --vs-accent: #38b5aa; --vs-ink: #102e36; width: 100%; min-width: 0; max-width: 1280px; box-sizing: border-box; margin: 0 auto; padding-inline: clamp(10px, 2%, 20px); padding-block: 12px 16px; overflow-wrap: anywhere; container: vaultsail / inline-size; }
 /* Keep host settings centering from consuming the plugin width in maximized windows. */
-.modal.mod-settings .vertical-tab-content.vaultsail-workspace { padding-inline: clamp(12px, 3%, 32px); }
+.modal.mod-settings .vertical-tab-content.vaultsail-workspace { padding-inline: clamp(10px, 2%, 20px); padding-block: 12px 16px; }
 .vaultsail-workspace [hidden] { display: none !important; }
-.vaultsail-hero { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 20px; padding: clamp(12px, 4%, 28px); border-radius: 18px; background: linear-gradient(125deg, #122d3a, #164851); color: #effbfb; overflow: hidden; }
+.vaultsail-hero { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 8px; padding: 12px 14px; border-radius: 12px; background: linear-gradient(125deg, #122d3a, #164851); color: #effbfb; overflow: hidden; }
 .vaultsail-hero::after { content: ''; position: absolute; right: -40px; bottom: -115px; width: 310px; height: 250px; border: 1px solid #a9e4df26; border-radius: 50%; box-shadow: 0 0 0 32px #a9e4df08, 0 0 0 65px #a9e4df06; pointer-events: none; }
-.vaultsail-brand { display: flex; flex-wrap: wrap; min-width: 0; align-items: center; gap: 16px; position: relative; z-index: 1; }
+.vaultsail-brand { display: flex; flex-wrap: wrap; min-width: 0; align-items: center; gap: 10px; position: relative; z-index: 1; }
 .vaultsail-brand-copy { flex: 1 1 180px; min-width: 0; }
-.vaultsail-mark { width: 54px; height: 54px; flex: 0 0 54px; background: #9ce1d51a; border: 1px solid #9ce1d54d; border-radius: 15px; padding: 9px; color: #9ce1d5; }
+.vaultsail-mark { width: 40px; height: 40px; flex: 0 0 40px; background: #9ce1d51a; border: 1px solid #9ce1d54d; border-radius: 10px; padding: 6px; color: #9ce1d5; }
 .vaultsail-mark svg { width: 100%; height: 100%; }
 .vaultsail-eyebrow { display: block; font-size: 10px; font-weight: 700; letter-spacing: 1.7px; color: var(--text-muted); }
 .vaultsail-hero .vaultsail-eyebrow { color: #a5cdd0; }
-.vaultsail-workspace .vaultsail-brand-name { display: block; margin: 6px 0; font-size: 25px; font-weight: 650; letter-spacing: -0.5px; color: inherit; }
+.vaultsail-workspace .vaultsail-brand-name { display: block; margin: 3px 0 0; font-size: 21px; font-weight: 650; letter-spacing: -0.5px; color: inherit; }
 .vaultsail-workspace .vaultsail-brand-heading .setting-item-name { font-size: 13px; font-weight: 500; color: inherit; }
 .vaultsail-workspace .vaultsail-brand-heading { padding: 0; border: 0; margin: 6px 0; }
 .vaultsail-workspace .vaultsail-brand-heading .setting-item-info { margin: 0; }
 .vaultsail-brand p { margin: 0; color: #c2dadc; font-size: 13px; }
 .vaultsail-badge { position: relative; justify-self: end; max-width: 100%; padding: 6px 10px; border: 1px solid #a7d3d044; background: #0a253744; border-radius: 99px; font-size: 11px; color: #b9dadd; }
 .vaultsail-badge[data-status=connected] { color: #a6efcf; border-color: #a6efcf66; }
-.vaultsail-route { display: flex; grid-column: 1 / -1; min-width: 0; align-items: center; gap: 12px; margin-top: 0; font-size: 12px; position: relative; z-index: 1; }
-.vaultsail-route-local, .vaultsail-route-cloud { padding: 7px 12px; border: 1px solid #b4d6d333; border-radius: 7px; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vaultsail-route { display: flex; grid-column: 1 / -1; min-width: 0; align-items: center; gap: 8px; margin-top: 0; font-size: 12px; position: relative; z-index: 1; }
+.vaultsail-route-local, .vaultsail-route-cloud { padding: 4px 8px; border: 1px solid #b4d6d333; border-radius: 5px; max-width: 44%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vaultsail-route-arrow { color: #78cfc7; font-size: 20px; }
-.vaultsail-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 18px 0; gap: 14px; }
+.vaultsail-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 9px 0; gap: 10px; }
 .vaultsail-metric { border-right: 1px solid var(--background-modifier-border); padding: 0 12px; min-width: 0; }
 .vaultsail-metric:last-child { border: 0; }
-.vaultsail-metric span { display: block; color: var(--text-muted); font-size: 11px; margin-bottom: 5px; }
+.vaultsail-metric span { display: block; color: var(--text-muted); font-size: 11px; margin-bottom: 3px; }
 .vaultsail-metric strong { display: block; font-size: 13px; font-weight: 550; overflow-wrap: anywhere; }
-.vaultsail-notice { padding: 11px 14px; border-left: 3px solid var(--vs-accent); background: var(--background-secondary); border-radius: 0 7px 7px 0; font-size: 12px; line-height: 1.6; color: var(--text-muted); margin-bottom: 20px; }
-.vaultsail-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); min-width: 0; gap: 5px; padding: 4px; background: var(--background-secondary); border: 1px solid var(--background-modifier-border); border-radius: 11px; margin-bottom: 22px; }
-.vaultsail-tabs .vaultsail-tab { display: flex; min-width: 0; max-width: 100%; align-items: center; justify-content: center; gap: 8px; height: auto; padding: 11px 7px; white-space: normal; overflow-wrap: anywhere; border: 0; border-radius: 7px; box-shadow: none; background: transparent; color: var(--text-muted); }
+.vaultsail-notice { padding: 7px 10px; border-left: 3px solid var(--vs-accent); background: var(--background-secondary); border-radius: 0 7px 7px 0; font-size: 12px; line-height: 1.6; color: var(--text-muted); margin-bottom: 10px; }
+.vaultsail-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); min-width: 0; gap: 4px; padding: 3px; background: var(--background-secondary); border: 1px solid var(--background-modifier-border); border-radius: 9px; margin-bottom: 10px; }
+.vaultsail-tabs .vaultsail-tab { display: flex; min-width: 0; max-width: 100%; align-items: center; justify-content: center; gap: 8px; height: auto; padding: 7px; white-space: normal; overflow-wrap: anywhere; border: 0; border-radius: 6px; box-shadow: none; background: transparent; color: var(--text-muted); }
 .vaultsail-tab span { font-size: 10px; opacity: 0.65; }
 .vaultsail-tab strong { min-width: 0; font-size: 12px; font-weight: 600; }
 .vaultsail-tab[aria-selected=true] { background: var(--background-primary) !important; color: var(--text-normal) !important; box-shadow: 0 2px 5px #00000012 !important; }
 .vaultsail-tab[aria-selected=true] span { color: var(--vs-accent); opacity: 1; }
-.vaultsail-connect-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 18px; align-items: start; }
-.vaultsail-card { min-width: 0; padding: clamp(12px, 4%, 22px); border: 1px solid var(--background-modifier-border); border-radius: 13px; background: var(--background-primary); margin-bottom: 18px; }
-.vaultsail-workspace .vaultsail-card .setting-item.vaultsail-card-heading { padding: 0; margin: 8px 0; border: 0; }
+.vaultsail-connect-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 10px; align-items: start; }
+.vaultsail-card { min-width: 0; padding: 12px 14px; border: 1px solid var(--background-modifier-border); border-radius: 10px; background: var(--background-primary); margin-bottom: 10px; container: vs-card / inline-size; }
+.vaultsail-workspace .vaultsail-card .setting-item.vaultsail-card-heading { padding: 0; margin: 4px 0; border: 0; }
 .vaultsail-workspace .vaultsail-card-heading .setting-item-name { font-size: 17px; font-weight: 600; }
-.vaultsail-card-intro { color: var(--text-muted); margin: 0 0 18px; line-height: 1.65; font-size: 12px; }
-.vaultsail-workspace .vaultsail-card .setting-item { display: block; padding: 14px 0; border: 0; border-top: 1px solid var(--background-modifier-border); background: transparent; border-radius: 0; }
-.vaultsail-workspace .setting-item-info { min-width: 0; margin: 0 0 10px; }
+.vaultsail-card-intro { color: var(--text-muted); margin: 0 0 8px; line-height: 1.5; font-size: 12px; }
+.vaultsail-workspace .vaultsail-card .setting-item { display: block; padding: 8px 0; border: 0; border-top: 1px solid var(--background-modifier-border); background: transparent; border-radius: 0; }
+.vaultsail-workspace .setting-item-info { min-width: 0; margin: 0 0 6px; }
 .vaultsail-workspace .setting-item-name { font-size: 13px; font-weight: 550; }
-.vaultsail-workspace .setting-item-description { font-size: 11px; line-height: 1.65; margin-top: 4px; }
-.vaultsail-workspace .setting-item-control { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-start; min-width: 0; max-width: 100%; }
+.vaultsail-workspace .setting-item-description { font-size: 11px; line-height: 1.5; margin-top: 3px; }
+.vaultsail-workspace .setting-item-control { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-start; min-width: 0; max-width: 100%; }
 .vaultsail-workspace .setting-item-control > * { min-width: 0; max-width: 100%; box-sizing: border-box; }
-.vaultsail-workspace .setting-item-control input:not([type=checkbox]) { min-width: 0; width: 140px; flex: 1 1 140px; max-width: 100%; height: auto; min-height: 34px; font-size: var(--font-ui-small, 13px); }
-.vaultsail-workspace .setting-item-control button { flex: 0 1 auto; min-width: 0; max-width: 100%; height: auto; min-height: 32px; font-size: var(--font-ui-small, 13px); line-height: 1.4; padding: 6px 12px; white-space: normal; overflow-wrap: anywhere; }
+.vaultsail-workspace .setting-item-control input:not([type=checkbox]) { min-width: 0; width: 140px; flex: 1 1 140px; max-width: 100%; height: auto; min-height: 32px; font-size: var(--font-ui-small, 13px); }
+.vaultsail-workspace .setting-item-control button { flex: 0 1 auto; min-width: 0; max-width: 100%; height: auto; min-height: 30px; font-size: var(--font-ui-small, 13px); line-height: 1.4; padding: 4px 10px; white-space: normal; overflow-wrap: anywhere; }
 .vaultsail-workspace button.mod-cta { background: #25897f; color: #ffffff; }
 .vaultsail-workspace button:focus-visible, .vaultsail-workspace input:focus-visible { outline: 2px solid var(--vs-accent); outline-offset: 3px; }
-.vaultsail-advanced { margin: 18px 0; }
+.vaultsail-advanced { margin: 10px 0; }
 .vaultsail-advanced summary { cursor: pointer; color: var(--text-muted); font-size: 12px; padding: 10px 0; }
-.vaultsail-footer { text-align: center; font-size: 10px; line-height: 1.8; color: var(--text-muted); margin-top: 25px; }
+.vaultsail-footer { text-align: center; font-size: 10px; line-height: 1.6; color: var(--text-muted); margin-top: 12px; }
 .vaultsail-device-prompt { border: 1px solid var(--vs-accent); padding: 14px; border-radius: 10px; margin: 14px 0; background: var(--background-secondary); }
 .vaultsail-device-prompt p { font-size: 12px; line-height: 1.65; }
 .vaultsail-device-code { display: block; font-family: var(--font-monospace); font-size: 25px; letter-spacing: 4px; color: var(--vs-accent); margin: 12px 0; }
 @container vaultsail (max-width: 740px) { .vaultsail-connect-grid { grid-template-columns: minmax(0, 1fr); } }
+@container vs-card (min-width: 560px) {
+  .vaultsail-workspace .vaultsail-card .setting-item:not(.vaultsail-card-heading) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 0.9fr); align-items: center; gap: 12px; }
+  .vaultsail-workspace .vaultsail-card .setting-item-info { margin: 0; }
+}
 @container vaultsail (max-width: 560px) { .vaultsail-hero { grid-template-columns: minmax(0, 1fr); } .vaultsail-badge { justify-self: start; } }
 @container vaultsail (max-width: 450px) {
   .vaultsail-workspace .vaultsail-brand-name { font-size: 21px; } .vaultsail-eyebrow { font-size: 8px; letter-spacing: 1px; }
@@ -65,15 +69,20 @@
   .vaultsail-tab span { display: none; } .vaultsail-tab strong { font-size: 11px; }
 }
 @container vaultsail (max-width: 320px) { .vaultsail-metrics { grid-template-columns: minmax(0, 1fr); gap: 8px; } .vaultsail-metric { border-right: 0; border-bottom: 1px solid var(--background-modifier-border); padding: 8px 0; } }
-.vaultsail-progress-card { padding: 12px 16px; margin: 12px 0; border: 1px solid var(--background-modifier-border); border-radius: 12px; }
-.vaultsail-progress-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
+.vaultsail-progress-card { padding: 9px 12px; margin: 10px 0; border: 1px solid var(--background-modifier-border); border-radius: 10px; }
+.vaultsail-progress-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; margin: 5px 0; line-height: 1.5; }
+.vaultsail-progress-tools { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 4px 8px; }
+.vaultsail-workspace .vaultsail-progress-open { display: block; padding: 0; border: 0; background: transparent; border-radius: 0; }
+.vaultsail-progress-open .setting-item-info { display: none; }
+.vaultsail-progress-tools .vaultsail-progress-details:not([open]) { justify-self: end; }
+.vaultsail-progress-tools .vaultsail-progress-details[open] { grid-column: 1 / -1; }
 .vaultsail-performance-text { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-muted); font-size: 12px; line-height: 1.6; }
 .vaultsail-merge-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0; }
 .vaultsail-merge-source, .vaultsail-merge-block pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 250px; overflow-y: auto; }
 .vaultsail-merge-editor { display: block; width: 100%; min-height: 200px; resize: vertical; font-family: var(--font-monospace); }
 .vaultsail-merge-block { padding: 12px; border: 1px solid var(--background-modifier-border); border-radius: 8px; margin: 12px 0; }
 .vaultsail-merge-block button { margin: 4px; }
-.vaultsail-progress-meter { width: 100%; min-width: 0; max-width: 100%; height: 8px; accent-color: #43b6ad; }
+.vaultsail-progress-meter { display: block; width: 100%; min-width: 0; max-width: 100%; height: 6px; margin: 6px 0; accent-color: #43b6ad; }
 .vaultsail-progress-state { font-size: 11px; color: var(--text-muted); }
 .vaultsail-progress-card[aria-busy="true"] .vaultsail-progress-state::before { content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 7px; border-radius: 50%; background: #43b6ad; animation: vaultsail-progress-pulse 1.2s ease-in-out infinite; }
 @keyframes vaultsail-progress-pulse { 50% { opacity: 0.3; } }
@@ -107,56 +116,72 @@
 .vaultsail-upload-text { white-space: pre-wrap; line-height: 1.7; margin: 6px 0; }
 .vaultsail-upload-meter { display: block; width: 100%; height: 8px; accent-color: #43b6ad; }
 .vaultsail-upload-note { color: var(--text-muted); font-size: var(--font-smaller); margin: 6px 0; }
-.vaultsail-progress-details > summary { cursor: pointer; font-size: var(--font-ui-small); color: var(--text-muted); padding: 8px 0; }
-.vaultsail-transfer-center { --vs-transfer-accent: #25897f; --vs-transfer-highlight: #18776e; container: vs-transfer / inline-size; min-width: 0; box-sizing: border-box; padding: 20px; color: var(--text-normal); background: var(--background-primary); overflow: auto; overflow-wrap: anywhere; }
+.vaultsail-progress-details > summary { cursor: pointer; font-size: var(--font-ui-small); color: var(--text-muted); padding: 4px 0; }
+.vaultsail-transfer-center { --vs-transfer-accent: #25897f; --vs-transfer-highlight: #18776e; container: vs-transfer / inline-size; min-width: 0; box-sizing: border-box; padding: 12px; color: var(--text-normal); background: var(--background-primary); overflow: auto; overflow-wrap: anywhere; }
 .theme-dark .vaultsail-transfer-center { --vs-transfer-highlight: #7cd5cc; }
 .vaultsail-transfer-center * { box-sizing: border-box; }
-.vaultsail-transfer-center button { max-width: 100%; min-width: 0; height: auto; min-height: 32px; white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }
+.vaultsail-transfer-center button { max-width: 100%; min-width: 0; height: auto; min-height: 30px; white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }
 .vaultsail-transfer-center button.mod-cta { background: var(--vs-transfer-accent); color: #fff; }
-.vs-transfer-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 22px; }
+.vs-transfer-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+.vs-transfer-heading > div:first-child { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; }
 .vs-transfer-eyebrow { display: block; color: var(--text-muted); font-size: 10px; font-weight: 650; letter-spacing: 1.6px; }
-.vs-transfer-heading h2 { margin: 5px 0 0; font-size: 23px; font-weight: 650; }
-.vs-transfer-actions { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
-.vs-transfer-summary { padding: 18px; border: 1px solid var(--background-modifier-border); border-radius: 12px; background: var(--background-secondary); margin-bottom: 20px; }
+.vs-transfer-heading h2 { margin: 0; font-size: 20px; font-weight: 650; }
+.vs-transfer-actions { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.vs-transfer-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 10px; padding: 10px 12px; border: 1px solid var(--background-modifier-border); border-radius: 9px; background: var(--background-secondary); margin-bottom: 8px; }
 .vs-transfer-target { display: block; font-size: var(--font-ui-small); font-weight: 550; color: var(--text-muted); }
-.vs-transfer-status { font-size: 17px; font-weight: 600; margin: 10px 0 16px; }
+.vs-transfer-status { font-size: var(--font-ui-small); font-weight: 600; margin: 0; }
 .vs-transfer-status::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); margin-right: 8px; vertical-align: middle; }
 .vaultsail-transfer-center[data-running=true] .vs-transfer-status::before { background: #38b5aa; animation: vaultsail-progress-pulse 1.2s ease-in-out infinite; }
-.vs-transfer-metrics { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; font-size: var(--font-ui-small); font-variant-numeric: tabular-nums; }
-.vs-transfer-total, .vs-transfer-file-meter { display: block; min-width: 0; max-width: 100%; width: 100%; height: 6px; accent-color: var(--vs-transfer-accent); margin-top: 10px; appearance: none; border: 0; border-radius: 99px; overflow: hidden; }
+.vs-transfer-metrics { grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 8px; font-size: var(--font-ui-small); font-variant-numeric: tabular-nums; }
+.vs-transfer-total, .vs-transfer-file-meter { display: block; grid-column: 1 / -1; min-width: 0; max-width: 100%; width: 100%; height: 4px; accent-color: var(--vs-transfer-accent); margin: 0; appearance: none; border: 0; border-radius: 99px; overflow: hidden; }
 .vaultsail-transfer-center progress::-webkit-progress-bar { background: var(--background-modifier-border); border-radius: 99px; }
 .vaultsail-transfer-center progress::-webkit-progress-value { background: linear-gradient(90deg, #25897f, #4bbeb3); border-radius: 99px; }
 .vaultsail-transfer-center progress::-moz-progress-bar { background: var(--vs-transfer-accent); }
-.vs-transfer-muted { color: var(--text-muted); font-size: var(--font-ui-smaller); line-height: 1.6; margin: 12px 0 0; }
-.vs-transfer-filters { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
-.vs-transfer-filters button { box-shadow: none; background: transparent; color: var(--text-muted); font-size: var(--font-ui-small); padding: 6px 9px; border-radius: 6px; }
+.vs-transfer-muted { grid-column: 1 / -1; color: var(--text-muted); font-size: var(--font-ui-smaller); line-height: 1.5; margin: 0; }
+.vs-transfer-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 4px; }
+.vs-transfer-filters { display: flex; flex: 1 1 auto; flex-wrap: wrap; gap: 3px; min-width: 0; }
+.vs-transfer-filters button { box-shadow: none; background: transparent; color: var(--text-muted); font-size: var(--font-ui-small); padding: 4px 7px; border-radius: 5px; }
 .vs-transfer-filters button[aria-pressed=true] { background: var(--background-secondary); color: var(--text-normal); box-shadow: inset 0 -2px var(--vs-transfer-accent); }
-.vaultsail-transfer-center .vs-transfer-search { display: block; width: 100%; max-width: 100%; min-width: 0; min-height: 36px; margin-bottom: 12px; }
+.vaultsail-transfer-center .vs-transfer-search { display: block; flex: 0 1 210px; width: 210px; max-width: 100%; min-width: 0; min-height: 30px; margin: 0; }
 .vs-transfer-warning { color: var(--text-warning); white-space: pre-wrap; line-height: 1.6; font-size: var(--font-ui-small); }
-.vs-transfer-file { padding: 19px 0; border-bottom: 1px solid var(--background-modifier-border); }
-.vs-transfer-file-header { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: start; gap: 10px; }
-.vs-transfer-file-icon { display: grid; place-items: center; width: 30px; height: 34px; border-radius: 7px; background: var(--background-secondary); color: var(--text-muted); font-size: 20px; }
+.vs-transfer-file { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 4px 10px; padding: 9px 0; border-bottom: 1px solid var(--background-modifier-border); }
+.vs-transfer-file-header { grid-column: 1 / -1; display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: start; gap: 8px; }
+.vs-transfer-file-icon { display: grid; place-items: center; width: 26px; height: 30px; border-radius: 6px; background: var(--background-secondary); color: var(--text-muted); font-size: 18px; }
 .vs-transfer-file-icon::before { content: '↔'; }
 .vs-transfer-file[data-action=upload] .vs-transfer-file-icon::before { content: '↑'; color: var(--vs-transfer-highlight); }
 .vs-transfer-file[data-action=download] .vs-transfer-file-icon::before { content: '↓'; }
 .vs-transfer-file[data-state=succeeded] .vs-transfer-file-icon::before { content: '✓'; color: var(--text-success); }
 .vs-transfer-file-info { min-width: 0; }
-.vs-transfer-file-info strong { display: block; font-size: var(--font-ui-small); line-height: 1.5; font-weight: 600; }
-.vs-transfer-directory { display: block; color: var(--text-faint); font-size: var(--font-ui-smaller); line-height: 1.5; margin-top: 3px; }
-.vs-transfer-state { padding: 3px 7px; border-radius: 5px; background: var(--background-secondary); color: var(--text-muted); font-size: var(--font-ui-smaller); line-height: 1.5; max-width: 100%; }
+.vs-transfer-file-info strong { display: block; font-size: var(--font-ui-small); line-height: 1.4; font-weight: 600; }
+.vs-transfer-file-meta { display: flex; flex-wrap: wrap; gap: 2px 10px; min-width: 0; margin-top: 2px; font-size: var(--font-ui-smaller); line-height: 1.4; }
+.vs-transfer-directory { color: var(--text-faint); }
+.vs-transfer-state { padding: 2px 6px; border-radius: 5px; background: var(--background-secondary); color: var(--text-muted); font-size: var(--font-ui-smaller); line-height: 1.5; max-width: 100%; }
 .vs-transfer-file[data-state=running] .vs-transfer-state { color: var(--vs-transfer-highlight); }
 .vs-transfer-file[data-state=succeeded] .vs-transfer-state { color: var(--text-success); }
 .vs-transfer-file[data-state=failed] .vs-transfer-state, .vs-transfer-file[data-state=unconfirmed] .vs-transfer-state { color: var(--text-error); }
-.vs-transfer-action { display: block; font-size: var(--font-ui-smaller); color: var(--text-muted); margin-top: 10px; }
-.vs-transfer-file-note { font-size: var(--font-ui-small); margin: 9px 0 0; line-height: 1.65; }
-.vs-transfer-file-details { margin-top: 8px; color: var(--text-muted); font-size: var(--font-ui-smaller); line-height: 1.7; }
+.vs-transfer-action { color: var(--text-muted); }
+.vs-transfer-file-note { min-width: 0; font-size: var(--font-ui-small); margin: 0; line-height: 1.5; }
+.vs-transfer-file-details { min-width: 0; color: var(--text-muted); font-size: var(--font-ui-smaller); line-height: 1.5; }
+.vs-transfer-file-details[open] { grid-column: 1 / -1; }
+.vs-transfer-file-details > summary { margin-left: auto; }
 .vs-transfer-file-details summary, .vs-transfer-diagnostics summary { cursor: pointer; width: fit-content; }
-.vs-transfer-file-details p, .vs-transfer-diagnostics p { white-space: pre-wrap; margin: 8px 0; }
-.vs-transfer-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 18px 0; color: var(--text-muted); font-size: var(--font-ui-smaller); }
-.vs-transfer-diagnostics { padding-top: 12px; border-top: 1px solid var(--background-modifier-border); color: var(--text-muted); font-size: var(--font-ui-smaller); line-height: 1.7; }
+.vs-transfer-file-details p, .vs-transfer-diagnostics p { white-space: pre-wrap; margin: 5px 0; }
+.vs-transfer-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 10px 0; color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.vs-transfer-diagnostics { padding-top: 8px; border-top: 1px solid var(--background-modifier-border); color: var(--text-muted); font-size: var(--font-ui-smaller); line-height: 1.5; }
 .vs-transfer-empty { padding: 28px 4px; color: var(--text-muted); line-height: 1.8; font-size: var(--font-ui-small); }
-.vs-transfer-footnote { margin: 18px 0 0; color: var(--text-faint); font-size: var(--font-ui-smaller); line-height: 1.6; }
+.vs-transfer-footnote { margin: 8px 0 0; color: var(--text-faint); font-size: var(--font-ui-smaller); line-height: 1.5; }
 .vaultsail-transfer-center [hidden] { display: none !important; }
 .vaultsail-transfer-center :is(button, input, summary):focus-visible { outline: 2px solid var(--vs-transfer-accent); outline-offset: 2px; }
-@container vs-transfer (max-width: 400px) { .vs-transfer-heading { gap: 12px; } .vs-transfer-actions { width: 100%; } .vs-transfer-file-header { grid-template-columns: 30px minmax(0, 1fr); } .vs-transfer-state { grid-column: 2; justify-self: start; } .vs-transfer-summary { padding: 12px; } }
+@container vs-transfer (max-width: 450px) {
+  .vs-transfer-heading { gap: 6px; } .vs-transfer-actions { width: 100%; }
+  .vs-transfer-heading .vs-transfer-eyebrow { display: none; }
+  .vs-transfer-summary { grid-template-columns: minmax(0, 1fr); gap: 5px; padding: 9px; }
+  .vs-transfer-file-header { grid-template-columns: 26px minmax(0, 1fr); }
+  .vs-transfer-state { grid-column: 2; justify-self: start; }
+  .vaultsail-transfer-center .vs-transfer-search { flex: 1 1 100%; width: 100%; }
+}
+@media (pointer: coarse) {
+  .vaultsail-transfer-center button, .vaultsail-transfer-center .vs-transfer-search, .vaultsail-workspace .setting-item-control :is(button, input:not([type=checkbox]), select), .vaultsail-tabs .vaultsail-tab { min-height: 44px; }
+  .vs-transfer-file-details > summary, .vs-transfer-diagnostics > summary { min-height: 44px; display: flex; align-items: center; }
+}
 @media (prefers-reduced-motion: reduce) { .vaultsail-transfer-center[data-running=true] .vs-transfer-status::before { animation: none; } }

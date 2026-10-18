@@ -44,9 +44,10 @@ export class TransferCenterPanel {
     const metrics = summary.createDiv({ cls: 'vs-transfer-metrics' }); this.counts = metrics.createEl('span'); this.speed = metrics.createEl('span');
     this.meter = summary.createEl('progress', { cls: 'vs-transfer-total' }); this.meter.setAttribute('aria-label', '本轮已完成文件');
     this.queue = summary.createEl('p', { cls: 'vs-transfer-muted' });
-    const filters = host.createDiv({ cls: 'vs-transfer-filters' }); filters.setAttribute('role', 'group'); filters.setAttribute('aria-label', '按传输状态筛选');
+    const toolbar = host.createDiv({ cls: 'vs-transfer-toolbar' });
+    const filters = toolbar.createDiv({ cls: 'vs-transfer-filters' }); filters.setAttribute('role', 'group'); filters.setAttribute('aria-label', '按传输状态筛选');
     for (const [id, label] of Object.entries(FILTERS)) { const button = filters.createEl('button', { text: label }); this.buttons.set(id as Filter, button); button.addEventListener('click', () => { this.filter = id as Filter; this.page = 0; this.render(); }); }
-    this.search = host.createEl('input', { cls: 'vs-transfer-search' }); this.search.type = 'search'; this.search.placeholder = '搜索文件名或目录'; this.search.setAttribute('aria-label', '搜索传输文件');
+    this.search = toolbar.createEl('input', { cls: 'vs-transfer-search' }); this.search.type = 'search'; this.search.placeholder = '搜索文件名或目录'; this.search.setAttribute('aria-label', '搜索传输文件');
     this.search.addEventListener('input', () => { this.page = 0; this.render(); });
     this.warning = host.createEl('p', { cls: 'vs-transfer-warning' });
     this.list = host.createDiv({ cls: 'vs-transfer-list' }); this.list.setAttribute('role', 'list'); this.list.setAttribute('aria-label', '本轮传输文件');
@@ -68,9 +69,9 @@ export class TransferCenterPanel {
     const el = this.list.createDiv({ cls: 'vs-transfer-file' }); el.setAttribute('role', 'listitem'); el.setAttribute('data-file-id', id);
     const header = el.createDiv({ cls: 'vs-transfer-file-header' }); header.createEl('span', { cls: 'vs-transfer-file-icon' }).setAttribute('aria-hidden', 'true');
     const info = header.createDiv({ cls: 'vs-transfer-file-info' });
-    const name = info.createEl('strong'); const directory = info.createEl('span', { cls: 'vs-transfer-directory' });
+    const name = info.createEl('strong'); const meta = info.createDiv({ cls: 'vs-transfer-file-meta' });
+    const directory = meta.createEl('span', { cls: 'vs-transfer-directory' }); const action = meta.createEl('span', { cls: 'vs-transfer-action' });
     const state = header.createEl('span', { cls: 'vs-transfer-state' });
-    const action = el.createEl('span', { cls: 'vs-transfer-action' });
     const meter = el.createEl('progress', { cls: 'vs-transfer-file-meter' });
     const note = el.createEl('p', { cls: 'vs-transfer-file-note' });
     const details = el.createEl('details', { cls: 'vs-transfer-file-details' }); details.createEl('summary', { text: '详情' });
@@ -130,7 +131,7 @@ export class TransferCenterPanel {
     text(elements.state, label); elements.el.setAttribute('data-state', row.state); elements.el.setAttribute('data-action', row.action);
     const percent = upload ? upload.totalBytes ? Math.floor(Math.min(1, upload.uploadedBytes / upload.totalBytes) * 100) : upload.completedParts === upload.totalParts && upload.totalParts > 0 ? 100 : 0 : undefined;
     text(elements.action, `${HISTORY_ACTIONS[row.action]} · ${formatBytes(row.size)}${active && percent !== undefined ? ` · 上传 ${percent}%` : ''}${active && upload && upload.attempt > 1 ? ` · 第 ${upload.attempt} 次尝试` : ''}`);
-    elements.meter.hidden = !upload || row.state === 'unchanged' || row.state === 'skipped'; elements.meter.max = Math.max(1, upload?.totalBytes ?? 1);
+    elements.meter.hidden = !upload || ['succeeded', 'unchanged', 'skipped'].includes(row.state); elements.meter.max = Math.max(1, upload?.totalBytes ?? 1);
     elements.meter.value = upload?.totalBytes ? upload.uploadedBytes : percent === 100 ? 1 : 0;
     elements.meter.setAttribute('aria-label', `${row.path}：服务端已确认上传内容`);
     const rate = active && stage === 'uploading' ? timing?.bytesPerSecond : undefined;

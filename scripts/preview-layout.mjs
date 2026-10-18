@@ -56,7 +56,15 @@ if (params.get('view') === 'transfers') {
   const view = new VaultSailSettingTab(app, plugin); document.querySelector('#settings-host').append(view.containerEl); view.containerEl.classList.add('vertical-tab-content'); view.display();
 }
 for (const id of ['width','zoom','font']) { const input = document.getElementById(id); input.value = params.get(id) || input.value; input.addEventListener('input', update); }
-function update() { const width=Number(document.getElementById('width').value)||720, zoom=(Number(document.getElementById('zoom').value)||100)/100, font=(Number(document.getElementById('font').value)||100)/100; const shell=document.querySelector('#preview'); shell.style.width=width/zoom+'px';shell.style.zoom=zoom; document.documentElement.style.setProperty('--font-ui-small',14*font+'px');document.documentElement.style.setProperty('--font-ui-medium',16*font+'px');document.documentElement.style.setProperty('--font-ui-smaller',12*font+'px');document.documentElement.style.setProperty('--input-height',30*font+'px'); }
+function update() {
+  const width=Number(document.getElementById('width').value)||720, zoom=(Number(document.getElementById('zoom').value)||100)/100, font=(Number(document.getElementById('font').value)||100)/100;
+  const shell=document.querySelector('#preview'); shell.style.width=width/zoom+'px'; shell.style.zoom=zoom;
+  // Host themes define these on body, overriding inherited root values.
+  for (const target of [document.documentElement, document.body]) {
+    target.style.setProperty('--font-ui-small',13*font+'px'); target.style.setProperty('--font-ui-medium',15*font+'px');
+    target.style.setProperty('--font-ui-smaller',12*font+'px'); target.style.setProperty('--input-height',30*font+'px');
+  }
+}
 update(); const tab=params.get('tab');if(tab)document.getElementById('vaultsail-tab-'+tab)?.click();
 `;
 const result = await build({ stdin: { contents: fixture, resolveDir: process.cwd() }, bundle: true, format: 'iife', platform: 'browser', write: false,

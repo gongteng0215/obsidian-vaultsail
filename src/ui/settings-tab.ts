@@ -61,8 +61,6 @@ export class VaultSailSettingTab extends PluginSettingTab {
     mark.appendChild(svg);
     const title = brand.createDiv({ cls: 'vaultsail-brand-copy' }); title.createEl('span', { text: 'YOUR VAULT, EVERY CLOUD', cls: 'vaultsail-eyebrow' });
     title.createEl('span', { text: 'VaultSail · 云舟', cls: 'vaultsail-brand-name' });
-    new Setting(title).setName('连接与同步').setHeading().setClass('vaultsail-brand-heading');
-    title.createEl('p', { text: '让笔记，随你远航。' });
     const badge = hero.createEl('span', { cls: 'vaultsail-badge', text: AUTH_LABELS[p.auth.status()] }); badge.setAttribute('data-status', p.auth.status());
     const route = hero.createDiv({ cls: 'vaultsail-route' });
     route.createEl('span', { text: this.app.vault.getName(), cls: 'vaultsail-route-local' }); route.createEl('span', { text: '→', cls: 'vaultsail-route-arrow' });
@@ -76,8 +74,9 @@ export class VaultSailSettingTab extends PluginSettingTab {
     const progressCard = el.createDiv({ cls: 'vaultsail-progress-card' });
     progressCard.createEl('span', { cls: 'vaultsail-progress-state' });
     progressCard.createEl('p', { cls: 'vaultsail-progress-text' }); progressCard.createEl('progress', { cls: 'vaultsail-progress-meter' }).setAttribute('aria-label', '文件处理进度');
-    new Setting(progressCard).addButton(button => button.setButtonText('打开传输中心').onClick(() => { void p.openTransferCenter(); }));
-    const progressDetails = progressCard.createEl('details', { cls: 'vaultsail-progress-details' });
+    const progressTools = progressCard.createDiv({ cls: 'vaultsail-progress-tools' });
+    new Setting(progressTools).setClass('vaultsail-progress-open').addButton(button => button.setButtonText('打开传输中心').onClick(() => { void p.openTransferCenter(); }));
+    const progressDetails = progressTools.createEl('details', { cls: 'vaultsail-progress-details' });
     progressDetails.createEl('summary', { text: '本轮进度详情' });
     progressDetails.createDiv({ cls: 'vaultsail-upload-progress' });
     progressDetails.createEl('p', { cls: 'vaultsail-performance-text' }).setAttribute('aria-label', '同步耗时统计');
