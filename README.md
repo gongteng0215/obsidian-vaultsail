@@ -101,15 +101,15 @@ We will deliver one reviewable milestone at a time. These are proposed scopes, n
 
 | Version | Focus | Main result |
 | --- | --- | --- |
-| **0.2.4 — released** | Automatic sync and merge foundation | Queue, file events, remote checks, conflict editor, and drafts |
-| **0.2.1 / 0.2.x — next** | Stabilization | Reproduce real failures, clarify queue/error states, verify recovery and repeat sync |
+| **0.2.14 — released** | Sync foundation, performance and interface | Queue, merging, recovery, transfer center, cloud tree and stable background updates |
+| **0.2.x — next** | Stabilization | Reproduce real failures, clarify queue/error states, verify recovery and repeat sync |
 | **0.3.0** | iPad and multi-vault reliability | Native pairing, foreground recovery, vault/account isolation acceptance |
 | **0.4.0** | Scan and transfer performance | Benchmarked cold/warm scans, optional verified discovery index, bounded tuning |
 | **0.5.0** | History and recovery experience | Searchable history, previews, cloud-version restore, safe batch recovery |
 | **0.6.0** | Sync scope and language/accessibility | Exclusion rules, path preview, English/Chinese UI, mobile usability |
 | **0.9.0 RC → 1.0.0** | Compatibility and stable release | Migration rehearsal, end-to-end acceptance, documented support and recovery |
 
-See the **[full roadmap and acceptance criteria](docs/ROADMAP.md)**. Our next implementation scope is **0.2.1 stabilization**, not all planned features at once. This documentation update does not change the installed plugin or its version.
+See the **[full roadmap and acceptance criteria](docs/ROADMAP.md)**. The next scope is **0.2.x stabilization and 0.3.x native mobile acceptance**. Each milestone has separate validation; planned features are not yet available.
 
 The **[large-file implementation plan](docs/LARGE_FILES.md)** details metadata-first skipping, memory budgets, compatible readers, platform prototypes, snapshots, chunk I/O, and recovery. Desktop buffered transfers now allow 512 MiB; mobile remains at 20 MiB, with streaming and native acceptance still pending.
 
@@ -316,7 +316,7 @@ npm run build
 pwsh ./scripts/package-release.ps1
 ```
 
-0.2.14 passed **186 automated tests**, type checking, build, ZIP validation, and public-download hash checks. Coverage includes authorization, pairing, pagination, concurrency, paths, queues, incremental scans, reload serialization, merging, drafts, concurrent renames, and recovery. Tests use simulated providers and a DOM fixture; they do not certify real iPad storage/background execution, Baidu permissions, or long-term shared-token behavior.
+0.2.14 passed **221 automated tests**, type checking, build, ZIP validation, and public-download hash checks. Coverage includes authorization, pairing, pagination, concurrency, paths, queues, incremental scans, reload serialization, merging, drafts, concurrent renames, and recovery. Tests use simulated providers and a DOM fixture; they do not certify real iPad storage/background execution, Baidu permissions, or long-term shared-token behavior.
 
 The ZIP contains only `main.js`, `manifest.json`, and `styles.css`, without tests, user configuration, credentials, or notes. See [release notes](docs/releases/0.2.14.md) for validation limits and [sync design](docs/AUTO_SYNC_PLAN.md) for implementation context.
 
