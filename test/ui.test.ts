@@ -21,7 +21,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   proto.setText = function(this: HTMLElement, value: string) { this.textContent = value; };
   proto.createEl = function(this: HTMLElement, tag: string, options?: { text?: string; cls?: string }) { const el = this.appendChild(document.createElement(tag)); el.textContent = options?.text ?? ''; if (options?.cls) el.className = options.cls; return el; };
   proto.createDiv = function(this: HTMLElement, options?: { cls?: string }) { const el = this.appendChild(document.createElement('div')); if (options?.cls) el.className = options.cls; return el; };
-  const result = await build({ stdin: { contents: "export { default as Plugin } from './src/main.ts'; export { AuthManager } from './src/auth/auth-manager.ts'; export { ObsidianLocalFiles, ObsidianStateStore } from './src/platform/obsidian-adapters.ts'; export { TFile, Modal } from 'obsidian';", resolveDir: process.cwd() }, bundle: true, format: 'esm', platform: 'node', write: false,
+  const result = await build({ stdin: { contents: "export { default as Plugin } from './src/main.ts'; export { AuthManager } from './src/auth/auth-manager.ts'; export { ObsidianLocalFiles, ObsidianStateStore } from './src/platform/obsidian-adapters.ts'; export { TFile, Modal, Notice } from 'obsidian';", resolveDir: process.cwd() }, bundle: true, format: 'esm', platform: 'node', write: false,
     plugins: [{ name: 'obsidian-harness', setup(builder) { builder.onResolve({ filter: /^obsidian$/ }, () => ({ path: path.resolve('test/fixtures/obsidian.ts') })); } }] });
   mkdirSync('dist/test', { recursive: true }); const harnessPath = path.resolve('dist/test/ui-harness.mjs');
   writeFileSync(harnessPath, result.outputFiles[0].text); const module = await import(pathToFileURL(harnessPath).href);
@@ -398,7 +398,47 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   const delayedApp = { ...app, workspace: { on: () => ({}), onLayoutReady: (callback: () => void) => { ready = callback; } } };
   const delayed = new module.Plugin(delayedApp); delayed.saved = { ...structuredClone(plugin.saved), autoSyncEnabled: true }; delayed.provider = () => fakeProvider;
   await delayed.onload(); assert.equal(delayed.queue, undefined, 'automatic sync must wait for the complete initial vault layout');
-  ready(); assert.ok(delayed.queue); delayed.onunload();
+  const delayedCloud = delayed.ribbons.find((ribbon: any) => ribbon.icon === 'cloud').el;
+  delayedCloud.click(); assert.match(module.Notice.messages.at(-1), /已收到同步请求，等待笔记库加载完成/);
+  assert.equal(delayedCloud.getAttribute('data-vaultsail-sync-state'), 'queued');
+  const noticesBeforeReady = module.Notice.messages.length;
+  ready(); assert.ok(delayed.queue); assert.equal(module.Notice.messages.length, noticesBeforeReady, 'startup continuation must not send another click acknowledgement'); delayed.onunload();
+  // Click the actual ribbon handler while the task is gated: acknowledge before
+  // any asynchronous work finishes, and coalesce repeated clicks into one follow-up.
+  const feedback = new module.Plugin(app); feedback.saved = { ...structuredClone(plugin.saved), autoSyncEnabled: false };
+  await feedback.onload();
+  const cloud = feedback.ribbons.find((ribbon: any) => ribbon.icon === 'cloud').el;
+  let releaseFeedback!: () => void, feedbackRuns = 0;
+  const feedbackGate = new Promise<void>(resolve => { releaseFeedback = resolve; });
+  feedback.startSync = async () => {
+    feedbackRuns++; feedback.beginTransfer();
+    if (feedbackRuns === 1) await feedbackGate;
+    feedback.publishProgress({ ...feedback.progress, phase: 'completed' });
+  };
+  cloud.click();
+  assert.match(module.Notice.messages.at(-1), /已加入同步队列，正在准备检查/);
+  assert.equal(feedbackRuns, 0, 'click feedback must precede starting the task');
+  assert.equal(cloud.getAttribute('data-vaultsail-sync-state'), 'queued');
+  const firstFeedbackRun = feedback.queue.pump();
+  try {
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(feedbackRuns, 1); assert.equal(feedback.busy, true);
+    assert.equal(cloud.getAttribute('data-vaultsail-sync-state'), 'running');
+    assert.equal(cloud.getAttribute('aria-busy'), 'true'); assert.match(cloud.getAttribute('aria-label'), /连接/);
+    cloud.click(); cloud.click();
+    assert.match(module.Notice.messages.at(-1), /已有任务正在进行，已加入同步队列/);
+    await feedback.queue.pump(); assert.equal(feedbackRuns, 1, 'repeated clicks must not start parallel sync tasks');
+    releaseFeedback(); await firstFeedbackRun;
+    assert.equal(cloud.getAttribute('data-vaultsail-sync-state'), 'queued');
+    await feedback.queue.pump(); assert.equal(feedbackRuns, 2, 'repeated clicks coalesce into a single follow-up');
+    assert.equal(cloud.getAttribute('data-vaultsail-sync-state'), 'idle'); assert.equal(cloud.getAttribute('aria-busy'), 'false');
+    const noticesBeforeQuietRequest = module.Notice.messages.length;
+    feedback.requestSync(false); await feedback.queue.pump();
+    assert.equal(module.Notice.messages.length, noticesBeforeQuietRequest, 'internal continuations must stay quiet');
+    feedback.startSync = async () => { throw new Error('simulated failure'); };
+    cloud.click(); await feedback.queue.pump();
+    assert.equal(cloud.getAttribute('data-vaultsail-sync-state'), 'idle', 'failed tasks must clear the active indicator');
+  } finally { releaseFeedback(); await firstFeedbackRun; feedback.onunload(); }
   // Exercise a real timer against the rendered view, including a pending file
   // request, failure, recovery actions and a new task replacing the old snapshot.
   const realNow = Date.now; const clock = realNow();

@@ -185,3 +185,11 @@
   .vs-transfer-file-details > summary, .vs-transfer-diagnostics > summary { min-height: 44px; display: flex; align-items: center; }
 }
 @media (prefers-reduced-motion: reduce) { .vaultsail-transfer-center[data-running=true] .vs-transfer-status::before { animation: none; } }
+
+[data-vaultsail-sync-state=queued], [data-vaultsail-sync-state=running] {
+  color: var(--interactive-accent);
+  background-color: var(--background-modifier-hover);
+}
+[data-vaultsail-sync-state=running] svg { animation: vaultsail-sync-pulse 1.4s ease-in-out infinite; }
+@keyframes vaultsail-sync-pulse { 50% { opacity: .4; } }
+@media (prefers-reduced-motion: reduce) { [data-vaultsail-sync-state=running] svg { animation: none; } }

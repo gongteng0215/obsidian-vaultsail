@@ -7,13 +7,17 @@ export class Notice { static messages: string[] = []; constructor(message: strin
 export function requireApiVersion(): boolean { return true; }
 export async function requestUrl(input: unknown): Promise<unknown> { return (globalThis as unknown as { mockRequest: (input: unknown) => Promise<unknown> }).mockRequest(input); }
 export class Plugin {
-  app: any; manifest = { version: '0.1.14' }; commands: any[] = []; tabs: any[] = []; saved: unknown;
+  app: any; manifest = { version: '0.1.14' }; commands: any[] = []; tabs: any[] = []; ribbons: { icon: string; el: HTMLElement }[] = []; saved: unknown;
   constructor(app: unknown) { this.app = app; }
   async loadData(): Promise<unknown> { return this.saved; }
   async saveData(value: unknown): Promise<void> { this.saved = structuredClone(value); }
   addSettingTab(tab: unknown): void { this.tabs.push(tab); }
   addCommand(command: unknown): void { this.commands.push(command); }
-  addRibbonIcon(): void {} registerEvent(): void {} registerDomEvent(): void {}
+  addRibbonIcon(icon: string, title: string, callback: () => void): HTMLElement {
+    const el = element(document.body, 'button'); el.setAttribute('aria-label', title); el.addEventListener('click', callback);
+    this.ribbons.push({ icon, el }); return el;
+  }
+  registerEvent(): void {} registerDomEvent(): void {}
   registerView(): void {}
 }
 export class ItemView {

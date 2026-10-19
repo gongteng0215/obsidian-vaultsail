@@ -7,6 +7,11 @@ export interface QueueOptions {
 }
 const empty = (): QueueState => ({ version: 1, sequence: 0, dirty: Object.create(null), remote: 0, full: 0, manual: 0, paused: false, retryAt: 0, failures: 0, blocked: false });
 export class SyncQueue {
+  get activity(): 'idle' | 'queued' | 'running' {
+    if (this.disposed) return 'idle';
+    if (this.running) return 'running';
+    return !this.state.paused && !this.blocked && this.pending() && (this.options.enabled() || this.state.manual > 0) ? 'queued' : 'idle';
+  }
   private options: QueueOptions; private state = empty(); private timer?: ReturnType<typeof setTimeout>;
   private running = false; private disposed = false; private suspended = false; private first = 0; private last = 0;
   private remoteDue = 0; private fullDue = 0; private retryAt = 0; private failures = 0; private blocked = false;

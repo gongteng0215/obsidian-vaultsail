@@ -2,7 +2,7 @@
 
 **English** | [简体中文](ROADMAP.zh-CN.md) · [Feature inventory](../README.md#feature-inventory)
 
-Baseline: **0.2.9 local preview**, updated **2026-10-19**. Versions 0.2.6–0.2.8 add the transfer center, parallel slices and compact layouts; 0.2.9 adds scan improvements and local performance summaries. See [implementation and validation](releases/0.2.9.md). Native dual-device acceptance remains separate; later milestones advance on evidence, not promised dates.
+Baseline: **0.2.10 local preview**, updated **2026-10-19**. Versions 0.2.6–0.2.8 add the transfer center, parallel slices and compact layouts; 0.2.9 adds scan improvements and local performance summaries. Version 0.2.10 adds immediate sync click feedback and ribbon activity states. See [click feedback](releases/0.2.10.md) and [scan validation](releases/0.2.9.md). Native dual-device acceptance remains separate; later milestones advance on evidence, not promised dates.
 
 ## Direction and lasting boundaries
 

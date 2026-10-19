@@ -67,6 +67,7 @@ export default class VaultSailPlugin extends Plugin {
   private lastPairingStep?: keyof typeof PAIRING_STEPS;
   private queue?: SyncQueue; private queueContext?: string; private automaticRun = false;
   private layoutReady = false; private pendingManualSync = false;
+  private syncRibbon?: HTMLElement;
   private histories = new Map<string, SyncHistory>(); private activeHistory?: SyncHistory;
   private transferListeners = new Set<() => void>(); private uploadTelemetry = new UploadTelemetry();
   private loadedTransferTask?: { context: string; task?: SyncHistoryTask }; private progressContext?: string;
@@ -99,7 +100,8 @@ export default class VaultSailPlugin extends Plugin {
     this.addCommand({ id: 'sync-history', name: '查看同步记录', callback: () => this.showSyncHistory() });
     this.addCommand({ id: 'start-sync', name: '开始双向同步', callback: () => { this.requestSync(); } });
     this.addCommand({ id: 'resolve-conflicts', name: '查看待解决冲突', callback: () => { this.openConflicts(); } });
-    this.addRibbonIcon('cloud', 'VaultSail：开始同步', () => { this.requestSync(); });
+    this.syncRibbon = this.addRibbonIcon('cloud', 'VaultSail：开始同步', () => { this.requestSync(); });
+    this.updateSyncRibbon();
     this.registerDomEvent(document, 'visibilitychange', () => {
       this.queue?.suspend(document.hidden);
       if (document.hidden) this.pause(false);
@@ -119,7 +121,7 @@ export default class VaultSailPlugin extends Plugin {
         }));
       }
       this.ensureQueue();
-      if (this.pendingManualSync) { this.pendingManualSync = false; this.requestSync(); }
+      if (this.pendingManualSync) { this.pendingManualSync = false; this.requestSync(false); }
     };
     if (this.app.workspace.onLayoutReady) this.app.workspace.onLayoutReady(listen); else listen();
     await this.auditLocalRecovery();
@@ -178,9 +180,34 @@ export default class VaultSailPlugin extends Plugin {
       change: () => { try { this.settingTab?.updateProgress(); } catch { /* Detached view. */ } this.notifyTransfers(); } });
     if (document.hidden) this.queue.suspend(true);
   }
-  requestSync(): void {
-    if (typeof this.app.workspace?.onLayoutReady === 'function' && !this.layoutReady) { this.pendingManualSync = true; new Notice('等待笔记库加载完成后同步。'); return; }
-    this.ensureQueue(); if (this.queue) this.queue.request('manual'); else void this.run('正在同步…', () => this.startSync());
+  requestSync(feedback = true): void {
+    if (!this.alive) return;
+    if (typeof this.app.workspace?.onLayoutReady === 'function' && !this.layoutReady) {
+      this.pendingManualSync = true; this.updateSyncRibbon();
+      if (feedback) new Notice('已收到同步请求，等待笔记库加载完成。', 4000);
+      return;
+    }
+    this.ensureQueue();
+    if (this.queue) {
+      const running = this.queue.activity === 'running' || this.busy;
+      this.queue.request('manual');
+      if (feedback) new Notice(running ? '已有任务正在进行，已加入同步队列；完成后继续检查。'
+        : globalThis.navigator?.onLine === false ? '已加入同步队列，等待网络恢复。'
+        : document.hidden ? '已加入同步队列，返回 Obsidian 后继续。' : '已加入同步队列，正在准备检查…', 4000);
+    } else {
+      if (feedback && !this.busy) new Notice('正在检查同步配置…', 4000);
+      void this.run('正在同步…', () => this.startSync());
+    }
+  }
+  private updateSyncRibbon(): void {
+    if (!this.syncRibbon) return;
+    const state = this.pendingManualSync ? 'queued' : this.queue?.activity
+      ?? (this.busy && this.progress && progressRunning(this.progress) ? 'running' : 'idle');
+    const label = state === 'running' ? this.statusText : state === 'queued'
+      ? this.pendingManualSync ? '等待笔记库加载完成后同步' : this.queueSummary() : '开始同步';
+    this.syncRibbon.setAttribute('data-vaultsail-sync-state', state);
+    this.syncRibbon.setAttribute('aria-busy', String(state !== 'idle'));
+    this.syncRibbon.setAttribute('aria-label', 'VaultSail：' + label);
   }
   queueSummary(): string { return this.queue?.summary() ?? '绑定云端库后可开启自动同步。'; }
   private history(context = this.context()): SyncHistory | undefined {
@@ -205,7 +232,7 @@ export default class VaultSailPlugin extends Plugin {
     if (!['running', 'queued'].includes(event.state)) this.uploadTelemetry.finish(event.path);
     this.notifyTransfers();
   }
-  private notifyTransfers(): void { if (this.alive) for (const listener of this.transferListeners) { try { listener(); } catch { /* Views cannot affect synchronization. */ } } }
+  private notifyTransfers(): void { if (this.alive) { this.updateSyncRibbon(); for (const listener of this.transferListeners) { try { listener(); } catch { /* Views cannot affect synchronization. */ } } } }
   subscribeTransfers(listener: () => void): () => void { this.transferListeners.add(listener); return () => { this.transferListeners.delete(listener); }; }
   async openTransferCenter(): Promise<void> { try { await openTransferCenter(this); } catch { new Notice('打开传输中心失败，请重新启用插件后再试。'); } }
   async loadTransferHistory(): Promise<void> {
@@ -227,7 +254,7 @@ export default class VaultSailPlugin extends Plugin {
   }
   resumeTransfers(): void {
     if (this.busy) return;
-    void this.run('核验并继续同步…', () => this.recover(), true).then(() => this.requestSync()).catch(() => { /* run already reports the safe error. */ });
+    void this.run('核验并继续同步…', () => this.recover(), true).then(() => this.requestSync(false)).catch(() => { /* run already reports the safe error. */ });
   }
   showSyncHistory(): void { const history = this.history(); if (!history) { new Notice('请先绑定云端库，再查看当前库的本机同步记录。'); return; } new SyncHistoryModal(this.app, history).open(); }
   blockedFiles(): BlockedFile[] { return this.engine?.blockedFiles() ?? []; }
@@ -252,7 +279,7 @@ export default class VaultSailPlugin extends Plugin {
     catch (error) { this.settings.autoSyncEnabled = previous.enabled; this.settings.remotePollSeconds = previous.interval; throw error; }
     finally { this.busy = false; }
     this.queue?.dispose(); this.queue = undefined; this.queueContext = undefined; this.refreshUI();
-    if (enabled && !previous.enabled) this.requestSync();
+    if (enabled && !previous.enabled) this.requestSync(false);
   }
   private async conflictAction<T>(action: (engine: SyncEngine) => Promise<T>): Promise<T> {
     if (this.busy) throw new VaultSailError('busy', '当前任务进行中，请等待完成。');

@@ -4,7 +4,7 @@
 
 [English](README.md) | **简体中文**
 
-本地开发预览 **0.2.9**：批量准备版本记录下载、并行读取设备目录、无变化时不重写缓存；扫描阶段实时显示，性能摘要随本机历史保留。包含紧凑布局与分片并发，尚未发布社区。见 [扫描性能与验证说明](docs/releases/0.2.9.md)。
+本地开发预览 **0.2.10**：点击同步立即提示，云朵图标显示排队与运行状态。包含 0.2.9 的扫描优化与本机性能摘要，尚未发布社区。见 [点击反馈与验证说明](docs/releases/0.2.10.md) 和 [扫描性能说明](docs/releases/0.2.9.md)。
 
 [社区插件页面](https://community.obsidian.md/plugins/vaultsail) · [下载 0.2.5](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.5) · [版本说明](docs/releases/0.2.5.md) · [版本规划](docs/ROADMAP.zh-CN.md) · [反馈问题](https://github.com/gongteng0215/obsidian-vaultsail/issues)
 
