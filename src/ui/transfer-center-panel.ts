@@ -149,7 +149,7 @@ export class TransferCenterPanel {
       : active && stage ? STAGES[stage] : active && snapshot.progress?.path === row.path ? PROGRESS_LABELS[snapshot.progress.phase] : STATES[row.state];
     text(elements.state, label); elements.el.setAttribute('data-state', row.state); elements.el.setAttribute('data-action', row.action);
     const percent = upload ? upload.totalBytes ? Math.floor(Math.min(1, upload.uploadedBytes / upload.totalBytes) * 100) : upload.completedParts === upload.totalParts && upload.totalParts > 0 ? 100 : 0 : undefined;
-    text(elements.action, `${HISTORY_ACTIONS[row.action]} · ${formatBytes(row.size)}${active && percent !== undefined ? ` · 上传 ${percent}%` : ''}${active && upload && upload.attempt > 1 ? ` · 第 ${upload.attempt} 次尝试` : ''}`);
+    text(elements.action, `${HISTORY_ACTIONS[row.action]} · ${row.action.endsWith('-directory') ? '目录记录' : formatBytes(row.size)}${active && percent !== undefined ? ` · 上传 ${percent}%` : ''}${active && upload && upload.attempt > 1 ? ` · 第 ${upload.attempt} 次尝试` : ''}`);
     elements.meter.hidden = !upload || ['succeeded', 'unchanged', 'skipped'].includes(row.state); elements.meter.max = Math.max(1, upload?.totalBytes ?? 1);
     elements.meter.value = upload?.totalBytes ? upload.uploadedBytes : percent === 100 ? 1 : 0;
     elements.meter.setAttribute('aria-label', `${row.path}：服务端已确认上传内容`);

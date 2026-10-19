@@ -12,6 +12,7 @@ test('automatic no-change checks stay quiet; real transfers, merges and deletion
   assert.match(result.message, /自动同步完成：上传 2 个；下载 1 个；自动合并 1 个；删除 3 项/);
   assert.equal(result.duration, 4000);
   assert.equal(notices.completed({ ...empty, uploaded: 1 }, false), undefined, 'manual sync retains its own completion notice');
+  assert.match(notices.completed({ ...empty, directories: 2 }, true)!.message, /目录 2 项/);
 });
 
 test('unresolved conflicts and skipped files get actionable warnings with a five-minute duplicate limit', () => {

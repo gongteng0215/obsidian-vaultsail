@@ -29,6 +29,8 @@ import { openTransferCenter, TransferCenterView, TRANSFER_CENTER_VIEW } from './
 import { ObsidianHistoryStore } from './platform/sync-history-store';
 import { SyncHistoryModal } from './ui/sync-history';
 import { CloudFilesModal } from './ui/cloud-files';
+import { DirectorySync, RemoteDirectoryStore, directoryHeads, directoryPresent } from './sync/directories';
+import { ObsidianDirectories, ObsidianDirectoryState } from './platform/directory-adapters';
 import { decryptPairing, encryptPairing, isEncryptedPairing, PAIRING_LIFETIME_MS, validateAuthorizedPairing, validatePairingCode, type AuthorizedPairing, type PairingImportOptions } from './encrypted-pairing';
 
 import { DiagnosticLog, attachDiagnosticLog, type LogEnvironment } from './diagnostics/log';
@@ -73,6 +75,7 @@ export default class VaultSailPlugin extends Plugin {
   private generation = 0;
   private connectionRequests = new AbortController();
   private engine?: SyncEngine;
+  private directories?: DirectorySync;
   private alive = true;
   private settingTab!: VaultSailSettingTab;
   private lastErrorCode?: string;
@@ -540,6 +543,14 @@ export default class VaultSailPlugin extends Plugin {
       if (!validation?.passed) throw new VaultSailError('permission', '请先运行本设备的文件传输权限验证，确认上传下载权限。');
       if (this.engine) return this.engine;
       const context = hash(bytes(b.appKey + '|' + b.root + '|' + accountHash + '|' + b.vaultId));
+      const generation = this.generation;
+      this.directories = new DirectorySync(new RemoteDirectoryStore(provider, b.vaultId, this.settings.transferConcurrency), new ObsidianDirectories(this.app),
+        new ObsidianDirectoryState(this.app, b.vaultId, this.deviceId, context), b.vaultId, this.deviceId, this.app.vault.configDir,
+        () => { if (!this.alive || generation !== this.generation) throw new VaultSailError('cancelled', '连接已变化，目录任务已停止。'); if (this.pauseRequested) throw new VaultSailError('paused', '目录任务已暂停，可恢复未完成任务。'); },
+        event => { this.recordHistoryFile(context, event);
+          if (this.alive && generation === this.generation && this.progress) this.publishProgress({ ...this.progress, phase: 'checking', path: event.path, scan: undefined,
+            message: `目录 · ${event.path} · ${event.state === 'running' ? '处理中' : event.state === 'succeeded' ? '完成' : event.state === 'skipped' ? '按设置保留' : '需核验'}`, updatedAt: Date.now() }); },
+        (error, path, action) => this.diagnostic?.record('engine', 'failure', { step: 'directory-sync', ...this.diagnostic.file(path), action }, error));
       this.engine = new SyncEngine(new RemoteVaultStore(provider, new ObsidianRevisionCache(this.app, this.deviceId, context), this.settings.transferConcurrency, stats => this.performance.scan(stats), scan => {
         if (this.alive && this.progress && this.progressContext === context) this.publishProgress({ ...this.progress, phase: this.progress.phase === 'checking-remote' ? 'checking-remote' : 'scanning-remote', scan, updatedAt: Date.now() });
       }, (step, error) => { this.diagnostic?.record('cache', 'warning', { step }, error); }), this.local,
@@ -550,20 +561,26 @@ export default class VaultSailPlugin extends Plugin {
     } catch (error) { this.failTransfer(error); throw error; }
   }
   async preview(mode: SyncPlan['mode']): Promise<void> {
-    const engine = await this.getEngine(); const plan = await engine.preview(mode, this.settings.deletionEnabled, { allowRenames: true });
+    const engine = await this.getEngine(); const directories = this.directories!;
+    const directoryPlan = await directories.preview(mode, this.settings.deletionEnabled);
+    const plan = await engine.preview(mode, this.settings.deletionEnabled, { allowRenames: true });
     new PlanModal(this.app, plan, async progress => { if (this.busy) throw new VaultSailError('busy', '当前有其他操作。'); this.busy = true;
       this.beginTransfer(); this.refreshUI();
       try {
         if (this.engine !== engine) throw new VaultSailError('changed', '本机传输配置已变化，请重新预览。');
         if (!this.settings.deletionEnabled && plan.rows.some(row => row.action === 'delete-local' || row.action === 'delete-remote')) throw new VaultSailError('configuration', '删除传播已关闭，请重新预览。');
-        const result = await withVaultTaskLock(this.app, () => this.recorded(mode === 'sync' ? 'manual' : mode, () => engine.execute(plan, progress, true)));
+        const result = await withVaultTaskLock(this.app, () => this.recorded(mode === 'sync' ? 'manual' : mode, async () => {
+          await directories.validate(directoryPlan);
+          const result = await engine.execute(plan, progress, true);
+          await this.syncDirectories(mode, directories); return result;
+        }));
         const key = this.successKey(); if (key && this.progress) this.app.saveLocalStorage(key, { completedAt: Date.now(), mode: plan.mode,
           files: this.progress.doneFiles, bytes: this.progress.doneBytes, elapsedMs: this.progress.updatedAt - this.progress.startedAt, blockedFiles: result.blockedFiles });
       } catch (error) { this.failTransfer(error); throw error; } finally { this.performance.finish(); this.busy = false; this.refreshUI(); } },
       async (row, choice) => { if (this.busy) throw new VaultSailError('busy', '当前有其他操作。'); this.busy = true;
         this.beginTransfer(); this.refreshUI();
         try { if (this.engine !== engine) throw new VaultSailError('changed', '本机传输配置已变化，请重新预览。'); await withVaultTaskLock(this.app, () => this.recorded('resolve', () => engine.resolve(row.path, choice, row))); } catch (error) { this.failTransfer(error); throw error; }
-        finally { this.performance.finish(); this.busy = false; this.refreshUI(); } }, () => this.pause(), listener => this.subscribeProgress(listener)).open();
+        finally { this.performance.finish(); this.busy = false; this.refreshUI(); } }, () => this.pause(), listener => this.subscribeProgress(listener), directoryPlan.rows).open();
   }
   async startSync(batch?: QueueBatch): Promise<void> {
     this.diagnostic?.record('task', 'checkpoint', { incremental: !!batch && !batch.manual && !batch.full,
@@ -588,6 +605,9 @@ export default class VaultSailPlugin extends Plugin {
     let uploaded = 0; let downloaded = 0; let deleted = 0; let merged = 0; let blocked = 0;
     let paths = batch?.paths ?? [];
     if (batch && !batch.manual && !batch.full && !batch.remote) { paths = await engine.changedFromBaseline(paths); if (!paths.length) { this.statusText = '文件内容已与基线一致，无需同步。'; if (this.progress) this.publishProgress({ ...this.progress, phase: 'completed', updatedAt: Date.now() }); return; } }
+    await this.directories!.recover(this.settings.deletionEnabled);
+    // Validate directory/file collisions before any file publication or local application.
+    await this.directories!.preview('sync', this.settings.deletionEnabled);
     // One extra pass catches concurrent publications without an unbounded background loop.
     for (let pass = 0; pass < 2; pass++) {
       const result = batch && !batch.manual ? await engine.syncAutomatic(paths, batch.remote, batch.full || pass > 0, this.settings.deletionEnabled) : await engine.sync(this.settings.deletionEnabled); conflicts += result.preservedConflicts; incoming = result.incomingChanges; merged += result.autoMergedFiles ?? 0;
@@ -596,11 +616,20 @@ export default class VaultSailPlugin extends Plugin {
       files += this.progress?.doneFiles ?? 0; contentBytes += this.progress?.doneBytes ?? 0;
       if (!incoming) break;
     }
+    const folders = await this.syncDirectories('sync'); deleted += folders.deleted;
     if (this.progress) this.publishProgress({ ...this.progress, startedAt, doneFiles: files, totalFiles: files, doneBytes: contentBytes, totalBytes: contentBytes, blockedFiles: blocked, updatedAt: Date.now() });
     const key = this.successKey(); if (key) this.app.saveLocalStorage(key, { completedAt: Date.now(), mode: 'sync', files, bytes: contentBytes, elapsedMs: Date.now() - startedAt, blockedFiles: blocked });
-    const message = `同步${blocked ? '部分完成' : '完成'}：上传 ${uploaded} 个，下载 ${downloaded} 个${merged ? `，自动合并 ${merged} 个` : ''}${deleted ? `，删除 ${deleted} 项` : ''}，失败 0 项${blocked ? `；跳过 ${blocked} 项超限或关联文件，未传输，请查看跳过文件` : ''}${conflicts ? `；${conflicts} 项冲突已保留双方，可打开待解决冲突` : ''}${incoming ? '；期间又有新版本，下一次同步会继续处理' : ''}。`;
+    const message = `同步${blocked ? '部分完成' : '完成'}：上传 ${uploaded} 个，下载 ${downloaded} 个${folders.created ? `，目录 ${folders.created} 项` : ''}${merged ? `，自动合并 ${merged} 个` : ''}${deleted ? `，删除 ${deleted} 项` : ''}，失败 0 项${blocked ? `；跳过 ${blocked} 项超限或关联文件，未传输，请查看跳过文件` : ''}${conflicts ? `；${conflicts} 项冲突已保留双方，可打开待解决冲突` : ''}${incoming ? '；期间又有新版本，下一次同步会继续处理' : ''}。`;
     this.statusText = message; if (!this.automaticRun) new Notice(message, 9000);
-    return { uploaded, downloaded, deleted, merged, conflicts, blocked };
+    return { uploaded, downloaded, deleted, merged, conflicts, blocked, directories: folders.created };
+  }
+  private async syncDirectories(mode: 'upload' | 'download' | 'sync', directories = this.directories!): Promise<{ created: number; deleted: number; skipped: number }> {
+    if (this.progress) this.publishProgress({ ...this.progress, phase: 'checking', message: '扫描并同步目录（包含空文件夹）', scan: undefined, updatedAt: Date.now() });
+    try {
+      const result = await directories.sync(mode, this.settings.deletionEnabled);
+      if (this.progress) this.publishProgress({ ...this.progress, phase: 'completed', message: `目录处理完成：创建或发布 ${result.created} 项，删除 ${result.deleted} 项${result.skipped ? `，按设置保留 ${result.skipped} 项` : ''}`, updatedAt: Date.now() });
+      return result;
+    } catch (error) { this.diagnostic?.record('engine', 'failure', { step: 'directory-sync' }, error); throw error; }
   }
   cloudLocation(): string {
     const id = this.settings.binding?.vaultId ?? this.settings.remoteVaultId;
@@ -622,8 +651,9 @@ export default class VaultSailPlugin extends Plugin {
     const context = hash(bytes(binding.appKey + '|' + binding.root + '|' + binding.accountHash + '|' + binding.vaultId));
     const store = new RemoteVaultStore(provider, new ObsidianRevisionCache(this.app, this.deviceId, context));
     const heads = buildHeads(await store.revisions(binding.vaultId));
+    const folders = [...directoryHeads(await new RemoteDirectoryStore(provider, binding.vaultId, this.settings.transferConcurrency).revisions())].filter(([, versions]) => directoryPresent(versions)).map(([path]) => path);
     if (!this.alive || generation !== this.generation) return;
-    new CloudFilesModal(this.app, heads, this.cloudLocation()).open();
+    new CloudFilesModal(this.app, heads, this.cloudLocation(), folders).open();
   }
   openConfigExport(): void {
     new ConfigExportModal(this.app, (password, includeVault) => this.exportAuthorizedConfiguration(password, includeVault), text => this.saveConfigExport(text), Boolean(this.settings.binding)).open();
@@ -776,8 +806,8 @@ export default class VaultSailPlugin extends Plugin {
       throw new VaultSailError('pairing-' + step, PAIRING_STEPS[step] + '失败' + kind + '。请重试，并提供此步骤名称或脱敏诊断；不要发送配对码和密码。', false, 0, error);
     } finally { for (const signal of signals) signal.removeEventListener('abort', cancel); auth.cancel(); staged.clear(); }
   }
-  async recover(): Promise<void> { await this.recorded('recover', async () => (await this.getEngine()).recover()); }
-  async abandonPending(): Promise<void> { await (await this.getEngine()).abandonPending(); }
+  async recover(): Promise<void> { await this.recorded('recover', async () => { await (await this.getEngine()).recover(); await this.syncDirectories('sync'); }); }
+  async abandonPending(): Promise<void> { await (await this.getEngine()).abandonPending(); await this.directories!.abandonPending(); }
   async auditLocalRecovery(): Promise<void> {
     const b = this.settings.binding; if (!b) return;
     try {

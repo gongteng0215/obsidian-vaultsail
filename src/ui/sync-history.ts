@@ -99,7 +99,7 @@ export class SyncHistoryModal extends Modal {
       elements.el.setAttribute('data-state', row.state);
       const text = (el: HTMLElement, value: string) => { if (el.textContent !== value) el.setText(value); };
       text(elements.path, row.path);
-      text(elements.status, `${HISTORY_ACTIONS[row.action]} · ${HISTORY_STATES[row.state]} · ${formatBytes(row.size)} · ${new Date(row.updatedAt).toLocaleTimeString()}${row.startedAt !== undefined ? ` · ${Math.max(0, ((row.state === 'running' ? Date.now() : row.updatedAt) - row.startedAt) / 1000).toFixed(1)} 秒` : ''}`);
+      text(elements.status, `${HISTORY_ACTIONS[row.action]} · ${HISTORY_STATES[row.state]} · ${row.action.endsWith('-directory') ? '目录记录' : formatBytes(row.size)} · ${new Date(row.updatedAt).toLocaleTimeString()}${row.startedAt !== undefined ? ` · ${Math.max(0, ((row.state === 'running' ? Date.now() : row.updatedAt) - row.startedAt) / 1000).toFixed(1)} 秒` : ''}`);
       text(elements.reason, HISTORY_REASONS[row.reason] + (row.code ? ' · ' + HISTORY_CODES[row.code] : '') + (row.diagnosticId ? ' · 诊断编号：' + row.diagnosticId : ''));
     }
     this.paging.setText(`筛选结果 ${files.length} 条 · 第 ${this.page + 1}/${Math.max(1, Math.ceil(files.length / PAGE_SIZE))} 页`);

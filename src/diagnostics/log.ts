@@ -8,7 +8,7 @@ export type LogEvent = typeof events[number];
 const tags = new Set(('automatic manual operation upload download sync recover resolve GET POST HEAD other '
   + 'connecting scanning-remote checking-remote scanning-local checking preparing-upload uploading verifying publishing downloading applying preview-ready completed paused failed '
   + 'queued running succeeded skipped unchanged conflict unconfirmed not-run prepared published applied publish apply '
-  + 'account list prepare commit metadata refresh authorize stat exists mkdir readBinary writeBinary rename remove '
+  + 'account list prepare commit metadata refresh authorize stat exists mkdir rmdir readBinary writeBinary rename remove directory-sync publish-directory create-directory delete-directory delete-remote-directory '
   + 'read-note conflict-copy apply-note apply-attachment create-note create-folder trash '
   + 'save-history load-history save-cache load-cache save-state load-state save-recovery queue-save queue-load audit settings credentials session closed startup plan device vault integrity verification activation '
   + 'listing reading validating saving-cache error cancelled timeout write-timeout rate network permission state start success failure pending markdown image pdf video audio binary internal preparing committing verified').split(' '));
@@ -32,7 +32,7 @@ export interface LogFields {
 const errorCodes = new Set(('unknown state collision integrity changed recovery binding configuration permission authentication network timeout write-timeout '
   + 'rate http api response schema size path paused cancelled busy encoding not-found exists visibility credentials-id token-expired '
   + 'authorization_pending slow_down expired_token unsupported_response_type unsupported_grant_type invalid_grant access_denied invalid_client invalid_request oauth credentials '
-  + 'EACCES EPERM EBUSY ENOENT ENOSPC EEXIST ENAMETOOLONG EIO EROFS EINVAL EISDIR ENOTDIR EMFILE ENFILE ETXTBSY ETIMEDOUT ECONNRESET ECONNREFUSED ENOTFOUND EAI_AGAIN ERR_NETWORK ERR_FAILED').split(' '));
+  + 'EACCES EPERM EBUSY ENOENT ENOSPC EEXIST ENAMETOOLONG EIO EROFS EINVAL EISDIR ENOTDIR ENOTEMPTY EMFILE ENFILE ETXTBSY ETIMEDOUT ECONNRESET ECONNREFUSED ENOTFOUND EAI_AGAIN ERR_NETWORK ERR_FAILED').split(' '));
 for (const step of ['session', 'account', 'vault', 'listing', 'upload', 'download', 'integrity', 'credentials', 'settings', 'verification', 'activation']) errorCodes.add('pairing-' + step);
 const errorNames = new Set(['Error', 'VaultSailError', 'TypeError', 'RangeError', 'SyntaxError', 'ReferenceError', 'AbortError', 'DOMException', 'NetworkError', 'QuotaExceededError', 'SecurityError', 'NotSupportedError']);
 const syscalls = new Set(['open', 'read', 'write', 'rename', 'unlink', 'mkdir', 'stat', 'scandir', 'readFile', 'writeFile', 'connect', 'getaddrinfo']);

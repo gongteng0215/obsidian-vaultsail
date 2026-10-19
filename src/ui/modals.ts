@@ -89,7 +89,7 @@ export class ConfirmModal extends Modal {
 export class PlanModal extends Modal {
   private unsubscribe?: () => void;
   constructor(app: App, private plan: SyncPlan, private execute: (progress: (done: number, total: number) => void) => Promise<void>, private resolve: (row: PlanRow, choice: string) => Promise<void>, private pause: () => void,
-    private subscribe?: (listener: (progress: SyncProgress) => void) => () => void) { super(app); }
+    private subscribe?: (listener: (progress: SyncProgress) => void) => () => void, private directories: import('../sync/directories').DirectoryRow[] = []) { super(app); }
   onClose(): void { this.unsubscribe?.(); }
   onOpen(): void {
     this.titleEl.setText('VaultSail · 传输预览');
@@ -103,6 +103,13 @@ export class PlanModal extends Modal {
     let executing = false;
     if (this.subscribe) this.unsubscribe = this.subscribe(progress => { if (executing) { status.setText(formatProgress(progress)); meter.max = Math.max(1, progress.totalFiles); meter.value = progress.doneFiles; renderUploads(uploads, progress); } });
     const list = this.contentEl.createDiv({ cls: 'vaultsail-plan' });
+    const directoryLabels = { 'publish-directory': '上传目录', 'create-directory': '创建本地目录', 'delete-directory': '删除本地空目录', 'delete-remote-directory': '发布云端目录删除', 'skip-directory': '保留目录', 'noop-directory': '目录一致' };
+    const directoryChanges = this.directories.filter(row => row.action !== 'noop-directory');
+    if (this.directories.length) list.createEl('p', { text: `${this.directories.length} 个目录 · ${directoryChanges.length} 项待处理或按设置保留（包含空目录）` });
+    for (const row of directoryChanges) {
+      const item = list.createDiv({ cls: 'vaultsail-plan-row' });
+      item.createEl('strong', { text: `${directoryLabels[row.action]} · ${row.path}/` }); item.createEl('p', { text: row.reason });
+    }
     for (const row of changed) {
       const item = list.createDiv({ cls: 'vaultsail-plan-row' });
       item.createEl('strong', { text: `${LABELS[row.action]} · ${row.path}` }); item.createEl('p', { text: row.reason });

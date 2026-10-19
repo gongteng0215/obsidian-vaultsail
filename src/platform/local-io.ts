@@ -2,7 +2,7 @@ import type { App, DataAdapter } from 'obsidian';
 import { relativePath, VaultSailError } from '../core/safety.ts';
 import { diagnosticLog } from '../diagnostics/log.ts';
 
-const codes = new Set(['EACCES', 'EPERM', 'EBUSY', 'ENOENT', 'ENOSPC', 'EEXIST', 'ENAMETOOLONG', 'EIO', 'EROFS']);
+const codes = new Set(['EACCES', 'EPERM', 'EBUSY', 'ENOENT', 'ENOSPC', 'EEXIST', 'ENAMETOOLONG', 'EIO', 'EROFS', 'ENOTEMPTY', 'EISDIR', 'ENOTDIR']);
 /** Keep native paths, note text and arbitrary error messages out of UI/history. */
 export async function localIO<T>(step: string, run: () => Promise<T>, failed?: (error: unknown) => void): Promise<T> {
   try { return await run(); } catch (error) {
@@ -20,7 +20,7 @@ export async function localIO<T>(step: string, run: () => Promise<T>, failed?: (
 }
 
 const labels = { stat: '检查本机文件', exists: '检查本机路径', mkdir: '创建本机目录', readBinary: '读取本机文件',
-  writeBinary: '写入本机文件', rename: '提交本机文件', remove: '清理本机旧记录', list: '枚举本机目录' } as const;
+  writeBinary: '写入本机文件', rename: '提交本机文件', remove: '清理本机旧记录', list: '枚举本机目录', rmdir: '移除本机空目录' } as const;
 type StorageAdapter = Pick<DataAdapter, keyof typeof labels>;
 const adapters = new WeakMap<object, StorageAdapter>();
 export function storageAdapter(app: App): StorageAdapter {

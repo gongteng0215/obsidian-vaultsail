@@ -8,6 +8,8 @@ Sync Obsidian notes and attachments through your own Baidu Netdisk account, with
 
 **Local preview 0.2.15:** correlated local error logs, diagnostic IDs, safe report export and build-matched stack resolution. See the [logging design and reproduction workflow](docs/DIAGNOSTIC_LOGGING.md). This preview is separate from the public release below.
 
+**Local preview 0.2.16:** empty-folder sync, directory previews/history, and empty directories in the cloud tree. Update both devices for this feature; existing connections are preserved. Deletion remains opt-in and removes only empty folders. Includes 0.2.15 diagnostics. [Usage, compatibility and validation](docs/releases/0.2.16.md).
+
 [Community plugin](https://community.obsidian.md/plugins/vaultsail) · [Download 0.2.14](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.14) · [Release notes](docs/releases/0.2.14.md) · [Version roadmap](docs/ROADMAP.md) · [Report an issue](https://github.com/gongteng0215/obsidian-vaultsail/issues)
 
 **Contents:** [All features](#feature-inventory) · [Roadmap](#version-roadmap) · [Install](#install-or-update) · [First connection](#connect-your-first-vault) · [Device pairing](#pair-a-computer-ipad-or-another-vault) · [Automatic sync](#automatic-sync-and-the-queue) · [Conflicts](#versions-and-conflict-resolution) · [Cloud location](#where-the-cloud-data-goes) · [Recovery](#file-scope-deletion-and-recovery) · [FAQ](#performance-and-troubleshooting) · [Privacy](#privacy-and-network-access)

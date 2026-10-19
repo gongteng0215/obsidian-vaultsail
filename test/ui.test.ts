@@ -30,6 +30,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   let failStateRename = false;
   const adapter = {
     exists: async (p: string) => files.has(p) || dirs.has(p),
+    rmdir: async (p: string, recursive: boolean) => { assert.equal(recursive, false); assert.equal([...dirs, ...files.keys()].some(key => key.startsWith(p + '/')), false); dirs.delete(p); },
     stat: async (p: string) => files.has(p) ? { type: 'file', size: files.get(p)!.byteLength } : dirs.has(p) ? { type: 'folder', size: 0 } : null,
     mkdir: async (p: string) => { dirs.add(p); }, readBinary: async (p: string) => files.get(p)!.slice(0), writeBinary: async (p: string, data: ArrayBuffer) => { files.set(p, data.slice(0)); },
     remove: async (p: string) => { files.delete(p); }, rename: async (from: string, to: string) => { if (failStateRename && from.endsWith('.next')) { failStateRename = false; throw new Error('crash'); } assert.equal(files.has(to), false); files.set(to, files.get(from)!); files.delete(from); },
@@ -45,6 +46,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
     loadLocalStorage: (key: string) => localMap.get(key) ?? null, saveLocalStorage: (key: string, value: unknown) => { localMap.set(key, value); },
     workspace: { on: () => ({}), onLayoutReady: (callback: () => void) => callback() },
     vault: { configDir: '.obsidian', adapter, getName: () => '测试笔记库', getFiles: () => [...files].filter(([p]) => !p.startsWith('.')).map(([p, data]) => new module.TFile(p, data.byteLength)),
+      getAllFolders: () => [...dirs].map(path => ({ path })),
       on: (name: string, callback: (file: { path: string }, oldPath?: string) => void) => { vaultEvents.set(name, [...vaultEvents.get(name) ?? [], callback]); return {}; },
       getAbstractFileByPath: (p: string) => files.has(p) ? new module.TFile(p, files.get(p)!.byteLength) : dirs.has(p) ? { path: p } : null,
       readBinary: async (file: { path: string }) => files.get(file.path)!.slice(0), modifyBinary: async (file: { path: string }, data: ArrayBuffer) => { files.set(file.path, data.slice(0)); },
@@ -75,7 +77,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
     listAll: async () => [],
     mkdir: async () => {}, writeImmutable: async (key: string, data: ArrayBuffer) => { remoteObjects.set(key, data.slice(0)); },
     read: async (key: string) => { assert.ok(remoteObjects.has(key)); return remoteObjects.get(key)!.slice(0); },
-    exists: async () => true,
+    exists: async (key: string) => remoteObjects.has(key) || [...remoteObjects.keys()].some(path => path.startsWith(key + '/')),
     list: async (dir: string) => {
       const entries = new Map<string, { path: string; isDirectory: boolean; size: number }>();
       for (const [key, data] of remoteObjects) if (key.startsWith(dir + '/')) {
@@ -316,13 +318,17 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
     targetRestarted.onunload(); targetRestarted.tabs[0].containerEl.remove(); target.onunload(); target.tabs[0].containerEl.remove();
   }
   // Execute a real engine plan through its UI and check progress plus local success metadata.
+  dirs.add('论文'); dirs.add('论文/调研研究'); dirs.add('论文/学姐指导');
   localMap.set('vaultsail-validation-' + hash(new TextEncoder().encode(plugin.settings.appKey + '|' + plugin.settings.appDirectory + '|' + plugin.settings.binding.accountHash).buffer), { passed: true });
   plugin.tabs[0].display(); await plugin.run('preview', () => plugin.preview('upload'));
+  assert.match(module.Modal.instances.at(-1).contentEl.textContent, /上传目录 · 论文\/调研研究/);
   setupButton('执行清单（冲突自动保留双方）').click(); for (let i = 0; i < 1000 && plugin.busy; i++) await Promise.resolve();
-  assert.equal(plugin.busy, false); assert.equal(plugin.progress?.phase, 'completed'); assert.ok(plugin.lastSuccess());
+  assert.equal(plugin.busy, false); assert.equal(plugin.progress?.phase, 'completed', plugin.statusText); assert.ok(plugin.lastSuccess());
   assert.equal(plugin.lastSuccess()!.bytes, files.get('note.md')!.byteLength);
   assert.ok(document.body.textContent!.includes('已校验内容')); assert.equal(plugin.diagnostics().includes('note.md'), false);
   await plugin.run('files', () => plugin.showCloudFiles()); assert.ok(document.body.textContent!.includes('note.md'));
+  assert.ok(document.querySelector('[data-cloud-folder="论文/调研研究"]'));
+  assert.ok([...remoteObjects.keys()].some(path => path.includes('/directories/')));
   const cloudFile = document.querySelector('details[data-cloud-file="note.md"]')!;
   cloudFile.setAttribute('open', ''); cloudFile.dispatchEvent(new window.Event('toggle'));
   assert.ok(document.body.textContent!.includes('/blobs/' + hash(files.get('note.md')!)));
@@ -426,6 +432,13 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   plugin.engine.remote.publish = publishBeforeResolution;
   // Local events enqueue work automatically; the UI does not need a Sync click.
   await plugin.setAutomatic(true); await plugin.queue.pump();
+  dirs.add('自动空目录');
+  for (const callback of vaultEvents.get('create') ?? []) callback({ path: '自动空目录' });
+  const folderClock = Date.now;
+  try { const now = folderClock(); Date.now = () => now + 2500; await plugin.queue.pump(); } finally { Date.now = folderClock; }
+  assert.ok([...remoteObjects].some(([path, data]) => path.includes('/directories/') && JSON.parse(new TextDecoder().decode(data)).path === '自动空目录'), 'native folder events must publish without a manual click');
+  await plugin.directories.remote.publish({ version: 1, vaultId: plugin.settings.binding.vaultId, deviceId: uuid(), opId: uuid(), path: '另一设备空目录', parents: [], kind: 'create', createdAt: Date.now() });
+  plugin.queue.request('remote'); await plugin.queue.pump(); assert.ok(dirs.has('另一设备空目录'), 'remote polling must materialize empty folders');
   const autoCount = remoteObjects.size; files.set('note.md', new TextEncoder().encode('automatic file edit').buffer);
   for (const callback of vaultEvents.get('modify') ?? []) callback(new module.TFile('note.md', files.get('note.md')!.byteLength));
   const autoNow = Date.now;
@@ -496,6 +509,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   }); notifier.saved = { ...structuredClone(plugin.saved), autoSyncEnabled: true };
   let automaticError: unknown, outcome = { incomingChanges: 0, preservedConflicts: 0, uploadedFiles: 0, downloadedFiles: 0, deletedFiles: 0, autoMergedFiles: 0, blockedFiles: 0 };
   notifier.getEngine = async () => ({ recoverPending: async () => {}, syncAutomatic: async () => { if (automaticError) throw automaticError; return outcome; } });
+  notifier.directories = { recover: async () => {}, preview: async () => ({}), sync: async () => ({ created: 0, deleted: 0, skipped: 0 }) };
   await notifier.onload();
   const automaticCloud = notifier.ribbons.find((ribbon: any) => ribbon.icon === 'cloud').el;
   const notificationClock = Date.now; let notificationNow = notificationClock();

@@ -1,6 +1,6 @@
 import { VaultSailError } from '../core/safety.ts';
 
-export interface SyncNoticeSummary { uploaded: number; downloaded: number; deleted: number; merged: number; conflicts: number; blocked: number; }
+export interface SyncNoticeSummary { uploaded: number; downloaded: number; deleted: number; merged: number; conflicts: number; blocked: number; directories?: number; }
 export interface SyncNotice { message: string; duration: number; }
 
 /** Device-local presentation only; never changes queue retry or sync decisions. */
@@ -16,7 +16,7 @@ export class AutomaticNotifications {
     this.clearFailure();
     if (!automatic) return;
     const { uploaded, downloaded, deleted, merged, conflicts, blocked } = summary;
-    const changed = uploaded + downloaded + deleted + merged > 0;
+    const changed = uploaded + downloaded + deleted + merged + (summary.directories ?? 0) > 0;
     const warning = conflicts > 0 || blocked > 0;
     if (!changed && !warning) return;
     if (warning) {
@@ -27,7 +27,7 @@ export class AutomaticNotifications {
       this.warnings.set(key, now);
     }
     const parts = [uploaded ? `上传 ${uploaded} 个` : '', downloaded ? `下载 ${downloaded} 个` : '',
-      merged ? `自动合并 ${merged} 个` : '', deleted ? `删除 ${deleted} 项` : ''].filter(Boolean);
+      merged ? `自动合并 ${merged} 个` : '', deleted ? `删除 ${deleted} 项` : '', summary.directories ? `目录 ${summary.directories} 项` : ''].filter(Boolean);
     if (conflicts) parts.push(`${conflicts} 项冲突已保留双方，请查看待解决冲突`);
     if (blocked) parts.push(`跳过 ${blocked} 项未传输，请在传输中心查看`);
     return { message: `VaultSail 自动同步${warning ? '需要留意' : '完成'}：${parts.join('；')}。`, duration: warning ? 12_000 : 4000 };

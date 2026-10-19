@@ -217,7 +217,7 @@ export class VaultSailSettingTab extends PluginSettingTab {
     new Setting(vaultCard).setName('创建新云端库').setDesc('创建独立空间，随后由你预览并选择传输内容。')
       .addText(text => text.setValue(name).onChange(value => { name = value; }))
       .addButton(button => this.lock(button.setButtonText('创建并绑定')).onClick(() => new ConfirmModal(this.app, '创建云端库', '将在获准应用目录下创建新库：' + name, () => p.run('创建云端库…', () => p.createVault(name))).open()));
-    new Setting(transferCard).setName('双向同步').setDesc('根据上次成功的基线自动判断上传与下载。双方改动自动保留原笔记和冲突副本；删除默认关闭。')
+    new Setting(transferCard).setName('双向同步').setDesc('同步文件与空文件夹，按已验证基线判断上传与下载。双方改动保留竞争内容；删除默认关闭。空目录同步需两端更新至 0.2.16。')
       .addButton(button => button.setButtonText('开始同步').setCta().onClick(() => { p.requestSync(); }))
       .addButton(button => this.lock(button.setButtonText('先看同步清单')).onClick(() => { void p.run('扫描双向变更…', () => p.preview('sync')); }));
     new Setting(transferCard).setName('自动同步').setDesc('保存后安静 2 秒同步，连续编辑最多合并 15 秒；前台定期检查其他设备的版本。升级后需主动开启。')

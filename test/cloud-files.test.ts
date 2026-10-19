@@ -61,5 +61,12 @@ test('cloud file tree groups paths, preserves conflict/deletion versions and sea
   search.value = ''; search.dispatchEvent(new window.Event('input')); assert.equal(folderAt('项目').hasAttribute('open'), false, 'clearing search restores folder expansion preferences');
   button('全部展开').click(); assert.equal(folderAt('项目/研究').hasAttribute('open'), true); assert.ok(fileAt('项目/研究/笔记10.md'));
   search.value = '不存在'; search.dispatchEvent(new window.Event('input')); assert.match(host.textContent!, /没有匹配的文件或目录/);
-  const empty = document.body.appendChild(document.createElement('section')); new CloudFilesPanel(empty, new Map(), '位置'); assert.match(empty.textContent!, /当前云端库还没有笔记版本/);
+  const empty = document.body.appendChild(document.createElement('section')); new CloudFilesPanel(empty, new Map(), '位置'); assert.match(empty.textContent!, /当前云端库还没有笔记或目录版本/);
+  const folders = document.body.appendChild(document.createElement('section'));
+  new CloudFilesPanel(folders, new Map(), '位置', ['论文/调研研究', '论文/学姐指导']);
+  assert.ok(folders.querySelector('[data-cloud-folder="论文"]'));
+  assert.ok(folders.textContent!.includes('调研研究')); assert.ok(folders.textContent!.includes('空目录'));
+  assert.equal(folders.querySelector('.vs-cloud-empty'), null);
+  const searchFolders = folders.querySelector('input')!; searchFolders.value = '学姐'; searchFolders.dispatchEvent(new window.Event('input'));
+  assert.ok(folders.querySelector('[data-cloud-folder="论文/学姐指导"]')); assert.equal(folders.querySelector('[data-cloud-folder="论文/调研研究"]'), null);
 });
