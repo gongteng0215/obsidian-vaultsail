@@ -28,6 +28,7 @@ import { UploadTelemetry, type TransferCenterSnapshot } from './sync/transfer-ce
 import { openTransferCenter, TransferCenterView, TRANSFER_CENTER_VIEW } from './ui/transfer-center';
 import { ObsidianHistoryStore } from './platform/sync-history-store';
 import { SyncHistoryModal } from './ui/sync-history';
+import { CloudFilesModal } from './ui/cloud-files';
 import { decryptPairing, encryptPairing, isEncryptedPairing, PAIRING_LIFETIME_MS, validateAuthorizedPairing, validatePairingCode, type AuthorizedPairing, type PairingImportOptions } from './encrypted-pairing';
 
 const PAIRING_STEPS = {
@@ -555,15 +556,8 @@ export default class VaultSailPlugin extends Plugin {
     const { provider, binding } = await this.boundProvider();
     const context = hash(bytes(binding.appKey + '|' + binding.root + '|' + binding.accountHash + '|' + binding.vaultId));
     const store = new RemoteVaultStore(provider, new ObsidianRevisionCache(this.app, this.deviceId, context));
-    const heads = buildHeads(await store.revisions(binding.vaultId)); const modal = new Modal(this.app); modal.titleEl.setText('云端文件与版本');
-    modal.contentEl.createEl('p', { text: this.cloudLocation() });
-    if (!heads.size) modal.contentEl.createEl('p', { text: '当前云端库还没有笔记版本。创建库不会自动上传笔记，请预览上传后执行。' });
-    for (const [path, versions] of [...heads].sort(([a], [b]) => a.localeCompare(b))) {
-      const row = modal.contentEl.createEl('details', { cls: 'vaultsail-file-row' }); row.createEl('summary', { text: `${path} · ${versions.length > 1 ? '有冲突 · ' : ''}${versions.filter(op => op.kind === 'update').length} 个内容版本` });
-      for (const op of versions) { row.createEl('p', { text: op.kind === 'update' ? `${formatBytes(op.size)} · 设备 ${op.deviceId.slice(0, 8)} · 版本 ${op.opId.slice(0, 8)}` : '删除版本记录（历史内容保留）' });
-        if (op.hash) row.createEl('code', { text: this.cloudLocation() + '/blobs/' + op.hash }); }
-    }
-    modal.open();
+    const heads = buildHeads(await store.revisions(binding.vaultId));
+    new CloudFilesModal(this.app, heads, this.cloudLocation()).open();
   }
   openConfigExport(): void {
     new ConfigExportModal(this.app, (password, includeVault) => this.exportAuthorizedConfiguration(password, includeVault), text => this.saveConfigExport(text), Boolean(this.settings.binding)).open();

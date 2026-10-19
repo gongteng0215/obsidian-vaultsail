@@ -192,5 +192,28 @@
 }
 [data-vaultsail-sync-state=running] svg { animation: vaultsail-sync-pulse 1.4s ease-in-out infinite; }
 [data-vaultsail-sync-state=attention] { color: var(--text-warning); background-color: var(--background-modifier-hover); }
+.vaultsail-cloud-modal .modal { width: min(880px, calc(100vw - 24px)); max-width: 880px; }
+.vaultsail-cloud-files { min-width: 0; }
+.vs-cloud-controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.vs-cloud-controls input { flex: 1 1 180px; min-width: 0; }
+.vs-cloud-summary { color: var(--text-muted); font-size: var(--font-ui-small); margin: 8px 0; line-height: 1.5; }
+.vs-cloud-tree { max-height: 60vh; overflow: auto; padding: 2px; }
+.vs-cloud-row { cursor: pointer; display: list-item; padding: 5px 4px; border-radius: 4px; line-height: 1.6; overflow-wrap: anywhere; }
+.vs-cloud-row:hover { background: var(--background-modifier-hover); }
+.vs-cloud-row:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: -2px; }
+.vs-cloud-icon { display: inline-flex; vertical-align: middle; margin-right: 6px; color: var(--text-muted); }
+.vs-cloud-icon svg { width: 16px; height: 16px; }
+.vs-cloud-folder > .vs-cloud-row .vs-cloud-name { font-weight: 600; }
+.vs-cloud-meta { display: inline-block; max-width: calc(100% - 10px); color: var(--text-muted); font-size: var(--font-ui-smaller); margin-left: 10px; }
+.vs-cloud-file[data-state=conflict] > .vs-cloud-row .vs-cloud-meta { color: var(--text-warning); }
+.vs-cloud-file[data-state=deleted] > .vs-cloud-row .vs-cloud-name { color: var(--text-muted); text-decoration: line-through; }
+.vs-cloud-children { margin-left: 12px; border-left: 1px solid var(--background-modifier-border); padding-left: 8px; }
+.vs-cloud-deep { margin-left: 0; padding-left: 0; border-left: 0; }
+.vs-cloud-version { margin: 6px 0; padding: 3px 6px; background: var(--background-secondary); border-radius: 4px; }
+.vs-cloud-full-path, .vs-cloud-version p, .vs-cloud-location { font-size: var(--font-ui-small); color: var(--text-muted); margin: 5px 0; overflow-wrap: anywhere; }
+.vs-cloud-version code, .vs-cloud-location code { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--font-ui-smaller); }
+.vs-cloud-location { margin-top: 10px; }
+.vs-cloud-location summary { cursor: pointer; }
+@media (pointer: coarse) { .vs-cloud-row { padding-block: 10px; } .vs-cloud-controls :is(input, button) { min-height: 44px; } }
 @keyframes vaultsail-sync-pulse { 50% { opacity: .4; } }
 @media (prefers-reduced-motion: reduce) { [data-vaultsail-sync-state=running] svg { animation: none; } }

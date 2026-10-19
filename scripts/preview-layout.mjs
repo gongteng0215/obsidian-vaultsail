@@ -27,6 +27,7 @@ const fixture = String.raw`
 import { VaultSailSettingTab } from './src/ui/settings-tab.ts';
 import { DEFAULT_SETTINGS } from './src/config.ts';
 import { TransferCenterPanel } from './src/ui/transfer-center-panel.ts';
+import { CloudFilesPanel } from './src/ui/cloud-files.ts';
 const proto = HTMLElement.prototype;
 proto.empty = function() { this.replaceChildren(); };
 proto.setText = function(text) { this.textContent = text; };
@@ -38,7 +39,14 @@ const plugin = new Proxy({ settings: { ...DEFAULT_SETTINGS, providerId: 'baidu',
 auth:{status:()=>'connected',configurationIssue:()=>null}, authPhase:'idle', deviceSession:undefined, browserRequested:false, progress, busy:false, manifest:{version:${JSON.stringify(JSON.parse(fs.readFileSync('manifest.json','utf8')).version)}}, statusText:'正在上传视频附件，布局测试使用模拟数据。',
 fileLimit:()=>512*1024*1024, queueSummary:()=>'正在执行手动同步；后续修改会合并进入队列。',blockedSummary:()=>'上次扫描没有超限或关联保护项。',cloudLocation:()=>'/apps/VaultSail/vaultsail/vaults/00000000-0000-4000-8000-000000000001',lastSuccess:()=>null,performanceText:()=>'连接检查 0.4 秒 · 云端扫描 7.1 秒 · 本地扫描 0.0 秒\n网络请求 39 次 · 令牌刷新 0 次' }, {get:(target,key)=>key in target?target[key]:(()=>{})});
 const params = new URLSearchParams(location.search);
-if (params.get('view') === 'transfers') {
+if (params.get('view') === 'cloud') {
+  const host = document.createElement('section'); host.style.padding='16px'; document.querySelector('#settings-host').append(host);
+  host.createEl('h2',{text:'云端文件与版本'});
+  const paths=['项目/论文/研究计划.md','项目/论文/实验记录.md','项目/待办.md','附件/研究流程图.png','附件/跨设备同步的长文件名_2026年度完整研究资料与参考附件.pdf','归档/旧稿.md','首页.md'];
+  const heads=new Map(paths.map((path,index)=>[path,[{schemaVersion:1,vaultId:'demo',opId:'00000000-demo',deviceId:'windows-demo',fileId:path,path,kind:index===5?'delete':'update',parents:[],size:12345,hash:index===5?undefined:'a'.repeat(64),createdAt:1}]]));
+  heads.get(paths[1]).push({...heads.get(paths[1])[0],opId:'11111111-demo',deviceId:'ipad-demo'});
+  new CloudFilesPanel(host,heads,'我的应用数据/VaultSail/vaultsail/vaults/00000000-0000-4000-8000-000000000001');
+} else if (params.get('view') === 'transfers') {
   const now = Date.now();
   const names = [progress.path, '笔记/今日研究.md', '附件/实验流程图.png', '笔记/项目计划.md', '文献/参考资料.pdf', '附件/采样记录.csv', '附件/等待重试的文件.zip'];
   const states = ['running','succeeded','succeeded','unchanged','queued','queued','failed'];

@@ -4,7 +4,7 @@
 
 [English](README.md) | **简体中文**
 
-本地开发预览 **0.2.11**：自动同步有实际传输时提示数量，异常、冲突和跳过项明确提醒，失败时云朵显示警示色；无变化检查保持安静，重复提醒受限，自动通知彼此替换。包含点击即时反馈与扫描优化，尚未发布社区。见 [自动同步提醒说明](docs/releases/0.2.11.md)、[点击反馈](docs/releases/0.2.10.md) 和 [扫描性能说明](docs/releases/0.2.9.md)。
+本地开发预览 **0.2.12**：查看云端文件改为可展开的目录树，支持路径搜索、全部展开/折叠及按需查看版本。包含自动同步提醒、点击即时反馈与扫描优化，尚未发布社区。见 [云端目录树说明](docs/releases/0.2.12.md)、[自动同步提醒](docs/releases/0.2.11.md) 和 [扫描性能说明](docs/releases/0.2.9.md)。
 
 [社区插件页面](https://community.obsidian.md/plugins/vaultsail) · [下载 0.2.5](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.5) · [版本说明](docs/releases/0.2.5.md) · [版本规划](docs/ROADMAP.zh-CN.md) · [反馈问题](https://github.com/gongteng0215/obsidian-vaultsail/issues)
 

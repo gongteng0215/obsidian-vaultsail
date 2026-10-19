@@ -4,7 +4,7 @@ Sync Obsidian notes and attachments through your own Baidu Netdisk account, with
 
 **English** | [简体中文](README.zh-CN.md)
 
-Local development preview **0.2.11** adds automatic transfer summaries, actionable failure/conflict/skipped-file notifications and a ribbon warning state. No-change checks stay quiet; repeated issues are limited and automatic toasts replace each other. Includes immediate click feedback and scan improvements; not a community release. See [automatic notifications](docs/releases/0.2.11.md), [click feedback](docs/releases/0.2.10.md) and [scan performance](docs/releases/0.2.9.md).
+Local development preview **0.2.12** displays cloud files in an expandable directory tree with path search, expand/collapse controls and on-demand version details. Includes automatic notifications, immediate click feedback and scan improvements; not a community release. See [cloud file tree](docs/releases/0.2.12.md), [automatic notifications](docs/releases/0.2.11.md) and [scan performance](docs/releases/0.2.9.md).
 
 [Community plugin](https://community.obsidian.md/plugins/vaultsail) · [Download 0.2.5](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.5) · [Release notes](docs/releases/0.2.5.md) · [Version roadmap](docs/ROADMAP.md) · [Report an issue](https://github.com/gongteng0215/obsidian-vaultsail/issues)
 

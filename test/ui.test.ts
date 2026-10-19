@@ -323,6 +323,8 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   assert.equal(plugin.lastSuccess()!.bytes, files.get('note.md')!.byteLength);
   assert.ok(document.body.textContent!.includes('已校验内容')); assert.equal(plugin.diagnostics().includes('note.md'), false);
   await plugin.run('files', () => plugin.showCloudFiles()); assert.ok(document.body.textContent!.includes('note.md'));
+  const cloudFile = document.querySelector('details[data-cloud-file="note.md"]')!;
+  cloudFile.setAttribute('open', ''); cloudFile.dispatchEvent(new window.Event('toggle'));
   assert.ok(document.body.textContent!.includes('/blobs/' + hash(files.get('note.md')!)));
   assert.equal([...remoteObjects.keys()].some(p => p.includes('VaultSail-配置')), false, 'exported pairing files must never become remote notes');
   const beforeSync = remoteObjects.size; files.set('note.md', new TextEncoder().encode('edited locally').buffer);

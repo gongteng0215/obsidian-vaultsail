@@ -9,6 +9,7 @@ export class Notice {
   hide(): void { this.hidden = true; }
 }
 export function requireApiVersion(): boolean { return true; }
+export function setIcon(el: HTMLElement, name: string): void { el.setAttribute('data-icon', name); }
 export async function requestUrl(input: unknown): Promise<unknown> { return (globalThis as unknown as { mockRequest: (input: unknown) => Promise<unknown> }).mockRequest(input); }
 export class Plugin {
   app: any; manifest = { version: '0.1.14' }; commands: any[] = []; tabs: any[] = []; ribbons: { icon: string; el: HTMLElement }[] = []; saved: unknown;
