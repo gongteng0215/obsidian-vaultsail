@@ -3,6 +3,7 @@ import { HISTORY_ACTIONS, HISTORY_CODES, HISTORY_REASONS, type FileHistoryRow } 
 import { formatBytes, formatScan, PROGRESS_LABELS, type FileUploadProgress } from '../sync/progress';
 import { formatScanDetails } from '../sync/performance';
 import { formatScanSummary } from '../sync/scan-summary';
+import { preserveInteraction } from './interaction';
 
 export interface TransferCenterSource {
   snapshot(): TransferCenterSnapshot; subscribe(listener: () => void): () => void;
@@ -31,15 +32,20 @@ export class TransferCenterPanel {
   private sync: HTMLButtonElement; private pause: HTMLButtonElement; private resume: HTMLButtonElement;
   private previous: HTMLButtonElement; private next: HTMLButtonElement;
   private needsRender = true; private running = false;
+  private displayed?: TransferCenterSnapshot; private holding = false; private forceLatest = false;
+  private latestBanner: HTMLElement;
   constructor(private host: HTMLElement, private source: TransferCenterSource) {
     host.empty(); host.classList.add('vaultsail-transfer-center');
     const heading = host.createDiv({ cls: 'vs-transfer-heading' });
     const brand = heading.createDiv(); brand.createEl('span', { cls: 'vs-transfer-eyebrow', text: 'VAULTSAIL / TRANSFERS' });
     brand.createEl('h2', { text: '传输中心' });
     const actions = heading.createDiv({ cls: 'vs-transfer-actions' });
-    this.sync = actions.createEl('button', { text: '开始同步', cls: 'mod-cta' }); this.sync.addEventListener('click', () => source.sync());
+    this.sync = actions.createEl('button', { text: '开始同步', cls: 'mod-cta' }); this.sync.addEventListener('click', () => { this.forceLatest = true; this.holding = false; source.sync(); });
     this.pause = actions.createEl('button', { text: '暂停任务' }); this.pause.addEventListener('click', () => source.pause());
     this.resume = actions.createEl('button', { text: '继续 / 恢复' }); this.resume.addEventListener('click', () => source.resume());
+    this.latestBanner = host.createDiv({ cls: 'vs-transfer-follow-latest' }); this.latestBanner.hidden = true;
+    this.latestBanner.createEl('span', { text: '有新任务，当前保留你正在查看的列表。' });
+    this.latestBanner.createEl('button', { text: '查看最新任务' }).addEventListener('click', () => { this.holding = false; this.forceLatest = true; this.render(); });
     const summary = host.createDiv({ cls: 'vs-transfer-summary' });
     this.title = summary.createEl('strong', { cls: 'vs-transfer-target' });
     this.status = summary.createEl('p', { cls: 'vs-transfer-status' }); this.status.setAttribute('role', 'status');
@@ -82,8 +88,19 @@ export class TransferCenterPanel {
   }
   render(): void {
     if (this.closed) return;
-    const snapshot = this.source.snapshot(), task = snapshot.task, progress = snapshot.progress;
-    this.needsRender = false; this.running = snapshot.busy;
+    preserveInteraction(this.host, () => this.update());
+  }
+  private update(): void {
+    const latest = this.source.snapshot();
+    const newTask = !!this.key && this.context === latest.context && this.key !== `${latest.context ?? ''}:${latest.task?.id ?? ''}`;
+    let scrolled = false; for (let el: HTMLElement | null = this.host; el; el = el.parentElement) if (el.scrollTop > 0) { scrolled = true; break; }
+    const reading = scrolled || this.page > 0 || !!this.search.value || !!this.list.querySelector('details[open]') || this.list.contains(this.host.ownerDocument.activeElement);
+    if (newTask && !this.forceLatest && reading) this.holding = true;
+    if (!newTask || this.context !== latest.context || this.forceLatest) this.holding = false;
+    if (newTask || this.context !== latest.context) this.forceLatest = false; this.latestBanner.hidden = !this.holding;
+    const snapshot = this.holding && this.displayed ? this.displayed : latest, task = snapshot.task, progress = snapshot.progress;
+    if (!this.holding) this.displayed = { ...snapshot, task: task ? { ...task, files: task.files.map(row => ({ ...row })) } : undefined };
+    this.needsRender = false; this.running = latest.busy;
     const key = `${snapshot.context ?? ''}:${task?.id ?? ''}`;
     if (this.key !== key) {
       this.key = key; this.rows.clear(); this.uploads.clear(); this.list.empty(); this.page = 0;
@@ -92,11 +109,11 @@ export class TransferCenterPanel {
     }
     for (const upload of progress?.uploads ?? []) this.uploads.set(upload.path, upload);
     text(this.title, snapshot.target);
-    const label = snapshot.pauseRequested ? '正在暂停，等待当前请求结束' : snapshot.busy && progress ? PROGRESS_LABELS[progress.phase]
+    const label = this.holding ? '正在查看先前任务 · 可切换到最新任务' : snapshot.pauseRequested ? '正在暂停，等待当前请求结束' : snapshot.busy && progress ? PROGRESS_LABELS[progress.phase]
       : task ? TASKS[task.status] : snapshot.context ? '准备就绪' : '请先连接百度网盘并绑定云端库';
     text(this.status, label); this.host.setAttribute('data-running', String(snapshot.busy));
-    this.sync.disabled = !snapshot.context || snapshot.busy; this.pause.hidden = !snapshot.busy; this.pause.disabled = snapshot.pauseRequested;
-    this.resume.hidden = snapshot.busy || !(task && ['failed', 'paused', 'interrupted'].includes(task.status) || progress && ['paused', 'failed'].includes(progress.phase) || snapshot.queue.includes('暂停'));
+    this.sync.disabled = !latest.context || latest.busy; this.pause.hidden = !latest.busy; this.pause.disabled = latest.pauseRequested;
+    this.resume.hidden = latest.busy || !(latest.task && ['failed', 'paused', 'interrupted'].includes(latest.task.status) || latest.progress && ['paused', 'failed'].includes(latest.progress.phase) || latest.queue.includes('暂停'));
     this.resume.disabled = !snapshot.context;
     const files = task?.files ?? [], done = files.filter(row => category(row) === 'done').length;
     text(this.counts, files.length ? `已完成 ${done} / ${files.length} 个文件` : snapshot.busy && progress ? progress.scan && ['scanning-remote', 'checking-remote'].includes(progress.phase) ? `已发现 ${progress.scan.listed} 条版本记录` : `已扫描 ${progress.doneFiles} 项` : '等待下一次同步');

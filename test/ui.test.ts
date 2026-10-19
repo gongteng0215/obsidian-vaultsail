@@ -372,6 +372,33 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   concurrencyField().value = '2.5'; concurrencyField().dispatchEvent(new window.Event('input')); setupButton('保存并发数').click();
   await Promise.resolve(); assert.equal(plugin.settings.transferConcurrency, 12);
   setupButton('恢复默认 8').click(); await until(() => plugin.saved.transferConcurrency === 8); await until(() => concurrencyField().value === '8');
+  // Background work must retain scroll, editable drafts and disclosure state.
+  const settingsRoot = plugin.tabs[0].containerEl, oldField = concurrencyField();
+  settingsRoot.scrollTop = 432; document.body.scrollTop = 751;
+  settingsRoot.querySelector('.vaultsail-progress-details')!.setAttribute('open', '');
+  oldField.value = '11'; oldField.dispatchEvent(new window.Event('input'));
+  let finishBackground!: () => void; const backgroundGate = new Promise<void>(resolve => { finishBackground = resolve; });
+  const backgroundRun = plugin.run('后台状态更新测试…', () => backgroundGate);
+  try {
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(concurrencyField(), oldField); assert.equal(oldField.disabled, false, 'background sync must allow editing drafts');
+    oldField.value = '13'; oldField.dispatchEvent(new window.Event('input'));
+  } finally { finishBackground(); await backgroundRun; }
+  assert.equal(concurrencyField(), oldField); assert.equal(oldField.value, '13'); assert.equal(settingsRoot.scrollTop, 432); assert.equal(document.body.scrollTop, 751);
+  plugin.settings.remotePollSeconds = 90; plugin.refreshUI();
+  assert.equal(concurrencyField().value, '13'); assert.equal(settingsRoot.scrollTop, 432); assert.equal(document.body.scrollTop, 751);
+  assert.equal(settingsRoot.querySelector('.vaultsail-progress-details')!.hasAttribute('open'), true);
+  plugin.settings.remotePollSeconds = 60; plugin.refreshUI(); assert.equal(concurrencyField().value, '13', 'drafts survive consecutive structural updates');
+  const originalDraftSave = plugin.saveData.bind(plugin); let finishDraftSave!: () => void;
+  const draftSaveGate = new Promise<void>(resolve => { finishDraftSave = resolve; });
+  plugin.saveData = async (value: unknown) => { await draftSaveGate; return originalDraftSave(value); };
+  concurrencyField().value = '12'; concurrencyField().dispatchEvent(new window.Event('input')); setupButton('保存并发数').click();
+  await new Promise(resolve => setTimeout(resolve, 0)); concurrencyField().value = '14'; concurrencyField().dispatchEvent(new window.Event('input'));
+  finishDraftSave(); await until(() => plugin.saved.transferConcurrency === 12 && !plugin.busy); plugin.saveData = originalDraftSave;
+  assert.equal(concurrencyField().value, '14', 'edits made while an asynchronous save is pending must survive its response');
+  setupButton('保存并发数').click(); await until(() => plugin.saved.transferConcurrency === 14);
+  setupButton('恢复默认 8').click(); await until(() => plugin.saved.transferConcurrency === 8);
+  document.body.scrollTop = 0; settingsRoot.scrollTop = 0;
   // Drive the actual conflict inbox/editor, including persisted drafts and
   // a commit whose modal cannot close halfway through publication.
   const conflictOps = await plugin.engine.remote.revisions(plugin.settings.binding.vaultId);
@@ -597,8 +624,10 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
     const liveSearch = liveHistory.contentEl.querySelector('input[type=search]') as HTMLInputElement;
     liveSearch.value = 'live-history'; liveSearch.dispatchEvent(new window.Event('input'));
     assert.equal(liveHistory.contentEl.querySelector('.vaultsail-history-row')!.getAttribute('data-state'), 'running');
+    const liveHistoryRow = liveHistory.contentEl.querySelector('.vaultsail-history-row'); liveHistory.contentEl.scrollTop = 265;
     releaseHistoryPublish(); await syncing; await new Promise(resolve => setTimeout(resolve, 550));
     assert.equal(liveHistory.contentEl.querySelector('input[type=search]'), liveSearch);
+    assert.equal(liveHistory.contentEl.querySelector('.vaultsail-history-row'), liveHistoryRow); assert.equal(liveHistory.contentEl.scrollTop, 265);
     assert.equal(liveHistory.contentEl.querySelector('.vaultsail-history-row')!.getAttribute('data-state'), 'succeeded');
   } finally { releaseHistoryPublish(); await syncing; liveHistory.close(); plugin.engine.remote.publish = originalHistoryPublish; }
   // Exercise the actual plugin entry, Obsidian binary adapter and state store at

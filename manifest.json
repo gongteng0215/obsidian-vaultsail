@@ -1,7 +1,7 @@
 {
   "id": "vaultsail",
   "name": "VaultSail",
-  "version": "0.2.13",
+  "version": "0.2.14",
   "minAppVersion": "1.11.4",
   "description": "Sync notes and attachments through Baidu Netdisk with version preservation and encrypted device pairing.",
   "author": "gongteng0215",

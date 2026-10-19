@@ -3,6 +3,7 @@ import { bytes, hash, safeMessage, VaultSailError } from '../core/safety';
 import type { ConflictDetails, PlanRow } from '../sync/engine';
 import type { ConflictDrafts, ConflictDraft } from '../platform/conflict-drafts';
 import { ConfirmModal } from './modals';
+import { preserveInteraction } from './interaction';
 interface ConflictActions {
   list(): Promise<PlanRow[]>; details(row: PlanRow): Promise<ConflictDetails>;
   resolve(row: PlanRow, choice: string, data?: ArrayBuffer): Promise<void>;
@@ -11,21 +12,29 @@ interface ConflictActions {
 }
 export class ConflictInbox extends Modal {
   private actions: ConflictActions;
+  private closed = false; private generation = 0; private status!: HTMLElement; private list!: HTMLElement;
   constructor(app: App, actions: ConflictActions) { super(app); this.actions = actions; }
-  onOpen(): void { this.titleEl.setText('待解决冲突'); void this.reload(); }
+  onOpen(): void {
+    this.titleEl.setText('待解决冲突'); this.status = this.contentEl.createEl('p'); this.status.setAttribute('role', 'status');
+    this.list = this.contentEl.createDiv(); new Setting(this.contentEl).addButton(button => button.setButtonText('刷新').onClick(() => { void this.reload(); }));
+    void this.reload();
+  }
+  onClose(): void { this.closed = true; this.generation++; }
   private async reload(): Promise<void> {
-    this.contentEl.empty(); const status = this.contentEl.createEl('p', { text: '正在核验冲突…' });
+    if (this.closed) return; const generation = ++this.generation; this.status.setText('正在核验冲突…');
     try {
-      const rows = await this.actions.list(); if (!this.containerEl.isConnected) return;
-      status.setText(rows.length ? `${rows.length} 个文件待处理，其他独立文件可继续同步。` : '没有待解决冲突。');
-      for (const row of rows) new Setting(this.contentEl).setName(row.path).setDesc(`${row.heads.length} 个云端分支 · ${row.reason}`)
+      const rows = await this.actions.list(); if (this.closed || generation !== this.generation) return;
+      preserveInteraction(this.contentEl, () => {
+      this.status.setText(rows.length ? `${rows.length} 个文件待处理，其他独立文件可继续同步。` : '没有待解决冲突。');
+      this.list.empty();
+      for (const row of rows) new Setting(this.list).setName(row.path).setDesc(`${row.heads.length} 个云端分支 · ${row.reason}`)
         .addButton(button => button.setButtonText('对比与解决').onClick(async () => {
           button.setDisabled(true);
-          try { const details = await this.actions.details(row); if (this.containerEl.isConnected) new ConflictEditor(this.app, details, this.actions, () => { void this.reload(); }).open(); }
-          catch (error) { new Notice(safeMessage(error)); } finally { button.setDisabled(false); }
+          try { const details = await this.actions.details(row); if (!this.closed && generation === this.generation) new ConflictEditor(this.app, details, this.actions, () => { void this.reload(); }).open(); }
+          catch (error) { if (!this.closed && generation === this.generation) new Notice(safeMessage(error)); } finally { button.setDisabled(false); }
         }));
-      new Setting(this.contentEl).addButton(button => button.setButtonText('刷新').onClick(() => { void this.reload(); }));
-    } catch (error) { status.setText(safeMessage(error)); }
+      });
+    } catch (error) { if (!this.closed && generation === this.generation) this.status.setText(safeMessage(error)); }
   }
 }
 class ConflictEditor extends Modal {
@@ -33,7 +42,7 @@ class ConflictEditor extends Modal {
   private draft!: ConflictDraft; private saveTask: Promise<void> = Promise.resolve(); private saving?: ReturnType<typeof setTimeout>; private closed = false;
   private committing = false;
   constructor(app: App, details: ConflictDetails, actions: ConflictActions, done: () => void) { super(app); this.details = details; this.actions = actions; this.done = done; }
-  onOpen(): void { this.titleEl.setText('解决冲突 · ' + this.details.row.path); void this.render().catch(error => this.contentEl.createEl('p', { text: safeMessage(error) })); }
+  onOpen(): void { this.titleEl.setText('解决冲突 · ' + this.details.row.path); void this.render().catch(error => { if (!this.closed) this.contentEl.createEl('p', { text: safeMessage(error) }); }); }
   close(): void { if (!this.committing) super.close(); }
   onClose(): void { this.closed = true; if (this.saving) clearTimeout(this.saving); if (this.draft) void this.save().catch(error => new Notice(safeMessage(error))); }
   private fingerprint(): string { return hash(bytes(JSON.stringify([this.details.row.localHash, this.details.row.heads.map(head => head.opId).sort()]))); }

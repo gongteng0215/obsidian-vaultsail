@@ -4,7 +4,7 @@ Sync Obsidian notes and attachments through your own Baidu Netdisk account, with
 
 **English** | [简体中文](README.zh-CN.md)
 
-Local development preview **0.2.13** exposes deletion sync as a normal setting, off by default, with no experiment gate. Includes the cloud file tree, automatic notifications and scan improvements; not a community release. See [deletion settings](docs/releases/0.2.13.md), [cloud file tree](docs/releases/0.2.12.md) and [automatic notifications](docs/releases/0.2.11.md).
+Local development preview **0.2.14** keeps scrolling, focus, drafts and disclosures stable during background updates, preserves lists being read and ignores stale modal responses. Includes standard deletion settings, the cloud tree and automatic notifications; not a community release. See [UI refresh audit](docs/releases/0.2.14.md), [deletion settings](docs/releases/0.2.13.md) and [cloud file tree](docs/releases/0.2.12.md).
 
 [Community plugin](https://community.obsidian.md/plugins/vaultsail) · [Download 0.2.5](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.5) · [Release notes](docs/releases/0.2.5.md) · [Version roadmap](docs/ROADMAP.md) · [Report an issue](https://github.com/gongteng0215/obsidian-vaultsail/issues)
 

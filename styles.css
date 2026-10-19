@@ -214,6 +214,8 @@
 .vs-cloud-version code, .vs-cloud-location code { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--font-ui-smaller); }
 .vs-cloud-location { margin-top: 10px; }
 .vs-cloud-location summary { cursor: pointer; }
+.vs-transfer-follow-latest { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 0; color: var(--text-muted); font-size: var(--font-ui-small); }
+.vaultsail-progress-card, .vaultsail-notice, .vaultsail-history-summary, .vs-transfer-summary { overflow-anchor: none; }
 @media (pointer: coarse) { .vs-cloud-row { padding-block: 10px; } .vs-cloud-controls :is(input, button) { min-height: 44px; } }
 @keyframes vaultsail-sync-pulse { 50% { opacity: .4; } }
 @media (prefers-reduced-motion: reduce) { [data-vaultsail-sync-state=running] svg { animation: none; } }

@@ -169,7 +169,7 @@ export default class VaultSailPlugin extends Plugin {
       phase: error instanceof VaultSailError && ['paused', 'cancelled'].includes(error.code) ? 'paused' : 'failed', message: safeMessage(error), updatedAt: Date.now() });
   }
   get pauseRequested(): boolean { return this.transferPauseRequested || (this.engine?.pauseRequested ?? false); }
-  refreshUI(): void { if (this.alive) { this.ensureQueue(); if (this.settingTab?.containerEl.isConnected) this.settingTab.display(); this.notifyTransfers(); } }
+  refreshUI(): void { if (this.alive) { this.ensureQueue(); if (this.settingTab?.containerEl.isConnected) this.settingTab.refresh(); this.notifyTransfers(); } }
   private context(): string | undefined { const b = this.settings.binding; return b && hash(bytes(b.appKey + '|' + b.root + '|' + b.accountHash + '|' + b.vaultId)); }
   private ensureQueue(): void {
     if (typeof this.app.workspace?.onLayoutReady === 'function' && !this.layoutReady) return;
@@ -292,16 +292,16 @@ export default class VaultSailPlugin extends Plugin {
     if (!Number.isInteger(pollSeconds) || pollSeconds < 30 || pollSeconds > 300) throw new VaultSailError('configuration', '远端检查间隔必须为 30–300 秒的整数。');
     if (enabled && (!this.settings.binding || this.auth.status() !== 'connected')) throw new VaultSailError('binding', '请先完成授权、绑定和文件权限验证。');
     if (enabled && !this.app.loadLocalStorage(this.validationKey(this.settings.binding!.accountHash))?.passed) throw new VaultSailError('permission', '请先运行本设备的文件传输权限验证。');
-    const previous = { enabled: this.settings.autoSyncEnabled, interval: this.settings.remotePollSeconds }; this.busy = true;
+    const previous = { enabled: this.settings.autoSyncEnabled, interval: this.settings.remotePollSeconds }; this.busy = true; this.refreshUI();
     try { this.settings.autoSyncEnabled = enabled; this.settings.remotePollSeconds = pollSeconds; await this.saveSettings(); }
     catch (error) { this.settings.autoSyncEnabled = previous.enabled; this.settings.remotePollSeconds = previous.interval; throw error; }
-    finally { this.busy = false; }
+    finally { this.busy = false; this.refreshUI(); }
     this.queue?.dispose(); this.queue = undefined; this.queueContext = undefined; this.refreshUI();
     if (enabled && !previous.enabled) this.requestSync(false);
   }
   async setDeletionEnabled(enabled: boolean): Promise<void> {
     if (this.busy) throw new VaultSailError('busy', '请等待当前任务结束。');
-    const previous = this.settings.deletionEnabled; this.busy = true;
+    const previous = this.settings.deletionEnabled; this.busy = true; this.refreshUI();
     try { this.settings.deletionEnabled = enabled; await this.saveSettings(); }
     catch (error) { this.settings.deletionEnabled = previous; throw error; }
     finally { this.busy = false; this.refreshUI(); }
@@ -371,14 +371,16 @@ export default class VaultSailPlugin extends Plugin {
   async setTransferConcurrency(value: number): Promise<void> {
     if (this.busy) throw new VaultSailError('busy', '请等待当前任务完成，再修改并发数。');
     if (!validConcurrency(value)) throw new VaultSailError('configuration', `请输入 1–${MAX_TRANSFER_CONCURRENCY} 之间的整数。`);
-    this.engine?.configureConcurrency(value); this.settings.transferConcurrency = value; await this.saveSettings();
-    this.statusText = `传输并发已设为 ${value} 路，下次任务生效。`; this.refreshUI();
+    const previous = this.settings.transferConcurrency; this.busy = true; this.refreshUI();
+    try { this.engine?.configureConcurrency(value); this.settings.transferConcurrency = value; await this.saveSettings(); this.statusText = `传输并发已设为 ${value} 路，下次任务生效。`; }
+    catch (error) { this.settings.transferConcurrency = previous; this.engine?.configureConcurrency(previous); throw error; }
+    finally { this.busy = false; this.refreshUI(); }
   }
   fileLimit(): number { return effectiveFileLimit(this.settings, Platform.isMobile); }
   async setUploadChunkConcurrency(value: number): Promise<void> {
     if (this.busy) throw new VaultSailError('busy', '请等待当前任务完成。');
     if (!validChunkConcurrency(value)) throw new VaultSailError('configuration', '分片并发请输入 1–4 之间的整数。');
-    const previous = this.settings.uploadChunkConcurrency; this.busy = true; this.settings.uploadChunkConcurrency = value;
+    const previous = this.settings.uploadChunkConcurrency; this.busy = true; this.refreshUI(); this.settings.uploadChunkConcurrency = value;
     try { await this.saveSettings(); this.engine = undefined; this.statusText = '分片并发设置已保存，下次任务生效。'; }
     catch (error) { this.settings.uploadChunkConcurrency = previous; throw error; }
     finally { this.busy = false; this.refreshUI(); }
@@ -386,10 +388,10 @@ export default class VaultSailPlugin extends Plugin {
   async setFileMiB(value: number): Promise<void> {
     if (this.busy) throw new VaultSailError('busy', '请等待当前任务完成，再修改大小上限。');
     if (Platform.isMobile || !validFileMiB(value)) throw new VaultSailError('configuration', '电脑端请输入 20–512 之间的整数；移动端上限为 20 MiB。');
-    const previous = this.settings.maxFileMiB; this.busy = true;
+    const previous = this.settings.maxFileMiB; this.busy = true; this.refreshUI();
     try { this.settings.maxFileMiB = value; await this.saveSettings(); }
     catch (error) { this.settings.maxFileMiB = previous; throw error; }
-    finally { this.busy = false; }
+    finally { this.busy = false; this.refreshUI(); }
     this.engine?.pause(); this.invalidateConnection(); this.engine = undefined;
     this.statusText = `本机单文件上限已设为 ${value} MiB，请重新预览或同步。`; this.refreshUI();
   }
@@ -561,10 +563,12 @@ export default class VaultSailPlugin extends Plugin {
       ? { completedAt: value.completedAt, files: value.files, bytes: value.bytes, elapsedMs: value.elapsedMs, blockedFiles: Number.isSafeInteger(value.blockedFiles) && value.blockedFiles >= 0 ? value.blockedFiles : 0 } : undefined;
   }
   async showCloudFiles(): Promise<void> {
+    const generation = this.generation;
     const { provider, binding } = await this.boundProvider();
     const context = hash(bytes(binding.appKey + '|' + binding.root + '|' + binding.accountHash + '|' + binding.vaultId));
     const store = new RemoteVaultStore(provider, new ObsidianRevisionCache(this.app, this.deviceId, context));
     const heads = buildHeads(await store.revisions(binding.vaultId));
+    if (!this.alive || generation !== this.generation) return;
     new CloudFilesModal(this.app, heads, this.cloudLocation()).open();
   }
   openConfigExport(): void {

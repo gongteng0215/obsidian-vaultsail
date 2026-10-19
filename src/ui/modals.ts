@@ -6,6 +6,8 @@ import { formatProgress, type SyncProgress } from '../sync/progress';
 import { renderUploads } from './transfer-progress';
 
 export class CloudVaultSetupModal extends Modal {
+  private closed = false;
+  onClose(): void { this.closed = true; }
   constructor(app: App, private localName: string, private actions: {
     create: (name: string) => Promise<void>; list: () => Promise<RemoteVault[]>; bind: (id: string) => Promise<void>; roundtrip: () => Promise<void>;
   }) { super(app); }
@@ -16,12 +18,12 @@ export class CloudVaultSetupModal extends Modal {
     const status = this.contentEl.createEl('p'); status.setAttribute('role', 'status');
     const controls: { setDisabled: (disabled: boolean) => unknown }[] = [];
     const perform = async (label: string, action: () => Promise<void>) => {
-      if (busy) return;
+      if (busy || this.closed) return;
       busy = true; controls.forEach(control => control.setDisabled(true)); status.setText(label);
-      try { await action(); } catch (error) { status.setText(safeMessage(error)); }
-      finally { busy = false; controls.forEach(control => control.setDisabled(false)); }
+      try { await action(); } catch (error) { if (!this.closed) status.setText(safeMessage(error)); }
+      finally { busy = false; if (!this.closed) controls.forEach(control => control.setDisabled(false)); }
     };
-    const done = () => { this.contentEl.empty(); this.contentEl.createEl('p', { text: '云端库已绑定。请先验证文件传输，再重新点击预览上传或预览下载。绑定不会自动传输笔记。' });
+    const done = () => { if (this.closed) return; this.contentEl.empty(); this.contentEl.createEl('p', { text: '云端库已绑定。请先验证文件传输，再重新点击预览上传或预览下载。绑定不会自动传输笔记。' });
       const result = this.contentEl.createEl('p'); result.setAttribute('role', 'status');
       new Setting(this.contentEl).setName('验证上传下载权限').setDesc('已在本设备通过测试时，可以直接完成并重新预览。')
         .addButton(button => button.setButtonText('验证文件传输').onClick(() => new ConfirmModal(this.app, '验证文件传输权限', '将上传、下载约 24 MiB 独立校验数据，校验文件保留；不上传笔记。', async () => {
@@ -41,7 +43,7 @@ export class CloudVaultSetupModal extends Modal {
     const list = this.contentEl.createDiv();
     new Setting(this.contentEl).setName('已有其他设备：选择已有库')
       .addButton(button => { controls.push(button); button.setButtonText('查看已有库').onClick(() => perform('正在读取云端库…', async () => {
-        const vaults = await this.actions.list(); list.empty();
+        const vaults = await this.actions.list(); if (this.closed) return; list.empty();
         status.setText(vaults.length ? '请选择要与本地笔记库配对的云端库。' : '当前目录下还没有云端库，请创建新库。');
         for (const vault of vaults) new Setting(list).setName(vault.displayName).setDesc(vault.vaultId)
           .addButton(bindButton => { controls.push(bindButton); bindButton.setDisabled(true).setButtonText('绑定此库').onClick(() => perform('正在验证并绑定…', async () => { await this.actions.bind(vault.vaultId); done(); })); });

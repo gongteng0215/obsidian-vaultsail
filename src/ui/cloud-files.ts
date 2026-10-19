@@ -1,6 +1,7 @@
 import { Modal, setIcon, type App } from 'obsidian';
 import type { Revision } from '../sync/remote-vault';
 import { formatBytes } from '../sync/progress';
+import { preserveInteraction } from './interaction';
 
 export interface CloudFolder { kind: 'folder'; name: string; path: string; children: CloudNode[]; files: number; }
 export interface CloudFile { kind: 'file'; name: string; path: string; versions: Revision[]; }
@@ -51,6 +52,9 @@ export class CloudFilesPanel {
     this.render();
   }
   private render(): void {
+    preserveInteraction(this.host, () => this.update(), false, false);
+  }
+  private update(): void {
     const query = this.search.value.trim(), tree = cloudFileTree(this.heads, query);
     this.summary.setText(`${query ? '找到' : '共'} ${tree.files} 个文件路径${query ? ` / ${this.heads.size}` : ''} · 展开文件查看版本；删除记录与历史内容保留`);
     this.list.empty();

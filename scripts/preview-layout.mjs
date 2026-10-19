@@ -68,6 +68,13 @@ if (params.get('view') === 'cloud') {
   new TransferCenterPanel(host,{snapshot:()=>sample,subscribe:()=>()=>{},refresh:async()=>{},sync:()=>{},pause:()=>{sample.pauseRequested=true;},resume:()=>{},history:()=>{}});
 } else {
   const view = new VaultSailSettingTab(app, plugin); document.querySelector('#settings-host').append(view.containerEl); view.containerEl.classList.add('vertical-tab-content'); view.display();
+  if (params.get('refresh') === '1') {
+    let tick=0;
+    setInterval(()=>{tick++;plugin.busy=tick%2===1;plugin.statusText='本地模拟后台更新 '+tick;
+      if(tick%3===0)plugin.settings.remotePollSeconds=plugin.settings.remotePollSeconds===60?90:60;
+      view.refresh();
+    },1000);
+  }
 }
 for (const id of ['width','zoom','font']) { const input = document.getElementById(id); input.value = params.get(id) || input.value; input.addEventListener('input', update); }
 function update() {

@@ -4,7 +4,7 @@
 
 [English](README.md) | **简体中文**
 
-本地开发预览 **0.2.13**：同步删除作为常规独立设置直接显示，默认关闭，去掉旧的实验开关及界面文案。包含云文件目录树、自动提醒与扫描优化，尚未发布社区。见 [删除设置说明](docs/releases/0.2.13.md)、[云端目录树](docs/releases/0.2.12.md) 和 [自动同步提醒](docs/releases/0.2.11.md)。
+本地开发预览 **0.2.14**：后台状态更新保留滚动、焦点、草稿及展开状态；正在查看的任务列表不被新任务抢走，过期弹窗响应被忽略。包含常规删除设置、云文件树和自动提醒，尚未发布社区。见 [界面刷新排查与修复](docs/releases/0.2.14.md)、[删除设置](docs/releases/0.2.13.md) 和 [云文件树](docs/releases/0.2.12.md)。
 
 [社区插件页面](https://community.obsidian.md/plugins/vaultsail) · [下载 0.2.5](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.5) · [版本说明](docs/releases/0.2.5.md) · [版本规划](docs/ROADMAP.zh-CN.md) · [反馈问题](https://github.com/gongteng0215/obsidian-vaultsail/issues)
 

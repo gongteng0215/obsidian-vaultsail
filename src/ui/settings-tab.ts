@@ -8,13 +8,31 @@ import { formatBytes, formatProgress, progressRunning } from '../sync/progress';
 import { copyText } from './config-modals';
 import { renderUploads } from './transfer-progress';
 import { DEFAULT_TRANSFER_CONCURRENCY, MAX_TRANSFER_CONCURRENCY } from '../core/concurrency';
+import { acceptFields, preserveInteraction, rememberFields } from './interaction';
 
 const AUTH_LABELS = { unconfigured: '应用未配置', disconnected: '未授权', pending: '等待授权', connected: '已授权', reauthorize: '需要重新授权' };
 export class VaultSailSettingTab extends PluginSettingTab {
   private plugin: VaultSailPlugin;
   private activeTab = 'connect';
+  private signature = ''; private draftContext = '';
+  private controls: (() => void)[] = [];
   constructor(app: App, plugin: VaultSailPlugin) { super(app, plugin); this.plugin = plugin; }
+  private lock<T extends { setDisabled(value: boolean): unknown }>(control: T, blocked: () => boolean = () => false): T {
+    const input = (control as T & { inputEl?: HTMLInputElement }).inputEl;
+    const editable = input?.tagName === 'INPUT' && !['checkbox', 'radio'].includes(input.type) || input?.tagName === 'TEXTAREA';
+    let previous: boolean | undefined;
+    const update = () => { const disabled = (!editable && this.plugin.busy) || blocked(); if (disabled !== previous) { control.setDisabled(disabled); previous = disabled; } };
+    this.controls.push(update); update(); return control;
+  }
+  refresh(): void { this.display(); }
+  private acceptDraft(label: string): () => void {
+    for (const row of Array.from(this.containerEl.querySelectorAll<HTMLElement>('.setting-item'))) {
+      if (row.querySelector('.setting-item-name')?.textContent === label) return acceptFields(row);
+    }
+    return () => {};
+  }
   updateProgress(): void {
+    for (const update of this.controls) update();
     const p = this.plugin; const progress = p.progress;
     const running = Boolean(progress && progressRunning(progress));
     const status = this.containerEl.querySelector<HTMLElement>('.vaultsail-status-text');
@@ -34,9 +52,9 @@ export class VaultSailSettingTab extends PluginSettingTab {
     const uploads = this.containerEl.querySelector<HTMLElement>('.vaultsail-upload-progress');
     if (uploads) renderUploads(uploads, progress);
     const queue = this.containerEl.querySelector<HTMLElement>('.vaultsail-queue-status');
-    if (queue) queue.setText(p.queueSummary());
+    if (queue && queue.textContent !== p.queueSummary()) queue.setText(p.queueSummary());
     const blocked = this.containerEl.querySelector<HTMLElement>('.vaultsail-blocked-summary');
-    if (blocked) blocked.setText(p.blockedSummary());
+    if (blocked && blocked.textContent !== p.blockedSummary()) blocked.setText(p.blockedSummary());
     const timing = this.containerEl.querySelector<HTMLElement>('.vaultsail-performance-text');
     const timingText = p.performanceText();
     if (timing) { timing.hidden = !timingText; if (timing.textContent !== timingText) timing.setText(timingText); }
@@ -49,6 +67,15 @@ export class VaultSailSettingTab extends PluginSettingTab {
     if (actions) { actions.hidden = !progress || !['failed', 'paused'].includes(progress.phase); actions.querySelectorAll('button').forEach(button => { button.disabled = p.busy; }); }
   }
   display(): void {
+    const p = this.plugin;
+    const signature = JSON.stringify([p.settings, p.auth.status(), p.auth.configurationIssue(), p.authPhase, p.deviceSession, p.auth.fallbackAllowed, Platform.isMobile, p.manifest.version]);
+    if (this.containerEl.firstElementChild && signature === this.signature) { this.updateProgress(); return; }
+    const context = JSON.stringify([p.settings.appKey, p.settings.appDirectory, p.settings.secretRef, p.settings.binding]);
+    const preserveDrafts = context === this.draftContext;
+    this.signature = signature; this.draftContext = context;
+    preserveInteraction(this.containerEl, () => { this.controls = []; this.build(); rememberFields(this.containerEl); }, preserveDrafts);
+  }
+  private build(): void {
     const el = this.containerEl; const p = this.plugin; el.empty();
     el.classList.add('vaultsail-workspace');
     const hero = el.createDiv({ cls: 'vaultsail-hero' });
@@ -123,16 +150,15 @@ export class VaultSailSettingTab extends PluginSettingTab {
     selectTab(this.activeTab);
     if (!p.settings.binding) new Setting(transferCard).setName('先选择云端知识库').setDesc('目录已配置不代表库已绑定。首次使用创建新库；已有其他设备时选择同一个云端库。')
       .addButton(button => button.setButtonText('前往云端知识库').onClick(() => selectTab('vault')));
-    new Setting(appCard).setName('云端服务').addDropdown(dropdown => dropdown.addOption('none', '未配置').addOption('baidu', '百度网盘').setValue(p.settings.providerId)
-      .setDisabled(p.busy).onChange(value => { void p.changeConfiguration({ providerId: value as 'none' | 'baidu' }).catch(error => new Notice(safeMessage(error))); }));
+    new Setting(appCard).setName('云端服务').addDropdown(dropdown => this.lock(dropdown.addOption('none', '未配置').addOption('baidu', '百度网盘').setValue(p.settings.providerId)).onChange(value => { void p.changeConfiguration({ providerId: value as 'none' | 'baidu' }).catch(error => new Notice(safeMessage(error))); }));
     const guide = new Setting(appCard).setName('应用接入').setDesc('使用自己的百度应用。已有 AppKey 和 SecretKey，可直接填写。');
     guide.addButton(button => button.setButtonText('打开百度开放平台').onClick(() => window.open('https://yun.baidu.com/open/platform', '_blank', 'noopener,noreferrer')));
     const saveField = (name: string, key: 'appKey' | 'appDirectory', placeholder: string, description: string) => {
       let draft = p.settings[key];
       const field = new Setting(appCard).setName(name).setDesc(description);
       field
-        .addText(text => text.setValue(draft).setPlaceholder(placeholder).setDisabled(p.busy).onChange(value => { draft = value.trim(); field.setDesc(draft === p.settings[key] ? description : '有修改尚未保存。'); }))
-        .addButton(button => button.setButtonText('保存').setDisabled(p.busy).onClick(() => { void p.run('保存配置…', async () => {
+        .addText(text => this.lock(text.setValue(draft).setPlaceholder(placeholder)).onChange(value => { draft = value.trim(); field.setDesc(draft === p.settings[key] ? description : '有修改尚未保存。'); }))
+        .addButton(button => this.lock(button.setButtonText('保存')).onClick(() => { this.acceptDraft(name); void p.run('保存配置…', async () => {
           const value = key === 'appDirectory' ? draft || DEFAULT_APP_DIRECTORY : draft;
           if (value !== p.settings[key]) await p.changeConfiguration({ [key]: value });
         }); }));
@@ -142,11 +168,11 @@ export class VaultSailSettingTab extends PluginSettingTab {
     const secretSaved = p.settings.secretRef && !p.settings.secretRef.startsWith('vaultsail-session-') && Boolean(this.app.secretStorage.getSecret(p.settings.secretRef)?.trim());
     const secretField = new Setting(appCard).setName('SecretKey').setDesc(secretSaved ? '已保存至本地密钥存储。输入新值可替换。' : p.settings.secretRef ? '旧密钥关联无效或为空，请重新保存一次。' : '尚未保存；输入后点击保存密钥。');
     secretField.addText(text => { secretInput = text.inputEl; text.inputEl.type = 'password'; text.inputEl.autocomplete = 'new-password';
-      text.setPlaceholder(secretSaved ? '已保存 · 输入新值以更换' : '粘贴应用 SecretKey').setDisabled(p.busy).onChange(value => { secret = value; secretField.setDesc('密钥尚未保存，请点击保存密钥。'); }); })
-      .addButton(button => button.setButtonText('保存密钥').setDisabled(p.busy).onClick(() => { const value = secret; secret = ''; secretInput.value = ''; void p.run('保存密钥…', () => p.saveAppSecret(value)); }));
+      this.lock(text.setPlaceholder(secretSaved ? '已保存 · 输入新值以更换' : '粘贴应用 SecretKey')).onChange(value => { secret = value; secretField.setDesc('密钥尚未保存，请点击保存密钥。'); }); })
+      .addButton(button => this.lock(button.setButtonText('保存密钥')).onClick(() => { const value = secret; secret = ''; secretInput.value = ''; void p.run('保存密钥…', () => p.saveAppSecret(value)); }));
     saveField('应用目录', 'appDirectory', DEFAULT_APP_DIRECTORY, '默认 /apps/VaultSail。可修改为应用实际获准的目录；留空保存会恢复默认。');
     new Setting(authCard).setName('百度账号授权').setDesc(p.authPhase === 'idle' ? AUTH_LABELS[p.auth.status()] : p.statusText)
-      .addButton(button => button.setButtonText(p.authPhase === 'requesting' ? '正在申请授权…' : p.authPhase === 'waiting' ? '等待浏览器授权…' : '连接百度网盘').setCta().setDisabled(p.busy || p.settings.providerId !== 'baidu').onClick(() => { void p.run('申请设备授权…', () => p.connect()); }))
+      .addButton(button => this.lock(button.setButtonText(p.authPhase === 'requesting' ? '正在申请授权…' : p.authPhase === 'waiting' ? '等待浏览器授权…' : '连接百度网盘').setCta(), () => p.settings.providerId !== 'baidu').onClick(() => { void p.run('申请设备授权…', () => p.connect()); }))
       .addButton(button => button.setButtonText('取消授权').setDisabled(p.authPhase === 'idle').onClick(() => p.cancelAuthorization()))
       .addButton(button => button.setButtonText('断开本地连接').onClick(() => { void p.disconnect().then(() => p.refreshUI()).catch(error => new Notice(safeMessage(error))); }));
     if (p.deviceSession) {
@@ -162,26 +188,26 @@ export class VaultSailSettingTab extends PluginSettingTab {
       new Setting(authCard).setName('备用授权码方式').setDesc('应用明确不支持设备码时可尝试。授权码仅用于本次交换，不保存。')
         .addButton(button => button.setButtonText('打开百度授权').onClick(() => window.open(p.auth.codeUrl(), '_blank', 'noopener,noreferrer')))
         .addText(text => { text.inputEl.type = 'password'; text.setPlaceholder('粘贴本次授权码').onChange(value => { code = value; }); })
-        .addButton(button => button.setButtonText('完成授权').setDisabled(p.busy).onClick(() => { void p.run('交换授权码…', async () => { const input = code; code = ''; await p.auth.exchangeCode(input); }); }));
+        .addButton(button => this.lock(button.setButtonText('完成授权')).onClick(() => { void p.run('交换授权码…', async () => { const input = code; code = ''; await p.auth.exchangeCode(input); }); }));
     }
     new Setting(authCard).setName('管理授权').setDesc('本地断开后，百度端授权可在账号管理页撤销。')
       .addButton(button => button.setButtonText('打开百度账号授权管理').onClick(() => window.open('https://passport.baidu.com/accountbind', '_blank', 'noopener,noreferrer')));
     new Setting(accessCard).setName('接口验证').setDesc('往返校验使用独立校验文件，不扫描笔记。')
-      .addButton(button => button.setButtonText('检查只读访问').setDisabled(p.busy).onClick(() => { void p.run('检查身份与目录…', () => p.checkAccess()); }))
-      .addButton(button => button.setButtonText('验证文件传输').setDisabled(p.busy).onClick(() => new ConfirmModal(this.app, '验证文件传输权限', '将在获准应用目录下创建独立校验目录并上传、下载约 24 MiB 校验数据。校验文件会保留，供你自行检查和清理。', () => p.run('验证真实文件接口…', () => p.roundtrip())).open()));
+      .addButton(button => this.lock(button.setButtonText('检查只读访问')).onClick(() => { void p.run('检查身份与目录…', () => p.checkAccess()); }))
+      .addButton(button => this.lock(button.setButtonText('验证文件传输')).onClick(() => new ConfirmModal(this.app, '验证文件传输权限', '将在获准应用目录下创建独立校验目录并上传、下载约 24 MiB 校验数据。校验文件会保留，供你自行检查和清理。', () => p.run('验证真实文件接口…', () => p.roundtrip())).open()));
     new Setting(configCard).setName('另一设备快速配置')
-      .addButton(button => button.setButtonText('导出配对配置').setDisabled(p.busy).onClick(() => p.openConfigExport()))
-      .addButton(button => button.setButtonText('导入配对配置').setDisabled(p.busy).onClick(() => p.openConfigImport()));
+      .addButton(button => this.lock(button.setButtonText('导出配对配置')).onClick(() => p.openConfigExport()))
+      .addButton(button => this.lock(button.setButtonText('导入配对配置')).onClick(() => p.openConfigImport()));
     new Setting(vaultCard).setName('百度网盘中的位置').setDesc(p.cloudLocation())
       .addButton(button => button.setButtonText('复制云端路径').onClick(() => copyText(p.cloudLocation())))
-      .addButton(button => button.setButtonText('查看云端文件').setDisabled(p.busy).onClick(() => { void p.run('读取云端文件版本…', () => p.showCloudFiles()); }));
+      .addButton(button => this.lock(button.setButtonText('查看云端文件')).onClick(() => { void p.run('读取云端文件版本…', () => p.showCloudFiles()); }));
     const success = p.lastSuccess();
     new Setting(vaultCard).setName('最近一次传输完成').setDesc(success ? `${new Date(success.completedAt).toLocaleString()} · 处理 ${success.files} 个文件 · 校验内容 ${formatBytes(success.bytes)} · 耗时 ${(success.elapsedMs / 1000).toFixed(1)} 秒${success.blockedFiles ? ` · 部分完成，跳过 ${success.blockedFiles} 项未传输` : ''}` : '本设备尚无当前云端库的已完成传输记录。');
     if (!p.settings.binding && p.settings.remoteVaultId) new Setting(vaultCard).setName('待验证的云端库').setDesc(`${p.settings.pendingVaultName ?? ''} · ${p.settings.remoteVaultId}`)
-      .addButton(button => button.setButtonText('验证并绑定导入库').setDisabled(p.busy || p.auth.status() !== 'connected').onClick(() => { void p.run('验证导入的云端库…', () => p.bind(p.settings.remoteVaultId)); }));
+      .addButton(button => this.lock(button.setButtonText('验证并绑定导入库'), () => p.auth.status() !== 'connected').onClick(() => { void p.run('验证导入的云端库…', () => p.bind(p.settings.remoteVaultId)); }));
     new Setting(vaultCard).setName('当前云端库').setDesc(p.settings.binding ? `已绑定：${p.settings.binding.displayName} · ${p.settings.binding.vaultId}` : `尚未验证绑定${p.settings.remoteVaultId ? '；原设置保留为待验证标识' : ''}`)
-      .addButton(button => button.setButtonText('查看已有库').setDisabled(p.busy).onClick(() => { void p.run('读取云端库…', async () => {
-        const vaults = await new RemoteVaultStore(p.provider()).listVaults(); const modal = new Modal(this.app); modal.titleEl.setText('选择云端库');
+      .addButton(button => this.lock(button.setButtonText('查看已有库')).onClick(() => { void p.run('读取云端库…', async () => {
+        const vaults = await new RemoteVaultStore(p.provider()).listVaults(); if (!vaultCard.isConnected) return; const modal = new Modal(this.app); modal.titleEl.setText('选择云端库');
         if (!vaults.length) modal.contentEl.createEl('p', { text: '还没有云端库，可返回设置创建。' });
         for (const vault of vaults) new Setting(modal.contentEl).setName(vault.displayName).setDesc(vault.vaultId)
           .addButton(button => button.setButtonText('绑定').onClick(() => { void p.run('验证并绑定…', async () => { await p.bind(vault.vaultId); modal.close(); }); }));
@@ -190,14 +216,14 @@ export class VaultSailSettingTab extends PluginSettingTab {
     let name = this.app.vault.getName();
     new Setting(vaultCard).setName('创建新云端库').setDesc('创建独立空间，随后由你预览并选择传输内容。')
       .addText(text => text.setValue(name).onChange(value => { name = value; }))
-      .addButton(button => button.setButtonText('创建并绑定').setDisabled(p.busy).onClick(() => new ConfirmModal(this.app, '创建云端库', '将在获准应用目录下创建新库：' + name, () => p.run('创建云端库…', () => p.createVault(name))).open()));
+      .addButton(button => this.lock(button.setButtonText('创建并绑定')).onClick(() => new ConfirmModal(this.app, '创建云端库', '将在获准应用目录下创建新库：' + name, () => p.run('创建云端库…', () => p.createVault(name))).open()));
     new Setting(transferCard).setName('双向同步').setDesc('根据上次成功的基线自动判断上传与下载。双方改动自动保留原笔记和冲突副本；删除默认关闭。')
       .addButton(button => button.setButtonText('开始同步').setCta().onClick(() => { p.requestSync(); }))
-      .addButton(button => button.setButtonText('先看同步清单').setDisabled(p.busy).onClick(() => { void p.run('扫描双向变更…', () => p.preview('sync')); }));
+      .addButton(button => this.lock(button.setButtonText('先看同步清单')).onClick(() => { void p.run('扫描双向变更…', () => p.preview('sync')); }));
     new Setting(transferCard).setName('自动同步').setDesc('保存后安静 2 秒同步，连续编辑最多合并 15 秒；前台定期检查其他设备的版本。升级后需主动开启。')
-      .addToggle(toggle => toggle.setValue(p.settings.autoSyncEnabled).setDisabled(p.busy).onChange(value => { void p.setAutomatic(value).catch(error => { toggle.setValue(p.settings.autoSyncEnabled); new Notice(safeMessage(error)); }); }));
+      .addToggle(toggle => this.lock(toggle.setValue(p.settings.autoSyncEnabled)).onChange(value => { void p.setAutomatic(value).catch(error => { toggle.setValue(p.settings.autoSyncEnabled); new Notice(safeMessage(error)); }); }));
     new Setting(transferCard).setName('同步删除').setDesc('默认关闭。开启后，明确的删除会随手动或自动同步传播；本地保留恢复副本，云端保留历史内容。')
-      .addToggle(toggle => { toggle.setValue(p.settings.deletionEnabled).setDisabled(p.busy).onChange(value => {
+      .addToggle(toggle => { this.lock(toggle.setValue(p.settings.deletionEnabled)).onChange(value => {
         if (!value) { void p.setDeletionEnabled(false).catch(error => { toggle.setValue(p.settings.deletionEnabled); new Notice(safeMessage(error)); }); return; }
         toggle.setValue(false); const binding = p.settings.binding;
         new ConfirmModal(this.app, '开启同步删除', '开启后，本地删除和明确的云端删除记录会通过手动或自动同步传播到其他设备；缺少可信基线时不会推断删除。应用删除前保留恢复数据，云端历史内容不永久清理。', async () => {
@@ -207,8 +233,8 @@ export class VaultSailSettingTab extends PluginSettingTab {
       }); });
     let interval = String(p.settings.remotePollSeconds);
     new Setting(transferCard).setName('远端检查间隔（秒）').setDesc('30–300 秒，默认 60。执行任务时不叠加检查，后台挂起时暂停。')
-      .addText(text => text.setValue(interval).setDisabled(p.busy).onChange(value => { interval = value; }))
-      .addButton(button => button.setButtonText('保存检查间隔').setDisabled(p.busy).onClick(() => { void p.setAutomatic(p.settings.autoSyncEnabled, Number(interval)).catch(error => new Notice(safeMessage(error))); }));
+      .addText(text => this.lock(text.setValue(interval)).onChange(value => { interval = value; }))
+      .addButton(button => this.lock(button.setButtonText('保存检查间隔')).onClick(() => { const restore = this.acceptDraft('远端检查间隔（秒）'); void p.setAutomatic(p.settings.autoSyncEnabled, Number(interval)).catch(error => { restore(); new Notice(safeMessage(error)); }); }));
     transferCard.createEl('p', { cls: 'vaultsail-queue-status', text: p.queueSummary() }).setAttribute('role', 'status');
     transferCard.createEl('p', { cls: 'vaultsail-blocked-summary', text: p.blockedSummary() }).setAttribute('role', 'status');
     new Setting(transferCard).setName('超限与关联保护项').setDesc(`超过本机 ${p.fileLimit() / (1024 * 1024)} MiB 上限的文件跳过，其他独立文件继续。缺失路径的删除或改名可能暂缓。`)
@@ -218,40 +244,42 @@ export class VaultSailSettingTab extends PluginSettingTab {
     new Setting(transferCard).setName('同步记录').setDesc('查看本设备当前云端库最近 30 次任务；逐文件记录实时更新，重启后仍可查看。文件路径只保存在本机内部目录。')
       .addButton(button => button.setButtonText('查看同步记录').onClick(() => p.showSyncHistory()));
     new Setting(transferCard).setName('待解决冲突').setDesc('查看各版本、逐块合并或保留为两篇；确认后其他设备自动接收解决版本。')
-      .addButton(button => button.setButtonText('查看待解决冲突').setDisabled(p.busy).onClick(() => p.openConflicts()));
+      .addButton(button => this.lock(button.setButtonText('查看待解决冲突')).onClick(() => p.openConflicts()));
     let sizeDraft = String(p.fileLimit() / (1024 * 1024));
     new Setting(transferCard).setName('单文件大小上限（MiB）')
       .setDesc(Platform.isMobile ? '移动端目前保留 20 MiB 上限；可识别并跳过电脑端的大附件记录。' : '电脑默认 512，可设 20–512；超过 20 MiB 的附件逐个传输。其他设备请先更新至 0.2.3 或更新版本，旧版不能读取这些大附件记录。仍使用整文件内存缓冲，大附件会增加内存占用。')
-      .addText(text => { text.inputEl.type = 'number'; text.inputEl.min = '20'; text.inputEl.max = '512'; text.inputEl.step = '1'; text.inputEl.setAttribute('aria-label', '单文件大小上限'); text.setValue(sizeDraft).setDisabled(p.busy || Platform.isMobile).onChange(value => { sizeDraft = value; }); })
-      .addButton(button => button.setButtonText('保存大小上限').setDisabled(p.busy || Platform.isMobile).onClick(() => { void p.setFileMiB(Number(sizeDraft)).catch(error => new Notice(safeMessage(error))); }));
+      .addText(text => { text.inputEl.type = 'number'; text.inputEl.min = '20'; text.inputEl.max = '512'; text.inputEl.step = '1'; text.inputEl.setAttribute('aria-label', '单文件大小上限'); this.lock(text.setValue(sizeDraft), () => Platform.isMobile).onChange(value => { sizeDraft = value; }); })
+      .addButton(button => this.lock(button.setButtonText('保存大小上限'), () => Platform.isMobile).onClick(() => { const restore = this.acceptDraft('单文件大小上限（MiB）'); void p.setFileMiB(Number(sizeDraft)).catch(error => { restore(); new Notice(safeMessage(error)); }); }));
     let concurrencyDraft = String(p.settings.transferConcurrency);
     new Setting(transferCard).setName('单文件分片并发')
       .setDesc(Platform.isMobile ? '移动端固定为 1 片。本机文件上限保持 20 MiB。' : '本机预览：默认 2，可选 1–4。与其他请求共享总上限；遇到限流会等待。设为 1 可对比串行上传。')
-      .addDropdown(dropdown => dropdown.addOptions({ '1': '1 片', '2': '2 片（默认）', '3': '3 片', '4': '4 片' })
-        .setValue(String(Platform.isMobile ? 1 : p.settings.uploadChunkConcurrency)).setDisabled(p.busy || Platform.isMobile)
+      .addDropdown(dropdown => this.lock(dropdown.addOptions({ '1': '1 片', '2': '2 片（默认）', '3': '3 片', '4': '4 片' })
+        .setValue(String(Platform.isMobile ? 1 : p.settings.uploadChunkConcurrency)), () => Platform.isMobile)
         .onChange(value => { void p.setUploadChunkConcurrency(Number(value)).catch(error => new Notice(safeMessage(error))); }));
     const concurrencySetting = new Setting(transferCard).setName('同时传输的文件数')
       .setDesc(`可输入 1–${MAX_TRANSFER_CONCURRENCY}，默认 ${DEFAULT_TRANSFER_CONCURRENCY}。也是本库所有百度请求共享的上限；分片不会成倍突破此上限。大附件一次一个。`);
     concurrencySetting.addText(text => {
       text.inputEl.type = 'number'; text.inputEl.min = '1'; text.inputEl.max = String(MAX_TRANSFER_CONCURRENCY); text.inputEl.step = '1';
       text.inputEl.setAttribute('inputmode', 'numeric'); text.inputEl.setAttribute('aria-label', '传输并发数');
-      text.setValue(concurrencyDraft).setPlaceholder(String(DEFAULT_TRANSFER_CONCURRENCY)).setDisabled(p.busy).onChange(value => {
+      this.lock(text.setValue(concurrencyDraft).setPlaceholder(String(DEFAULT_TRANSFER_CONCURRENCY))).onChange(value => {
         concurrencyDraft = value; concurrencySetting.setDesc('有修改尚未保存，请点击保存并发数。');
       });
-    }).addButton(button => button.setButtonText('保存并发数').setDisabled(p.busy).onClick(() => {
-      void p.setTransferConcurrency(Number(concurrencyDraft)).catch(error => new Notice(safeMessage(error)));
-    })).addButton(button => button.setButtonText(`恢复默认 ${DEFAULT_TRANSFER_CONCURRENCY}`).setDisabled(p.busy).onClick(() => {
-      void p.setTransferConcurrency(DEFAULT_TRANSFER_CONCURRENCY).catch(error => new Notice(safeMessage(error)));
+    }).addButton(button => this.lock(button.setButtonText('保存并发数')).onClick(() => {
+      const restore = this.acceptDraft('同时传输的文件数');
+      void p.setTransferConcurrency(Number(concurrencyDraft)).catch(error => { restore(); new Notice(safeMessage(error)); });
+    })).addButton(button => this.lock(button.setButtonText(`恢复默认 ${DEFAULT_TRANSFER_CONCURRENCY}`)).onClick(() => {
+      const restore = this.acceptDraft('同时传输的文件数');
+      void p.setTransferConcurrency(DEFAULT_TRANSFER_CONCURRENCY).catch(error => { restore(); new Notice(safeMessage(error)); });
     }));
     new Setting(transferCard).setName('单向传输').setDesc('也可只上传或只下载；冲突会自动保存双方副本。')
-      .addButton(button => button.setButtonText('预览上传').setDisabled(p.busy).onClick(() => { void p.run('扫描上传清单…', () => p.preview('upload')); }))
-      .addButton(button => button.setButtonText('预览下载').setDisabled(p.busy).onClick(() => { void p.run('扫描下载清单…', () => p.preview('download')); }))
-      .addButton(button => button.setButtonText('恢复未完成任务').setDisabled(p.busy).onClick(() => { void p.run('核验并恢复任务…', () => p.recover()); }));
+      .addButton(button => this.lock(button.setButtonText('预览上传')).onClick(() => { void p.run('扫描上传清单…', () => p.preview('upload')); }))
+      .addButton(button => this.lock(button.setButtonText('预览下载')).onClick(() => { void p.run('扫描下载清单…', () => p.preview('download')); }))
+      .addButton(button => this.lock(button.setButtonText('恢复未完成任务')).onClick(() => { void p.run('核验并恢复任务…', () => p.recover()); }));
     new Setting(recoveryCard).setName('旧任务遇到新的编辑').setDesc('保留内容与恢复点，结束旧任务，然后重新预览双方差异。')
-      .addButton(button => button.setButtonText('结束旧任务并重新预览').setDisabled(p.busy).onClick(() => new ConfirmModal(this.app, '结束旧任务', '未完成操作停止重试，所有已保存内容保留。下一次预览会重新判断双方差异。', () => p.run('结束旧任务…', () => p.abandonPending())).open()));
+      .addButton(button => this.lock(button.setButtonText('结束旧任务并重新预览')).onClick(() => new ConfirmModal(this.app, '结束旧任务', '未完成操作停止重试，所有已保存内容保留。下一次预览会重新判断双方差异。', () => p.run('结束旧任务…', () => p.abandonPending())).open()));
     new Setting(recoveryCard).setName('恢复历史').setDesc('先备份当前内容，再恢复所选版本。')
-      .addButton(button => button.setButtonText('查看恢复点').setDisabled(p.busy).onClick(() => { void p.run('读取恢复点…', async () => {
-        const points = await p.local.recoveryPoints(); const modal = new Modal(this.app); modal.titleEl.setText('本设备恢复点');
+      .addButton(button => this.lock(button.setButtonText('查看恢复点')).onClick(() => { void p.run('读取恢复点…', async () => {
+        const points = await p.local.recoveryPoints(); if (!recoveryCard.isConnected) return; const modal = new Modal(this.app); modal.titleEl.setText('本设备恢复点');
         if (!points.length) modal.contentEl.createEl('p', { text: '还没有恢复点。' });
         for (const point of points) new Setting(modal.contentEl).setName(point.slice(p.local.internal.length + '/recovery/'.length))
           .addButton(button => button.setButtonText('恢复').onClick(() => new ConfirmModal(this.app, '恢复此版本', '将先备份当前文件，再恢复所选内容。', () => p.run('恢复文件…', async () => { await p.local.restore(point); modal.close(); })).open()));

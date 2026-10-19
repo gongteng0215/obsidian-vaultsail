@@ -72,6 +72,12 @@ test('transfer center keeps file rows, focus drafts and expanded details through
   assert.equal(host.querySelectorAll('[role=listitem]').length, 50); assert.match(host.querySelector('.vs-transfer-warning')!.textContent!, /列表与文件计数仅代表已记录部分/);
   [...host.querySelectorAll('button')].find(button => button.textContent === '下一页')!.click();
   assert.equal(host.querySelectorAll('[role=listitem]').length, 15);
+  const previousRow = host.querySelector('[role=listitem]'); host.scrollTop = 200;
+  snapshot.task = { ...snapshot.task!, id: 'background-task', files: [] }; snapshot.busy = true; panel.render();
+  assert.equal(host.querySelector('[role=listitem]'), previousRow, 'a new background task must not replace a list being read');
+  assert.equal(host.querySelector('.vs-transfer-follow-latest')!.hasAttribute('hidden'), false); assert.equal(host.scrollTop, 200);
+  [...host.querySelectorAll('button')].find(button => button.textContent === '查看最新任务')!.click();
+  assert.equal(host.querySelector('[role=listitem]'), null, 'the latest task is adopted after an explicit click'); host.scrollTop = 0;
   snapshot.context = 'another-account'; snapshot.target = '另一个库'; snapshot.task = undefined; snapshot.progress = undefined; panel.render();
   assert.equal(host.querySelector('[data-file-id=video]'), null); assert.equal(search.value, '');
   snapshot.busy = true; snapshot.progress = { ...progress(), phase: 'scanning-remote', scan: { phase: 'listing', devicesDone: 2, devices: 3, pages: 5, listed: 428, completed: 0, cacheHits: 0, read: 0 } };
