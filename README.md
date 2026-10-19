@@ -4,9 +4,9 @@ Sync Obsidian notes and attachments through your own Baidu Netdisk account, with
 
 **English** | [简体中文](README.zh-CN.md)
 
-Local development preview **0.2.14** keeps scrolling, focus, drafts and disclosures stable during background updates, preserves lists being read and ignores stale modal responses. Includes standard deletion settings, the cloud tree and automatic notifications; not a community release. See [UI refresh audit](docs/releases/0.2.14.md), [deletion settings](docs/releases/0.2.13.md) and [cloud file tree](docs/releases/0.2.12.md).
+**Release 0.2.14** preserves scrolling, focus, drafts and disclosures during background updates. It also includes the transfer center, cloud file tree, automatic notifications, standard opt-in deletion settings, and scan/upload improvements. Settings, authorization and vault bindings are preserved. See [release and validation](docs/releases/0.2.14.md), [features](#feature-inventory) and [roadmap](docs/ROADMAP.md).
 
-[Community plugin](https://community.obsidian.md/plugins/vaultsail) · [Download 0.2.5](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.5) · [Release notes](docs/releases/0.2.5.md) · [Version roadmap](docs/ROADMAP.md) · [Report an issue](https://github.com/gongteng0215/obsidian-vaultsail/issues)
+[Community plugin](https://community.obsidian.md/plugins/vaultsail) · [Download 0.2.14](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.14) · [Release notes](docs/releases/0.2.14.md) · [Version roadmap](docs/ROADMAP.md) · [Report an issue](https://github.com/gongteng0215/obsidian-vaultsail/issues)
 
 **Contents:** [All features](#feature-inventory) · [Roadmap](#version-roadmap) · [Install](#install-or-update) · [First connection](#connect-your-first-vault) · [Device pairing](#pair-a-computer-ipad-or-another-vault) · [Automatic sync](#automatic-sync-and-the-queue) · [Conflicts](#versions-and-conflict-resolution) · [Cloud location](#where-the-cloud-data-goes) · [Recovery](#file-scope-deletion-and-recovery) · [FAQ](#performance-and-troubleshooting) · [Privacy](#privacy-and-network-access)
 
@@ -20,7 +20,7 @@ Local development preview **0.2.14** keeps scrolling, focus, drafts and disclosu
 - Transfer application configuration and authorization through a password-encrypted code or file, avoiding another browser login while authorization remains valid.
 - View live progress, scan/transfer timings, request counts, and token refresh counts.
 
-**0.2.5 supports Baidu Netdisk.** Requests go directly to Baidu, without a developer-operated authorization or sync server. Current settings and messages are primarily in Chinese; this guide includes their UI labels.
+**0.2.14 supports Baidu Netdisk.** Requests go directly to Baidu, without a developer-operated authorization or sync server. Current settings and messages are primarily in Chinese; this guide includes their UI labels.
 
 **Release 0.2.5** fixes maximized settings layout, improves narrow-window controls, and displays the effective file-size limit. Existing settings and connections are preserved. [Release notes](docs/releases/0.2.5.md).
 
@@ -30,7 +30,7 @@ Local development preview **0.2.14** keeps scrolling, focus, drafts and disclosu
 
 ## Feature inventory
 
-This inventory describes the existing feature set; preview changes are listed above. **Implemented** means code and automated coverage exist, not complete real-device certification. **Limited** means the listed restrictions apply.
+This inventory describes the existing feature set; recent changes are listed above. **Implemented** means code and automated coverage exist, not complete real-device certification. **Limited** means the listed restrictions apply.
 
 | Area | Capability | Status and scope |
 | --- | --- | --- |
@@ -128,7 +128,7 @@ The **[large-file implementation plan](docs/LARGE_FILES.md)** details metadata-f
 | Deletion propagation | **Off**, with an independent “同步删除” toggle in “传输与恢复” |
 | Mobile background operation | Continuous background sync is **not provided** |
 
-Intervals are scheduling targets, not delivery deadlines. Busy tasks, network errors, rate limits, background suspension, and pauses can delay execution. Automated validation passed for 0.2.5; comprehensive Windows/iPad, Baidu throughput, and long-term multi-device validation remain incomplete.
+Intervals are scheduling targets, not delivery deadlines. Busy tasks, network errors, rate limits, background suspension, and pauses can delay execution. Automated validation passed for 0.2.14; comprehensive Windows/iPad, Baidu throughput, and long-term multi-device validation remain incomplete.
 
 ## Install or update
 
@@ -137,15 +137,15 @@ Intervals are scheduling targets, not delivery deadlines. Busy tasks, network er
 1. Open Obsidian **Settings → Community plugins**, enabling community plugins if necessary.
 2. Browse for **VaultSail**, install it, and enable it.
 3. For an existing installation, click **Check for updates**, then update VaultSail.
-4. Disable and re-enable the plugin, and confirm the displayed version is **0.2.5**.
+4. Disable and re-enable the plugin, and confirm the displayed version is **0.2.14**.
 
 Install VaultSail **in every local vault that should sync, on every participating device**. An Obsidian account login does not install it or connect Baidu automatically. Separate vaults can share one account while binding to different cloud vaults.
 
-Update every device sharing a cloud vault to 0.2.5 before uploading attachments over 20 MiB: readers on 0.2.2 or earlier reject these records. Mobile still skips files over 20 MiB. Ordinary upgrades preserve settings and connections. Valid, unexpired pairing codes do not need re-exporting merely because the plugin was updated.
+Update every device sharing a cloud vault to 0.2.14 before uploading attachments over 20 MiB: readers on 0.2.2 or earlier reject these records. Mobile still skips files over 20 MiB. Ordinary upgrades preserve settings and connections. Valid, unexpired pairing codes do not need re-exporting merely because the plugin was updated.
 
 ### Manual installation and BRAT
 
-Download the ZIP or three files from the [release page](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.5). With VaultSail disabled, place them here, then enable it:
+Download the ZIP or three files from the [release page](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.14). With VaultSail disabled, place them here, then enable it:
 
 ```text
 <your-vault>/.obsidian/plugins/vaultsail/
@@ -156,7 +156,7 @@ Download the ZIP or three files from the [release page](https://github.com/gongt
 
 Use your actual configuration directory if it differs from `.obsidian`. Preserve existing `data.json` when replacing plugin files.
 
-On iPad or desktop, another option is [BRAT](https://github.com/TfTHacker/obsidian42-brat): add `gongteng0215/obsidian-vaultsail` and select `0.2.5`.
+On iPad or desktop, another option is [BRAT](https://github.com/TfTHacker/obsidian42-brat): add `gongteng0215/obsidian-vaultsail` and select `0.2.14`.
 
 ## Connect your first vault
 
@@ -285,7 +285,7 @@ After interruption, use **Resume unfinished tasks** (`恢复未完成任务`). I
 | --- | --- |
 | “Application not configured” after typing | Click Save for AppKey and Save secret for SecretKey; check saved-state descriptions |
 | “Account or directory is not bound” | Select a verified cloud vault; authorization and a directory alone are insufficient |
-| No automatic sync | Confirm 0.2.5 is loaded, automatic sync enabled, file checks passed, app foregrounded, and queue not paused or blocked |
+| No automatic sync | Confirm 0.2.14 is loaded, automatic sync enabled, file checks passed, app foregrounded, and queue not paused or blocked |
 | Remote edits are not immediately visible | The other device must publish first; this device discovers them through remote checks or manual sync |
 | Long scan without uploads | Check scan time, request counts, and cache statistics; initial history loading or missing fingerprints can add requests |
 | Slow transfers | Compare scan and transfer time; adjust concurrency from 1–32, default 8. Large files reduce batch concurrency; network/Baidu limits still apply |
@@ -316,9 +316,9 @@ npm run build
 pwsh ./scripts/package-release.ps1
 ```
 
-0.2.5 passed **186 automated tests**, type checking, build, ZIP validation, and public-download hash checks. Coverage includes authorization, pairing, pagination, concurrency, paths, queues, incremental scans, reload serialization, merging, drafts, concurrent renames, and recovery. Tests use simulated providers and a DOM fixture; they do not certify real iPad storage/background execution, Baidu permissions, or long-term shared-token behavior.
+0.2.14 passed **186 automated tests**, type checking, build, ZIP validation, and public-download hash checks. Coverage includes authorization, pairing, pagination, concurrency, paths, queues, incremental scans, reload serialization, merging, drafts, concurrent renames, and recovery. Tests use simulated providers and a DOM fixture; they do not certify real iPad storage/background execution, Baidu permissions, or long-term shared-token behavior.
 
-The ZIP contains only `main.js`, `manifest.json`, and `styles.css`, without tests, user configuration, credentials, or notes. See [release notes](docs/releases/0.2.5.md) for validation limits and [sync design](docs/AUTO_SYNC_PLAN.md) for implementation context.
+The ZIP contains only `main.js`, `manifest.json`, and `styles.css`, without tests, user configuration, credentials, or notes. See [release notes](docs/releases/0.2.14.md) for validation limits and [sync design](docs/AUTO_SYNC_PLAN.md) for implementation context.
 
 ## License and support
 

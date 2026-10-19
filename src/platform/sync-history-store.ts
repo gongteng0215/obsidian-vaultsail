@@ -1,4 +1,5 @@
 import type { App } from 'obsidian';
+import { ensureDirectories, storageAdapter } from './local-io.ts';
 import { bytes, hash, parseJson, validId } from '../core/safety.ts';
 import { HISTORY_BYTE_LIMIT, HISTORY_TASK_LIMIT, validateHistory, type HistoryStore, type SyncHistoryTask } from '../sync/history.ts';
 
@@ -22,7 +23,7 @@ export class ObsidianHistoryStore implements HistoryStore {
     this.app = app; this.deviceId = deviceId; this.context = context;
   }
   private async groups(): Promise<{ base: string; startedAt: number; id: string; paths: string[] }[]> {
-    const adapter = this.app.vault.adapter;
+    const adapter = storageAdapter(this.app);
     if (!await adapter.exists(this.root)) return [];
     const groups = new Map<string, { base: string; startedAt: number; id: string; paths: string[] }>();
     for (const path of (await adapter.list(this.root)).files) {
@@ -37,8 +38,8 @@ export class ObsidianHistoryStore implements HistoryStore {
     const task = validateHistory(input, this.context, this.deviceId, this.app.vault.configDir);
     const data = bytes(JSON.stringify(task)); if (data.byteLength > HISTORY_BYTE_LIMIT) throw new Error('History size limit');
     await locked(this.app, async () => {
-      const adapter = this.app.vault.adapter, parts = this.root.split('/');
-      for (let i = 1; i <= parts.length; i++) { const path = parts.slice(0, i).join('/'); if (!await adapter.exists(path)) await adapter.mkdir(path); }
+      const adapter = storageAdapter(this.app);
+      await ensureDirectories(this.app, this.root);
       const target = `${this.root}/${task.startedAt}-${task.id}.json`;
       // A reload can leave an earlier snapshot queued. Never regress a record.
       for (const path of [target, target + '.next', target + '.previous']) {
@@ -58,7 +59,7 @@ export class ObsidianHistoryStore implements HistoryStore {
   }
   async list(): Promise<SyncHistoryTask[]> {
     return locked(this.app, async () => {
-      const result: SyncHistoryTask[] = [], adapter = this.app.vault.adapter;
+      const result: SyncHistoryTask[] = [], adapter = storageAdapter(this.app);
       for (const group of (await this.groups()).slice(0, HISTORY_TASK_LIMIT)) {
         let best: SyncHistoryTask | undefined;
         for (const path of group.paths) {
