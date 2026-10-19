@@ -5,6 +5,7 @@ import { apiSuccess, request, urlWith, type HttpTransport, type RequestPolicy } 
 import { RequestPool } from '../core/request-pool.ts';
 import { mapConcurrent } from '../core/concurrency.ts';
 import { validChunkConcurrency } from '../config.ts';
+import { baiduDigest } from './baidu-fingerprint.ts';
 import type { CloudStorageProvider, ObjectTransferProgress, TransferObserver, RemoteObject, RemotePage } from './cloud-storage-provider';
 import { listAll } from './provider-utils.ts';
 export { listAll } from './provider-utils.ts';
@@ -40,12 +41,12 @@ export class BaiduProvider implements CloudStorageProvider {
   private absolute(path: string): string { return path ? this.root + '/' + relativePath(path) : this.root; }
   private bodyLimit(path: string): number {
     // Raising attachment budgets must not permit enormous metadata downloads.
-    return /^vaultsail\/vaults\/[^/]+\/(?:vault\.json|ops\/[^/]+\/[^/]+\.json)$/.test(path)
+    return /^vaultsail\/vaults\/[^/]+\/(?:vault\.json|(?:ops|directories)\/[^/]+\/[^/]+\.json)$/.test(path)
       ? 1024 * 1024 : this.requestPolicy.maxFileSize ?? MAX_FILE_SIZE;
   }
   private etag(value: Record<string, unknown>, size: number): string | undefined {
-    if (typeof value.md5 !== 'string' || !/^[a-fA-F0-9]{32}$/.test(value.md5)) return undefined;
-    return `${String(value.fs_id ?? '')}:${value.md5.toLowerCase()}:${String(value.server_mtime ?? value.mtime ?? '')}:${size}`;
+    const digest = baiduDigest(value.md5); if (!digest) return undefined;
+    return `${String(value.fs_id ?? '')}:${digest}:${String(value.server_mtime ?? value.mtime ?? '')}:${size}`;
   }
   private fingerprint(object: RemoteObject): string | undefined {
     return object.id && object.etag ? `${object.id}:${object.etag}:${object.size}` : undefined;
@@ -160,7 +161,8 @@ export class BaiduProvider implements CloudStorageProvider {
       if (!entry || entry.path !== this.absolute(file.path) || entry.size !== file.size || (entry.isdir !== undefined && entry.isdir !== 0)) throw new VaultSailError('response', '下载元数据与目标文件不一致。');
       checkSize(file.size, this.bodyLimit(file.path));
       const inspectedTag = this.etag(entry, file.size);
-      const prefix = typeof entry.md5 === 'string' ? `${file.id}:${entry.md5.toLowerCase()}:` : undefined;
+      const digest = baiduDigest(entry.md5);
+      const prefix = digest ? `${file.id}:${digest}:` : undefined;
       if (file.etag && prefix && !file.etag.startsWith(prefix)) throw new VaultSailError('changed', '文件摘要在扫描期间发生变化，请重新扫描。');
       if (entry.path !== undefined && entry.path !== this.absolute(file.path)) throw new VaultSailError('response', '下载元数据路径与目录不一致。');
       const etag = prefix && file.etag?.startsWith(prefix) ? file.etag : inspectedTag ?? file.etag;

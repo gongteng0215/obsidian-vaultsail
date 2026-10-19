@@ -3,6 +3,7 @@ import { listAll } from '../providers/provider-utils.ts';
 import { mapConcurrent } from '../core/concurrency.ts';
 import type { CloudStorageProvider } from '../providers/cloud-storage-provider';
 import type { FileHistoryEvent } from './history';
+import type { RevisionCache } from './remote-vault';
 
 // A separate namespace is deliberately invisible to older file-only clients.
 export interface DirectoryRevision { version: 1; vaultId: string; opId: string; deviceId: string; path: string; parents: string[]; kind: 'create' | 'delete'; createdAt: number; }
@@ -51,16 +52,48 @@ export function directoryHeads(ops: DirectoryRevision[]): Map<string, DirectoryR
 export class RemoteDirectoryStore {
   private provider: CloudStorageProvider; private vaultId: string; private concurrency: number;
   private cached = new Map<string, { fingerprint: string; op: DirectoryRevision }>();
-  constructor(provider: CloudStorageProvider, vaultId: string, concurrency = 4) {
+  private disk?: RevisionCache; private loaded = false;
+  private persisted = new Map<string, string>();
+  private onCacheError: (step: string, error: unknown) => void;
+  constructor(provider: CloudStorageProvider, vaultId: string, concurrency = 4, cache?: RevisionCache, onCacheError: (step: string, error: unknown) => void = () => {}) {
     if (!validId(vaultId)) throw new VaultSailError('binding', '云端库标识无效。');
     this.provider = provider; this.vaultId = vaultId; this.concurrency = Math.max(1, Math.min(4, concurrency));
+    this.disk = cache; this.onCacheError = onCacheError;
   }
   private root(): string { return 'vaultsail/vaults/' + this.vaultId + '/directories'; }
+  private cacheError(step: string, error: unknown): void { try { this.onCacheError(step, error); } catch { /* Advisory. */ } }
+  private async loadCache(): Promise<void> {
+    if (this.loaded) return; this.loaded = true; if (!this.disk) return;
+    try {
+      const raw = await this.disk.load(); if (raw === undefined) return;
+      const value = record(raw);
+      if (value.version !== 1 || value.vaultId !== this.vaultId || !Array.isArray(value.entries) || value.entries.length > 10000) throw new VaultSailError('schema', '目录缓存格式或范围无效。');
+      const loaded = new Map<string, { fingerprint: string; op: DirectoryRevision }>();
+      for (const raw of value.entries) {
+        const item = record(raw), op = validateDirectoryRevision(item.revision, this.vaultId), path = this.root() + '/' + op.deviceId + '/' + op.opId + '.json';
+        if (item.path !== path || typeof item.fingerprint !== 'string' || !/^\d{1,7}:.{1,512}$/.test(item.fingerprint) || item.digest !== hash(jsonBytes(op)) || loaded.has(path)) throw new VaultSailError('integrity', '目录缓存条目未通过校验。');
+        loaded.set(path, { fingerprint: item.fingerprint, op });
+      }
+      for (const [path, value] of loaded) if (!this.cached.has(path)) this.cached.set(path, value);
+      this.persisted = new Map([...loaded].map(([path, value]) => [path, value.fingerprint]));
+    } catch (error) { this.cacheError('load-cache', error); }
+  }
+  private async saveCache(active: Set<string>): Promise<void> {
+    if (!this.disk) return;
+    const current = new Map([...this.cached].filter(([path, value]) => active.has(path) && value.fingerprint).map(([path, value]) => [path, value.fingerprint]));
+    if (current.size === this.persisted.size && [...current].every(([path, fingerprint]) => this.persisted.get(path) === fingerprint)) return;
+    const entries = [...this.cached].filter(([path, value]) => current.has(path)).map(([path, value]) => ({ path, fingerprint: value.fingerprint, revision: value.op, digest: hash(jsonBytes(value.op)) }));
+    try {
+      if (await this.disk.save({ version: 1, vaultId: this.vaultId, entries }) === false) { this.cacheError('save-cache', new VaultSailError('size', '目录缓存超过保存上限。')); return; }
+      this.persisted = current;
+    } catch (error) { this.cacheError('save-cache', error); }
+  }
   async revisions(): Promise<DirectoryRevision[]> {
+    await this.loadCache();
     // Enumerating the vault root distinguishes an absent optional namespace from a failed listing.
     const root = this.root(), parent = root.slice(0, root.lastIndexOf('/'));
     const entry = (await listAll(this.provider, parent, undefined, 10000)).find(item => item.path === root);
-    if (!entry) return [];
+    if (!entry) { await this.saveCache(new Set()); return []; }
     if (!entry.isDirectory) throw new VaultSailError('schema', '目录版本位置被文件占用。');
     const devices = await listAll(this.provider, root, undefined, 10000);
     if (devices.some(item => !item.isDirectory || !validId(item.path.slice(root.length + 1)) || item.path !== root + '/' + item.path.split('/').at(-1))) throw new VaultSailError('schema', '目录设备清单不完整。');
@@ -93,7 +126,7 @@ export class RemoteDirectoryStore {
       }));
     }
     for (const key of this.cached.keys()) if (!active.has(key)) this.cached.delete(key);
-    directoryHeads(result); return result;
+    directoryHeads(result); await this.saveCache(active); return result;
   }
   async publish(op: DirectoryRevision): Promise<void> {
     const valid = validateDirectoryRevision(op, this.vaultId), dir = this.root() + '/' + valid.deviceId;
@@ -137,6 +170,7 @@ export class DirectorySync {
   private vaultId: string; private deviceId: string; private configDir: string;
   private guard: () => void; private onFile: (event: FileHistoryEvent) => void;
   private onFailure: (error: unknown, path: string, action: string) => string | undefined;
+  private prepared = new WeakSet<DirectoryPlan>();
   constructor(remote: RemoteDirectoryStore, local: LocalDirectories, store: DirectoryStateStore, vaultId: string, deviceId: string, configDir = '.obsidian', guard: () => void = () => {}, onFile: (event: FileHistoryEvent) => void = () => {}, onFailure: (error: unknown, path: string, action: string) => string | undefined = () => undefined) {
     this.remote = remote; this.local = local; this.store = store; this.vaultId = vaultId; this.deviceId = deviceId; this.configDir = configDir; this.guard = guard; this.onFile = onFile; this.onFailure = onFailure;
   }
@@ -185,7 +219,21 @@ export class DirectorySync {
       if ((mode === 'download' && publish) || (mode === 'upload' && apply)) { action = 'skip-directory'; reason = '按当前传输方向保留，未执行。'; }
       rows.push({ path, action, local, heads: h, reason });
     }
-    return { mode, deletionEnabled, signature: this.signature(ops), rows };
+    const plan = { mode, deletionEnabled, signature: this.signature(ops), rows }; this.prepared.add(plan); return plan;
+  }
+  /** A read-only task already enumerated every device; do not immediately repeat that scan. */
+  async finishUnchanged(plan: DirectoryPlan, deletionEnabled: boolean): Promise<{ created: number; deleted: number; skipped: number } | undefined> {
+    if (!this.prepared.has(plan) || plan.deletionEnabled !== deletionEnabled || plan.rows.some(row => !['noop-directory', 'skip-directory'].includes(row.action))) return;
+    this.guard(); const state = await this.state(); if (state.pending) return;
+    const paths = new Set(await this.local.paths()), expected = plan.rows.filter(row => row.local);
+    if (paths.size !== expected.length || expected.some(row => !paths.has(row.path))) return;
+    this.guard(); let dirty = false;
+    for (const row of plan.rows) if (row.action === 'noop-directory') {
+      const next = { present: row.local, heads: ids(row.heads) }, old = state.bases[row.path];
+      if (!old || old.present !== next.present || !same(old.heads, next.heads)) { state.bases[row.path] = next; dirty = true; }
+    }
+    if (dirty) await this.store.save(state); this.prepared.delete(plan);
+    return { created: 0, deleted: 0, skipped: plan.rows.filter(row => row.action === 'skip-directory').length };
   }
   async validate(plan: DirectoryPlan): Promise<void> {
     this.guard(); if (this.signature(await this.remote.revisions()) !== plan.signature) throw new VaultSailError('changed', '目录版本在预览后变化，请重新预览。');

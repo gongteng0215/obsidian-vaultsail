@@ -544,7 +544,8 @@ export default class VaultSailPlugin extends Plugin {
       if (this.engine) return this.engine;
       const context = hash(bytes(b.appKey + '|' + b.root + '|' + accountHash + '|' + b.vaultId));
       const generation = this.generation;
-      this.directories = new DirectorySync(new RemoteDirectoryStore(provider, b.vaultId, this.settings.transferConcurrency), new ObsidianDirectories(this.app),
+      this.directories = new DirectorySync(new RemoteDirectoryStore(provider, b.vaultId, this.settings.transferConcurrency,
+        new ObsidianRevisionCache(this.app, this.deviceId, context, 'directory'), (step, error) => this.diagnostic?.record('cache', 'warning', { step }, error)), new ObsidianDirectories(this.app),
         new ObsidianDirectoryState(this.app, b.vaultId, this.deviceId, context), b.vaultId, this.deviceId, this.app.vault.configDir,
         () => { if (!this.alive || generation !== this.generation) throw new VaultSailError('cancelled', '连接已变化，目录任务已停止。'); if (this.pauseRequested) throw new VaultSailError('paused', '目录任务已暂停，可恢复未完成任务。'); },
         event => { this.recordHistoryFile(context, event);
@@ -607,7 +608,8 @@ export default class VaultSailPlugin extends Plugin {
     if (batch && !batch.manual && !batch.full && !batch.remote) { paths = await engine.changedFromBaseline(paths); if (!paths.length) { this.statusText = '文件内容已与基线一致，无需同步。'; if (this.progress) this.publishProgress({ ...this.progress, phase: 'completed', updatedAt: Date.now() }); return; } }
     await this.directories!.recover(this.settings.deletionEnabled);
     // Validate directory/file collisions before any file publication or local application.
-    await this.directories!.preview('sync', this.settings.deletionEnabled);
+    if (this.progress) this.publishProgress({ ...this.progress, phase: 'scanning-remote', message: '读取云端目录版本（包含空目录）', updatedAt: Date.now() });
+    const directoryPlan = await this.directories!.preview('sync', this.settings.deletionEnabled);
     // One extra pass catches concurrent publications without an unbounded background loop.
     for (let pass = 0; pass < 2; pass++) {
       const result = batch && !batch.manual ? await engine.syncAutomatic(paths, batch.remote, batch.full || pass > 0, this.settings.deletionEnabled) : await engine.sync(this.settings.deletionEnabled); conflicts += result.preservedConflicts; incoming = result.incomingChanges; merged += result.autoMergedFiles ?? 0;
@@ -616,7 +618,9 @@ export default class VaultSailPlugin extends Plugin {
       files += this.progress?.doneFiles ?? 0; contentBytes += this.progress?.doneBytes ?? 0;
       if (!incoming) break;
     }
-    const folders = await this.syncDirectories('sync'); deleted += folders.deleted;
+    const unchangedDirectories = !uploaded && !downloaded && !deleted && !merged && !conflicts && !incoming
+      ? await this.directories!.finishUnchanged(directoryPlan, this.settings.deletionEnabled) : undefined;
+    const folders = unchangedDirectories ?? await this.syncDirectories('sync'); deleted += folders.deleted;
     if (this.progress) this.publishProgress({ ...this.progress, startedAt, doneFiles: files, totalFiles: files, doneBytes: contentBytes, totalBytes: contentBytes, blockedFiles: blocked, updatedAt: Date.now() });
     const key = this.successKey(); if (key) this.app.saveLocalStorage(key, { completedAt: Date.now(), mode: 'sync', files, bytes: contentBytes, elapsedMs: Date.now() - startedAt, blockedFiles: blocked });
     const message = `同步${blocked ? '部分完成' : '完成'}：上传 ${uploaded} 个，下载 ${downloaded} 个${folders.created ? `，目录 ${folders.created} 项` : ''}${merged ? `，自动合并 ${merged} 个` : ''}${deleted ? `，删除 ${deleted} 项` : ''}，失败 0 项${blocked ? `；跳过 ${blocked} 项超限或关联文件，未传输，请查看跳过文件` : ''}${conflicts ? `；${conflicts} 项冲突已保留双方，可打开待解决冲突` : ''}${incoming ? '；期间又有新版本，下一次同步会继续处理' : ''}。`;
@@ -650,8 +654,13 @@ export default class VaultSailPlugin extends Plugin {
     const { provider, binding } = await this.boundProvider();
     const context = hash(bytes(binding.appKey + '|' + binding.root + '|' + binding.accountHash + '|' + binding.vaultId));
     const store = new RemoteVaultStore(provider, new ObsidianRevisionCache(this.app, this.deviceId, context));
-    const heads = buildHeads(await store.revisions(binding.vaultId));
-    const folders = [...directoryHeads(await new RemoteDirectoryStore(provider, binding.vaultId, this.settings.transferConcurrency).revisions())].filter(([, versions]) => directoryPresent(versions)).map(([path]) => path);
+    const [revisions, directoryRevisions] = await Promise.all([
+      store.revisions(binding.vaultId),
+      new RemoteDirectoryStore(provider, binding.vaultId, this.settings.transferConcurrency,
+        new ObsidianRevisionCache(this.app, this.deviceId, context, 'directory'), (step, error) => this.diagnostic?.record('cache', 'warning', { step }, error)).revisions(),
+    ]);
+    const heads = buildHeads(revisions);
+    const folders = [...directoryHeads(directoryRevisions)].filter(([, versions]) => directoryPresent(versions)).map(([path]) => path);
     if (!this.alive || generation !== this.generation) return;
     new CloudFilesModal(this.app, heads, this.cloudLocation(), folders).open();
   }

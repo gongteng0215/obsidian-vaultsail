@@ -1,0 +1,411 @@
+{
+  "version": "0.2.18",
+  "baselineRef": "d49f7d39d8c162e51a5dd03efcad890986863024",
+  "simulated": true,
+  "latencyMs": 3,
+  "scenario": "Two operation devices, ceil(notes/8) directory records, opaque server digests; no live cloud",
+  "results": [
+    {
+      "side": "baseline",
+      "size": 49,
+      "rounds": 3,
+      "summary": {
+        "cold": {
+          "elapsedMs": 362,
+          "requests": 79,
+          "lists": 10,
+          "metadata": 4,
+          "downloads": 64,
+          "fileRecords": 49,
+          "directoryRecords": 14,
+          "cacheWrites": 1,
+          "medianMs": 291,
+          "p95Ms": 362
+        },
+        "warm": {
+          "elapsedMs": 310,
+          "requests": 79,
+          "lists": 10,
+          "metadata": 4,
+          "downloads": 64,
+          "fileRecords": 49,
+          "directoryRecords": 14,
+          "cacheWrites": 0,
+          "medianMs": 271,
+          "p95Ms": 310
+        },
+        "restart": {
+          "elapsedMs": 296,
+          "requests": 79,
+          "lists": 10,
+          "metadata": 4,
+          "downloads": 64,
+          "fileRecords": 49,
+          "directoryRecords": 14,
+          "cacheWrites": 0,
+          "medianMs": 277,
+          "p95Ms": 296
+        },
+        "browse": {
+          "elapsedMs": 217,
+          "requests": 68,
+          "lists": 7,
+          "metadata": 3,
+          "downloads": 57,
+          "fileRecords": 49,
+          "directoryRecords": 7,
+          "cacheWrites": 0,
+          "medianMs": 234,
+          "p95Ms": 267
+        },
+        "browse-repeat": {
+          "elapsedMs": 177,
+          "requests": 68,
+          "lists": 7,
+          "metadata": 3,
+          "downloads": 57,
+          "fileRecords": 49,
+          "directoryRecords": 7,
+          "cacheWrites": 0,
+          "medianMs": 255,
+          "p95Ms": 275
+        }
+      }
+    },
+    {
+      "side": "current",
+      "size": 49,
+      "rounds": 3,
+      "summary": {
+        "cold": {
+          "elapsedMs": 292,
+          "requests": 68,
+          "lists": 7,
+          "metadata": 3,
+          "downloads": 57,
+          "fileRecords": 49,
+          "directoryRecords": 7,
+          "cacheWrites": 2,
+          "medianMs": 297,
+          "p95Ms": 310
+        },
+        "warm": {
+          "elapsedMs": 105,
+          "requests": 8,
+          "lists": 7,
+          "metadata": 0,
+          "downloads": 0,
+          "fileRecords": 0,
+          "directoryRecords": 0,
+          "cacheWrites": 0,
+          "medianMs": 109,
+          "p95Ms": 110
+        },
+        "restart": {
+          "elapsedMs": 138,
+          "requests": 10,
+          "lists": 7,
+          "metadata": 1,
+          "downloads": 1,
+          "fileRecords": 0,
+          "directoryRecords": 0,
+          "cacheWrites": 0,
+          "medianMs": 138,
+          "p95Ms": 140
+        },
+        "browse": {
+          "elapsedMs": 91,
+          "requests": 10,
+          "lists": 7,
+          "metadata": 1,
+          "downloads": 1,
+          "fileRecords": 0,
+          "directoryRecords": 0,
+          "cacheWrites": 0,
+          "medianMs": 91,
+          "p95Ms": 92
+        },
+        "browse-repeat": {
+          "elapsedMs": 93,
+          "requests": 10,
+          "lists": 7,
+          "metadata": 1,
+          "downloads": 1,
+          "fileRecords": 0,
+          "directoryRecords": 0,
+          "cacheWrites": 0,
+          "medianMs": 93,
+          "p95Ms": 95
+        }
+      }
+    },
+    {
+      "side": "baseline",
+      "size": 100,
+      "rounds": 3,
+      "summary": {
+        "cold": {
+          "elapsedMs": 542,
+          "requests": 142,
+          "lists": 10,
+          "metadata": 4,
+          "downloads": 127,
+          "fileRecords": 100,
+          "directoryRecords": 26,
+          "cacheWrites": 1,
+          "medianMs": 542,
+          "p95Ms": 551
+        },
+        "warm": {
+          "elapsedMs": 541,
+          "requests": 142,
+          "lists": 10,
+          "metadata": 4,
+          "downloads": 127,
+          "fileRecords": 100,
+          "directoryRecords": 26,
+          "cacheWrites": 0,
+          "medianMs": 545,
+          "p95Ms": 556
+        },
+        "restart": {
+          "elapsedMs": 553,
+          "requests": 142,
+          "lists": 10,
+          "metadata": 4,
+          "downloads": 127,
+          "fileRecords": 100,
+          "directoryRecords": 26,
+          "cacheWrites": 0,
+          "medianMs": 553,
+          "p95Ms": 555
+        },
+        "browse": {
+          "elapsedMs": 413,
+          "requests": 125,
+          "lists": 7,
+          "metadata": 3,
+          "downloads": 114,
+          "fileRecords": 100,
+          "directoryRecords": 13,
+          "cacheWrites": 0,
+          "medianMs": 415,
+          "p95Ms": 436
+        },
+        "browse-repeat": {
+          "elapsedMs": 429,
+          "requests": 125,
+          "lists": 7,
+          "metadata": 3,
+          "downloads": 114,
+          "fileRecords": 100,
+          "directoryRecords": 13,
+          "cacheWrites": 0,
+          "medianMs": 433,
+          "p95Ms": 435
+        }
+      }
+    },
+    {
+      "side": "current",
+      "size": 100,
+      "rounds": 3,
+      "summary": {
+        "cold": {
+          "elapsedMs": 426,
+          "requests": 125,
+          "lists": 7,
+          "metadata": 3,
+          "downloads": 114,
+          "fileRecords": 100,
+          "directoryRecords": 13,
+          "cacheWrites": 2,
+          "medianMs": 420,
+          "p95Ms": 426
+        },
+        "warm": {
+          "elapsedMs": 105,
+          "requests": 8,
+          "lists": 7,
+          "metadata": 0,
+          "downloads": 0,
+          "fileRecords": 0,
+          "directoryRecords": 0,
+          "cacheWrites": 0,
+          "medianMs": 107,
+          "p95Ms": 109
+        },
+        "restart": {
+          "elapsedMs": 141,
+          "requests": 10,
+          "lists": 7,
+          "metadata": 1,
+          "downloads": 1,
+          "fileRecords": 0,
+          "directoryRecords": 0,
+          "cacheWrites": 0,
+          "medianMs": 141,
+          "p95Ms": 141
+        },
+        "browse": {
+          "elapsedMs": 90,
+          "requests": 10,
+          "lists": 7,
+          "metadata": 1,
+          "downloads": 1,
+          "fileRecords": 0,
+          "directoryRecords": 0,
+          "cacheWrites": 0,
+          "medianMs": 90,
+          "p95Ms": 90
+        },
+        "browse-repeat": {
+          "elapsedMs": 93,
+          "requests": 10,
+          "lists": 7,
+          "metadata": 1,
+          "downloads": 1,
+          "fileRecords": 0,
+          "directoryRecords": 0,
+          "cacheWrites": 0,
+          "medianMs": 93,
+          "p95Ms": 94
+        }
+      }
+    },
+    {
+      "side": "baseline",
+      "size": 1000,
+      "rounds": 1,
+      "summary": {
+        "cold": {
+          "elapsedMs": 3450,
+          "requests": 1289,
+          "lists": 22,
+          "metadata": 15,
+          "downloads": 1251,
+          "fileRecords": 1000,
+          "directoryRecords": 250,
+          "cacheWrites": 1,
+          "medianMs": 3450,
+          "p95Ms": 3450
+        },
+        "warm": {
+          "elapsedMs": 3482,
+          "requests": 1289,
+          "lists": 22,
+          "metadata": 15,
+          "downloads": 1251,
+          "fileRecords": 1000,
+          "directoryRecords": 250,
+          "cacheWrites": 0,
+          "medianMs": 3482,
+          "p95Ms": 3482
+        },
+        "restart": {
+          "elapsedMs": 3478,
+          "requests": 1289,
+          "lists": 22,
+          "metadata": 15,
+          "downloads": 1251,
+          "fileRecords": 1000,
+          "directoryRecords": 250,
+          "cacheWrites": 0,
+          "medianMs": 3478,
+          "p95Ms": 3478
+        },
+        "browse": {
+          "elapsedMs": 2833,
+          "requests": 1158,
+          "lists": 18,
+          "metadata": 13,
+          "downloads": 1126,
+          "fileRecords": 1000,
+          "directoryRecords": 125,
+          "cacheWrites": 0,
+          "medianMs": 2833,
+          "p95Ms": 2833
+        },
+        "browse-repeat": {
+          "elapsedMs": 2896,
+          "requests": 1158,
+          "lists": 18,
+          "metadata": 13,
+          "downloads": 1126,
+          "fileRecords": 1000,
+          "directoryRecords": 125,
+          "cacheWrites": 0,
+          "medianMs": 2896,
+          "p95Ms": 2896
+        }
+      }
+    },
+    {
+      "side": "current",
+      "size": 1000,
+      "rounds": 1,
+      "summary": {
+        "cold": {
+          "elapsedMs": 2904,
+          "requests": 1158,
+          "lists": 18,
+          "metadata": 13,
+          "downloads": 1126,
+          "fileRecords": 1000,
+          "directoryRecords": 125,
+          "cacheWrites": 2,
+          "medianMs": 2904,
+          "p95Ms": 2904
+        },
+        "warm": {
+          "elapsedMs": 201,
+          "requests": 19,
+          "lists": 18,
+          "metadata": 0,
+          "downloads": 0,
+          "fileRecords": 0,
+          "directoryRecords": 0,
+          "cacheWrites": 0,
+          "medianMs": 201,
+          "p95Ms": 201
+        },
+        "restart": {
+          "elapsedMs": 248,
+          "requests": 21,
+          "lists": 18,
+          "metadata": 1,
+          "downloads": 1,
+          "fileRecords": 0,
+          "directoryRecords": 0,
+          "cacheWrites": 0,
+          "medianMs": 248,
+          "p95Ms": 248
+        },
+        "browse": {
+          "elapsedMs": 118,
+          "requests": 21,
+          "lists": 18,
+          "metadata": 1,
+          "downloads": 1,
+          "fileRecords": 0,
+          "directoryRecords": 0,
+          "cacheWrites": 0,
+          "medianMs": 118,
+          "p95Ms": 118
+        },
+        "browse-repeat": {
+          "elapsedMs": 130,
+          "requests": 21,
+          "lists": 18,
+          "metadata": 1,
+          "downloads": 1,
+          "fileRecords": 0,
+          "directoryRecords": 0,
+          "cacheWrites": 0,
+          "medianMs": 130,
+          "p95Ms": 130
+        }
+      }
+    }
+  ]
+}

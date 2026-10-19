@@ -12,6 +12,8 @@ Sync Obsidian notes and attachments through your own Baidu Netdisk account, with
 
 **Local preview 0.2.17:** application setup opens Baidu's application list directly, with a six-step guide inside settings. [Release details](docs/releases/0.2.17.md).
 
+**Local preview 0.2.18:** fixes opaque-digest cache misses, persists directory caches, loads remote inventories concurrently, and avoids a duplicate directory scan on unchanged tasks. [Evidence and benchmark](docs/releases/0.2.18.md).
+
 [Community plugin](https://community.obsidian.md/plugins/vaultsail) · [Download 0.2.14](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.14) · [Release notes](docs/releases/0.2.14.md) · [Version roadmap](docs/ROADMAP.md) · [Report an issue](https://github.com/gongteng0215/obsidian-vaultsail/issues)
 
 **Contents:** [All features](#feature-inventory) · [Roadmap](#version-roadmap) · [Install](#install-or-update) · [First connection](#connect-your-first-vault) · [Device pairing](#pair-a-computer-ipad-or-another-vault) · [Automatic sync](#automatic-sync-and-the-queue) · [Conflicts](#versions-and-conflict-resolution) · [Cloud location](#where-the-cloud-data-goes) · [Recovery](#file-scope-deletion-and-recovery) · [FAQ](#performance-and-troubleshooting) · [Privacy](#privacy-and-network-access)

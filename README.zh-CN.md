@@ -12,6 +12,8 @@
 
 **0.2.17 本地预览：** 应用入口直达百度“我的应用”，设置内提供创建应用到连接同步的六步引导。[本次更新](docs/releases/0.2.17.md)。
 
+**0.2.18 本地预览：** 修复摘要格式导致的缓存失效，保存目录缓存、并行加载远程列表，无变化任务省去一次重复目录扫描。[现场依据与模拟对比](docs/releases/0.2.18.md)。
+
 [社区插件页面](https://community.obsidian.md/plugins/vaultsail) · [下载 0.2.14](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.14) · [版本说明](docs/releases/0.2.14.md) · [版本规划](docs/ROADMAP.zh-CN.md) · [反馈问题](https://github.com/gongteng0215/obsidian-vaultsail/issues)
 
 **目录：** [完整功能清单](#完整功能清单) · [版本规划](#版本规划) · [安装升级](#安装与升级) · [首次连接](#第一次连接) · [设备配对](#电脑ipad-与其他-vault-配对) · [自动同步](#自动同步与队列) · [冲突处理](#版本与冲突处理) · [云端位置](#百度网盘里放在哪里) · [恢复](#文件范围删除与恢复) · [常见问题](#性能与常见问题) · [隐私](#隐私与网络访问)

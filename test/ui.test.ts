@@ -524,7 +524,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   }); notifier.saved = { ...structuredClone(plugin.saved), autoSyncEnabled: true };
   let automaticError: unknown, outcome = { incomingChanges: 0, preservedConflicts: 0, uploadedFiles: 0, downloadedFiles: 0, deletedFiles: 0, autoMergedFiles: 0, blockedFiles: 0 };
   notifier.getEngine = async () => ({ recoverPending: async () => {}, syncAutomatic: async () => { if (automaticError) throw automaticError; return outcome; } });
-  notifier.directories = { recover: async () => {}, preview: async () => ({}), sync: async () => ({ created: 0, deleted: 0, skipped: 0 }) };
+  notifier.directories = { recover: async () => {}, preview: async () => ({}), finishUnchanged: async () => undefined, sync: async () => ({ created: 0, deleted: 0, skipped: 0 }) };
   await notifier.onload();
   const automaticCloud = notifier.ribbons.find((ribbon: any) => ribbon.icon === 'cloud').el;
   const notificationClock = Date.now; let notificationNow = notificationClock();

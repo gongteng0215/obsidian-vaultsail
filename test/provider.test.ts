@@ -104,6 +104,46 @@ test('missing listing digests use batched fresh metadata and survive restart wit
   assert.equal(reads, 0, 'restart reuses cached records after fresh batch fingerprints'); assert.deepEqual(batches, [1, 100, 7]);
 });
 
+test('opaque server digests are cache fingerprints without being treated as local content hashes', async () => {
+  const h = harness(), seed = new RemoteVaultStore(h.provider), vault = await seed.create('opaque fingerprint'), deviceId = uuid();
+  const data = bytes('original note'), op: Revision = { schemaVersion: 1, vaultId: vault.vaultId, opId: uuid(), deviceId, fileId: uuid(), path: 'note.md', parents: [], kind: 'update', hash: hash(data), size: data.byteLength, createdAt: 1 };
+  await seed.publish(vault.vaultId, op, data);
+  for (const omitListing of [false, true]) {
+    let saved: unknown, downloads = 0, omitAll = false;
+    const disk = { load: async () => structuredClone(saved), save: async (value: unknown) => { saved = structuredClone(value); } };
+    const transport: HttpTransport = async input => {
+      const url = new URL(input.url), result = await h.transport(input);
+      if (['list', 'filemetas'].includes(url.searchParams.get('method')!)) for (const entry of (result.json as { list: Record<string, unknown>[] }).list) {
+        if (typeof entry.md5 === 'string') entry.md5 = entry.md5.slice(0, 8) + 'g' + entry.md5.slice(9);
+        if (omitAll || omitListing && url.searchParams.get('method') === 'list') delete entry.md5;
+      }
+      if (url.pathname.startsWith('/file/') && decodeURIComponent(url.pathname).includes('/ops/')) downloads++;
+      return result;
+    };
+    const fresh = () => new RemoteVaultStore(new BaiduProvider('/apps/中文应用', transport, { accessToken: async () => 'private-access' }), disk);
+    const store = fresh(); await store.revisions(vault.vaultId); assert.equal(downloads, 1);
+    assert.equal((saved as { entries: unknown[] }).entries.length, 1);
+    await store.revisions(vault.vaultId); await fresh().revisions(vault.vaultId); assert.equal(downloads, 1, 'warm and restarted scans reuse a freshly confirmed opaque fingerprint');
+    omitAll = true; await store.revisions(vault.vaultId); assert.equal(downloads, 2, 'a genuinely absent fingerprint still requires a verified content read');
+    omitAll = false;
+    const opPath = '/apps/中文应用/' + seed.base(vault.vaultId) + '/ops/' + deviceId + '/' + op.opId + '.json';
+    const old = h.files.get(opPath)!; h.files.set(opPath, bytes(new TextDecoder().decode(old).replace('"createdAt":1', '"createdAt":2')));
+    await assert.rejects(store.revisions(vault.vaultId), { code: 'integrity' }); h.files.set(opPath, old);
+  }
+});
+
+test('malformed server digests never qualify for fingerprint reuse', async () => {
+  for (const digest of ['', 'bad', 'g'.repeat(31), 'g'.repeat(33), '/'.repeat(32), 'x'.repeat(31) + '\n', 'g'.repeat(32) + '\n']) {
+    const h = harness(); await h.provider.writeImmutable('digest/file', bytes('content'));
+    const provider = new BaiduProvider('/apps/中文应用', async input => {
+      const result = await h.transport(input);
+      if (input.url.includes('method=list')) for (const entry of (result.json as { list: Record<string, unknown>[] }).list) entry.md5 = digest;
+      return result;
+    }, { accessToken: async () => 'private-access' });
+    assert.equal((await provider.listAll('digest'))[0].etag, undefined);
+  }
+});
+
 test('incomplete, duplicate, mismatched or failed metadata batches stop scanning; absent digests safely reread records', async () => {
   for (const fault of ['missing', 'duplicate', 'path', 'size', 'permission', 'no-digest'] as const) {
     const h = harness(); await h.provider.writeImmutable('records/a', bytes('A')); await h.provider.writeImmutable('records/b', bytes('B'));

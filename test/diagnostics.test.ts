@@ -26,6 +26,19 @@ function disk() {
 }
 function item(sequence = 1, at = 1): DiagnosticRecord { return { version: 1, id: uuid(), at, sequence, session: uuid(), scope: 'task', event: 'checkpoint', fields: { phase: 'uploading' } }; }
 
+test('fingerprint diagnosis records numeric format counts without storing server digests or filenames', async () => {
+  const rows: DiagnosticRecord[] = [], log = new DiagnosticLog({ append: async records => { rows.push(...records); }, read: async () => ({ records: rows, unreadable: 0 }) });
+  const opaque = 'g'.repeat(32), standard = 'a'.repeat(32);
+  try {
+    await traceRequest(log, async () => ({ status: 200, headers: {}, bytes: bytes('private-response'), json: { list: [
+      { md5: opaque, path: 'private-note.md' }, { md5: standard }, {}, { md5: 'bad' }, { isdir: 1 },
+    ] } }), { url: 'https://pan.baidu.com/rest/2.0/xpan/multimedia?method=filemetas&access_token=private-token' });
+    await log.flush(); const row = rows.find(row => row.event === 'finish')!;
+    assert.equal(row.fields.digestsOpaque, 1); assert.equal(row.fields.digestsStandard, 1); assert.equal(row.fields.digestsMissing, 1); assert.equal(row.fields.digestsRejected, 1);
+    const serialized = JSON.stringify(rows); for (const text of [opaque, standard, 'private-note.md', 'private-response', 'private-token']) assert.equal(serialized.includes(text), false);
+  } finally { log.close(); }
+});
+
 test('error causes, native codes, stack positions and signatures survive without messages, paths or secrets', () => {
   const native = Object.assign(new Error('EPERM: C:\\private-notes\\private.md https://x.test/?access_token=private-token secret=private-secret'), { code: 'EPERM', syscall: 'rename', errno: -4048 });
   native.stack = 'Error: private-note-body\n at privateToken (plugin:vaultsail:3:123)\n at secret (C:\\private-notes\\note.md:9:4)';

@@ -194,3 +194,41 @@ test('cold directory reads prepare no more than 100 links at a time; warm reads 
   cloud.prepareReads = async objects => objects.map(object => ({ ...object, size: object.size + 1 }));
   await assert.rejects(new RemoteDirectoryStore(cloud, h.vault.vaultId).revisions(), { code: 'changed' });
 });
+
+test('directory caches survive restart, do not rewrite unchanged snapshots and detect new device records', async () => {
+  const h = await setup(); await h.a.create('已有目录'); await h.ea.sync('sync', false);
+  let saved: unknown, saves = 0;
+  const disk = { load: async () => structuredClone(saved), save: async (value: unknown) => { saves++; saved = structuredClone(value); } };
+  const fresh = () => new RemoteDirectoryStore(h.cloud, h.vault.vaultId, 4, disk);
+  await fresh().revisions(); const reads = h.cloud.reads; assert.equal(saves, 1);
+  await fresh().revisions(); assert.equal(h.cloud.reads, reads); assert.equal(saves, 1);
+  await h.rb.publish({ version: 1, vaultId: h.vault.vaultId, opId: uuid(), deviceId: h.db, path: '新设备目录', parents: [], kind: 'create', createdAt: 1 });
+  const before = h.cloud.reads;
+  assert.equal((await fresh().revisions()).length, 2); assert.equal(h.cloud.reads, before + 1); assert.equal(saves, 2);
+});
+
+test('unchanged directory tasks reuse their completed inventory but never skip writes, local changes or later remote polls', async () => {
+  const h = await setup(); await h.a.create('原目录'); await h.ea.sync('sync', false);
+  const list = h.cloud.list.bind(h.cloud); let lists = 0; h.cloud.list = async (...args) => { lists++; return list(...args); };
+  const plan = await h.ea.preview('sync', false); lists = 0;
+  assert.deepEqual(await h.ea.finishUnchanged(plan, false), { created: 0, deleted: 0, skipped: 0 }); assert.equal(lists, 0);
+  assert.equal(await h.ea.finishUnchanged(plan, false), undefined, 'a completed snapshot is consumed once');
+  const localPlan = await h.ea.preview('sync', false); await h.a.create('本机新增');
+  assert.equal(await h.ea.finishUnchanged(localPlan, false), undefined); await h.ea.sync('sync', false);
+  await h.rb.publish({ version: 1, vaultId: h.vault.vaultId, opId: uuid(), deviceId: h.db, path: '远端新增', parents: [], kind: 'create', createdAt: 1 });
+  const changed = await h.ea.preview('sync', false); assert.equal(await h.ea.finishUnchanged(changed, false), undefined, 'remote changes must execute');
+  await h.ea.sync('sync', false); assert.ok(h.a.dirs.has('远端新增'));
+});
+
+test('corrupt or wrong-vault directory caches fall back to remote reads; failed saves retry without affecting correctness', async () => {
+  const h = await setup(); await h.a.create('缓存'); await h.ea.sync('sync', false);
+  let saved: any, fail = false, saves = 0; const failures: string[] = [];
+  const disk = { load: async () => structuredClone(saved), save: async (value: unknown) => { saves++; if (fail) throw new Error('disk'); saved = structuredClone(value); } };
+  const fresh = () => new RemoteDirectoryStore(h.cloud, h.vault.vaultId, 4, disk, step => failures.push(step));
+  await fresh().revisions(); saved.entries[0].revision.path = '损坏'; let before = h.cloud.reads;
+  assert.equal((await fresh().revisions())[0].path, '缓存'); assert.equal(h.cloud.reads, before + 1); assert.ok(failures.includes('load-cache'));
+  saved.vaultId = uuid(); before = h.cloud.reads; await fresh().revisions(); assert.equal(h.cloud.reads, before + 1);
+  saved = undefined; fail = true; const reader = fresh(); assert.equal((await reader.revisions()).length, 1); const attempts = saves;
+  fail = false; await reader.revisions(); assert.equal(saves, attempts + 1); assert.ok(failures.includes('save-cache'));
+  h.cloud.failList = true; await assert.rejects(fresh().revisions(), { code: 'network' });
+});

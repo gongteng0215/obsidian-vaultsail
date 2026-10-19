@@ -13,7 +13,7 @@ const tags = new Set(('automatic manual operation upload download sync recover r
   + 'save-history load-history save-cache load-cache save-state load-state save-recovery queue-save queue-load audit settings credentials session closed startup plan device vault integrity verification activation '
   + 'listing reading validating saving-cache error cancelled timeout write-timeout rate network permission state start success failure pending markdown image pdf video audio binary internal preparing committing verified').split(' '));
 const numbers = ['bytes', 'durationMs', 'status', 'apiCode', 'errno', 'attempt', 'waitMs', 'doneFiles', 'totalFiles', 'doneBytes', 'totalBytes',
-  'concurrency', 'chunkConcurrency', 'fileLimitMiB', 'remotePollSeconds', 'journals', 'bases', 'knownOps', 'queued', 'active', 'pages', 'listed', 'cacheHits', 'read', 'retryAt', 'failures', 'pathLength', 'pathBytes', 'pathDepth', 'uploadedBytes', 'part', 'totalParts', 'completedParts', 'retryCount'] as const;
+  'concurrency', 'chunkConcurrency', 'fileLimitMiB', 'remotePollSeconds', 'journals', 'bases', 'knownOps', 'queued', 'active', 'pages', 'listed', 'cacheHits', 'read', 'retryAt', 'failures', 'pathLength', 'pathBytes', 'pathDepth', 'uploadedBytes', 'part', 'totalParts', 'completedParts', 'retryCount', 'digestsStandard', 'digestsOpaque', 'digestsMissing', 'digestsRejected'] as const;
 const tagFields = ['phase', 'action', 'outcome', 'endpoint', 'method', 'step', 'mode', 'fileKind'] as const;
 const refFields = ['fileRef', 'connectionRef', 'operationRef', 'targetRef'] as const;
 const idFields = ['taskId', 'historyId', 'requestId'] as const;
@@ -28,6 +28,7 @@ export interface LogFields {
   doneFiles?: number; totalFiles?: number; doneBytes?: number; totalBytes?: number; concurrency?: number; chunkConcurrency?: number;
   fileLimitMiB?: number; remotePollSeconds?: number; journals?: number; bases?: number; knownOps?: number; queued?: number; active?: number;
   pages?: number; listed?: number; cacheHits?: number; read?: number; retryAt?: number; failures?: number;
+  digestsStandard?: number; digestsOpaque?: number; digestsMissing?: number; digestsRejected?: number;
 }
 const errorCodes = new Set(('unknown state collision integrity changed recovery binding configuration permission authentication network timeout write-timeout '
   + 'rate http api response schema size path paused cancelled busy encoding not-found exists visibility credentials-id token-expired '

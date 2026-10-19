@@ -9,9 +9,9 @@ import { diagnosticLog } from '../diagnostics/log';
 
 export class ObsidianRevisionCache implements RevisionCache {
   private app: App; private path: string;
-  constructor(app: App, deviceId: string, contextId: string) {
+  constructor(app: App, deviceId: string, contextId: string, kind: 'file' | 'directory' = 'file') {
     if (!validId(deviceId) || !/^[a-f0-9]{64}$/.test(contextId)) throw new VaultSailError('state', '缓存范围标识无效。');
-    this.app = app; this.path = '.vaultsail-state/' + deviceId + '/sessions/' + contextId + '.revisions.json';
+    this.app = app; this.path = '.vaultsail-state/' + deviceId + '/sessions/' + contextId + (kind === 'directory' ? '.directory-revisions.json' : '.revisions.json');
   }
   async load(): Promise<unknown> {
     const stat = await storageAdapter(this.app).stat(this.path);
