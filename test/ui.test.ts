@@ -350,9 +350,11 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   await plugin.run('files', () => plugin.showCloudFiles()); assert.notEqual(plugin.cloudReader, previousGenerationReader, 'a connection generation change invalidates readers even for the same vault');
   assert.ok(document.querySelector('[data-cloud-folder="论文/调研研究"]'));
   assert.ok([...remoteObjects.keys()].some(path => path.includes('/directories/')));
-  const cloudFile = document.querySelector('details[data-cloud-file="note.md"]')!;
-  cloudFile.setAttribute('open', ''); cloudFile.dispatchEvent(new window.Event('toggle'));
+  const cloudFile = document.querySelector('[data-cloud-file="note.md"]')!;
+  assert.equal(cloudFile.tagName, 'DIV'); assert.equal(cloudFile.querySelector('summary'), null);
+  cloudFile.querySelector('button')!.click();
   assert.ok(document.body.textContent!.includes('/blobs/' + hash(files.get('note.md')!)));
+  module.Modal.instances.at(-1).close();
   assert.equal([...remoteObjects.keys()].some(p => p.includes('VaultSail-配置')), false, 'exported pairing files must never become remote notes');
   const beforeSync = remoteObjects.size; files.set('note.md', new TextEncoder().encode('edited locally').buffer);
   setupButton('开始同步').click(); await until(() => !plugin.busy && remoteObjects.size > beforeSync);
