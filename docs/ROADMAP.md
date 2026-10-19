@@ -2,7 +2,7 @@
 
 **English** | [简体中文](ROADMAP.zh-CN.md) · [Feature inventory](../README.md#feature-inventory)
 
-Baseline: **0.2.12 local preview**, updated **2026-10-19**. Version 0.2.12 adds the [cloud file tree](releases/0.2.12.md). Versions 0.2.6–0.2.8 add the transfer center, parallel slices and compact layouts; 0.2.9 adds scan improvements and local performance summaries. Versions 0.2.10–0.2.11 add immediate click feedback, automatic task notifications and ribbon activity/warning states. See [automatic notifications](releases/0.2.11.md), [click feedback](releases/0.2.10.md) and [scan validation](releases/0.2.9.md). Native dual-device acceptance remains separate; later milestones advance on evidence, not promised dates.
+Baseline: **0.2.13 local preview**, updated **2026-10-19**. Version 0.2.13 makes [deletion sync a standard opt-in setting](releases/0.2.13.md). Version 0.2.12 adds the [cloud file tree](releases/0.2.12.md). Versions 0.2.6–0.2.8 add the transfer center, parallel slices and compact layouts; 0.2.9 adds scan improvements and local performance summaries. Versions 0.2.10–0.2.11 add immediate click feedback, automatic task notifications and ribbon activity/warning states. See [automatic notifications](releases/0.2.11.md), [click feedback](releases/0.2.10.md) and [scan validation](releases/0.2.9.md). Native dual-device acceptance remains separate; later milestones advance on evidence, not promised dates.
 
 ## Direction and lasting boundaries
 
@@ -43,7 +43,7 @@ Implementation: [separate 0.2.1 preview](releases/0.2.1.md) now includes local o
 ### Deliverables
 
 1. Track actual findings with version, platform, trigger steps, safe errors, and reproducible evidence; make focused fixes after establishing causes.
-2. Align outdated experimental/manual/conflict-copy messages with the actual 0.2.0 queue and merge behavior.
+2. Keep settings messages aligned with actual queue and merge behavior; deletion controls were simplified in 0.2.13.
 3. Distinguish debounce, waiting for remote checks, scanning, transfer, rate-limit retry, user pause, and intervention states, so no changes and no running task are not confused.
 4. Verify clicks while busy, continued editing, reload, reconnect, and foreground return after pause.
 5. Verify repeated sync does not add versions/copies; recovery checks unknown writes before resubmission.

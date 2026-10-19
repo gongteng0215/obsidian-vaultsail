@@ -205,7 +205,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   setupButton('确认').click(); for (let i = 0; i < 100 && !ipad.settings.remoteVaultId; i++) await Promise.resolve();
   for (let i = 0; i < 100 && ipad.busy; i++) await Promise.resolve();
   assert.equal(ipad.settings.remoteVaultId, existingId); assert.equal(ipad.settings.binding, undefined); assert.equal(ipad.settings.secretRef, '');
-  assert.equal(ipad.settings.experimentalSync, false); assert.equal(ipad.settings.deletionEnabled, false); assert.equal(ipad.auth.status(), 'unconfigured');
+  assert.equal(Object.hasOwn(ipad.settings, 'experimentalSync'), false); assert.equal(ipad.settings.deletionEnabled, false); assert.equal(ipad.auth.status(), 'unconfigured');
   assert.equal(ipad.deviceId === JSON.parse(exported).deviceId, false); assert.ok(document.body.textContent!.includes('验证并绑定导入库'));
   await ipad.saveAppSecret('ipad-own-private-secret'); ipad.auth = new module.AuthManager(authReplies, privateStore,
     () => ({ appKey: ipad.settings.appKey, secretRef: ipad.settings.secretRef, sessionRef: 'vaultsail-session-' + ipad.deviceId }), async () => {});
@@ -331,7 +331,26 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   setupButton('开始同步').click(); await until(() => !plugin.busy && remoteObjects.size > beforeSync);
   assert.equal(plugin.busy, false); assert.equal(plugin.progress?.phase, 'completed'); assert.ok(remoteObjects.size > beforeSync);
   const afterSync = remoteObjects.size; setupButton('开始同步').click(); await until(() => !plugin.busy && !plugin.queue.state.manual);
-  assert.equal(remoteObjects.size, afterSync); assert.equal(plugin.settings.experimentalSync, false, 'normal sync must be available without the deletion experiment');
+  assert.equal(remoteObjects.size, afterSync); assert.equal(plugin.settings.deletionEnabled, false, 'normal sync remains available with deletion disabled');
+  const deletionToggle = toggleSetting('同步删除');
+  assert.equal(deletionToggle.checked, false); assert.equal(deletionToggle.closest('details'), null, 'deletion must be a normal visible setting');
+  assert.equal(plugin.tabs[0].containerEl.textContent!.includes('实验'), false, 'settings no longer advertise experiment controls or labels');
+  toggleSetting('同步删除', true); assert.equal(plugin.settings.deletionEnabled, false, 'enabling requires the deletion confirmation');
+  assert.match(module.Modal.instances.at(-1).contentEl.textContent, /手动或自动同步/);
+  setupButton('取消').click(); assert.equal(toggleSetting('同步删除').checked, false);
+  toggleSetting('同步删除', true); setupButton('确认').click(); await until(() => plugin.saved.deletionEnabled === true && !plugin.busy);
+  assert.equal(toggleSetting('同步删除').checked, true); assert.equal(Object.hasOwn(plugin.saved, 'experimentalSync'), false);
+  const deletionSaveData = plugin.saveData.bind(plugin); plugin.saveData = async () => { throw new Error('private-save-response'); };
+  const deletionNoticeCount = module.Notice.messages.length;
+  toggleSetting('同步删除', false); await until(() => module.Notice.messages.length > deletionNoticeCount && !plugin.busy);
+  assert.equal(plugin.settings.deletionEnabled, true); assert.equal(toggleSetting('同步删除').checked, true, 'failed saves must restore the displayed and effective setting');
+  plugin.saveData = deletionSaveData;
+  toggleSetting('同步删除', false); await until(() => plugin.saved.deletionEnabled === false && !plugin.busy);
+  plugin.busy = true; await assert.rejects(plugin.setDeletionEnabled(true), { code: 'busy' }); plugin.busy = false;
+  toggleSetting('同步删除', true); const deletionBinding = plugin.settings.binding; plugin.settings.binding = { ...deletionBinding };
+  setupButton('确认').click(); await until(() => module.Modal.instances.at(-1).contentEl.textContent.includes('连接已变更'));
+  assert.equal(plugin.settings.deletionEnabled, false, 'an old confirmation must not enable deletes on a different connection');
+  module.Modal.instances.at(-1).close(); plugin.settings.binding = deletionBinding;
   const originalNote = files.get('note.md')!;
   await local.writeConflictCopy('note.md', 'local-test', originalNote); assert.equal(hash((await local.readConflictCopy('note.md', 'local-test'))!), hash(originalNote));
   assert.equal([...remoteObjects.keys()].some(p => p.includes('VaultSail-conflicts')), false);

@@ -299,6 +299,14 @@ export default class VaultSailPlugin extends Plugin {
     this.queue?.dispose(); this.queue = undefined; this.queueContext = undefined; this.refreshUI();
     if (enabled && !previous.enabled) this.requestSync(false);
   }
+  async setDeletionEnabled(enabled: boolean): Promise<void> {
+    if (this.busy) throw new VaultSailError('busy', '请等待当前任务结束。');
+    const previous = this.settings.deletionEnabled; this.busy = true;
+    try { this.settings.deletionEnabled = enabled; await this.saveSettings(); }
+    catch (error) { this.settings.deletionEnabled = previous; throw error; }
+    finally { this.busy = false; this.refreshUI(); }
+    if (enabled && !previous) this.queue?.request('full');
+  }
   private async conflictAction<T>(action: (engine: SyncEngine) => Promise<T>): Promise<T> {
     if (this.busy) throw new VaultSailError('busy', '当前任务进行中，请等待完成。');
     this.busy = true;
@@ -608,7 +616,7 @@ export default class VaultSailPlugin extends Plugin {
       options.onCommit?.();
       await this.changeConfiguration({ providerId: 'baidu', appKey: config.appKey, appDirectory: config.appDirectory,
         secretRef: this.settings.appKey === config.appKey ? this.settings.secretRef : '', remoteVaultId: target?.id ?? '',
-        pendingVaultName: target?.displayName, experimentalSync: false, deletionEnabled: false });
+        pendingVaultName: target?.displayName, deletionEnabled: false });
       this.progress = undefined; this.lastErrorCode = undefined; this.statusText = '配置已导入。请在本设备保存 SecretKey 并授权，然后' + (target ? '验证并绑定导入的云端库。' : '为当前 Vault 创建或选择云端库。');
     } finally { this.busy = false; this.refreshUI(); }
   }
@@ -718,7 +726,7 @@ export default class VaultSailPlugin extends Plugin {
     const b = this.settings.binding;
     const checked = b ? this.app.loadLocalStorage(this.validationKey(b.accountHash)) : null;
     return JSON.stringify({ pluginVersion: this.manifest.version, authorized: this.auth.status() === 'connected', bound: Boolean(this.settings.binding),
-      experimentalSync: this.settings.experimentalSync, deletionEnabled: this.settings.deletionEnabled,
+      deletionEnabled: this.settings.deletionEnabled,
       lastErrorCode: this.lastErrorCode ?? null, localRoundtrip: checked ? { passed: checked.passed === true, checkedAt: checked.checkedAt,
         source: checked.source === 'pairing-local-probe' ? 'pairing-local-probe' : 'full-roundtrip', results: checked.results, quota: checked.quota } : null,
       lastTransfer: this.lastSuccess() ?? null,

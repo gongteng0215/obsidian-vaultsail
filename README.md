@@ -4,7 +4,7 @@ Sync Obsidian notes and attachments through your own Baidu Netdisk account, with
 
 **English** | [简体中文](README.zh-CN.md)
 
-Local development preview **0.2.12** displays cloud files in an expandable directory tree with path search, expand/collapse controls and on-demand version details. Includes automatic notifications, immediate click feedback and scan improvements; not a community release. See [cloud file tree](docs/releases/0.2.12.md), [automatic notifications](docs/releases/0.2.11.md) and [scan performance](docs/releases/0.2.9.md).
+Local development preview **0.2.13** exposes deletion sync as a normal setting, off by default, with no experiment gate. Includes the cloud file tree, automatic notifications and scan improvements; not a community release. See [deletion settings](docs/releases/0.2.13.md), [cloud file tree](docs/releases/0.2.12.md) and [automatic notifications](docs/releases/0.2.11.md).
 
 [Community plugin](https://community.obsidian.md/plugins/vaultsail) · [Download 0.2.5](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.5) · [Release notes](docs/releases/0.2.5.md) · [Version roadmap](docs/ROADMAP.md) · [Report an issue](https://github.com/gongteng0215/obsidian-vaultsail/issues)
 
@@ -30,7 +30,7 @@ Local development preview **0.2.12** displays cloud files in an expandable direc
 
 ## Feature inventory
 
-This inventory describes **0.2.5**, not future releases. **Implemented** means code and automated coverage exist, not complete real-device certification. **Limited** means the listed restrictions apply. **Experimental** requires a separate opt-in.
+This inventory describes the existing feature set; preview changes are listed above. **Implemented** means code and automated coverage exist, not complete real-device certification. **Limited** means the listed restrictions apply.
 
 | Area | Capability | Status and scope |
 | --- | --- | --- |
@@ -72,7 +72,7 @@ This inventory describes **0.2.5**, not future releases. **Implemented** means c
 | Conflicts | Rename conflicts and deletion-versus-edit choices | Limited; final path selection, deletion requires opt-in, ambiguous cases stop safely |
 | Recovery | Operation journals and unfinished-task recovery | Implemented; verify actual outcomes and reuse operation IDs |
 | Recovery | Local recovery points, restore, and end stale tasks | Implemented; current content preserved, no automatic cleanup |
-| Deletion | Propagate explicit versioned deletion | Experimental; off by default, recovery retained, no permanent cloud cleanup |
+| Deletion | Propagate explicit versioned deletion | Off by default, recovery retained, no permanent cloud cleanup |
 | Interface | Three-tab settings, live upload bytes/slices, phase/request/cache statistics | Implemented; server-acknowledged progress updates after each slice, Chinese UI |
 | Activity | Persistent per-file sync records | Implemented; last 30 tasks, path search, action/status filters, local only |
 | Oversized files | Metadata preflight, skip list and related-path protection | Implemented; unsupported files do not advance baselines; independent files continue |
@@ -125,7 +125,7 @@ The **[large-file implementation plan](docs/LARGE_FILES.md)** details metadata-f
 | Remote checks | **60 seconds** plus a small random delay; configurable **30–300 seconds** |
 | Concurrent files | **8** by default; configurable **1–32**, with smaller batches for large files |
 | Maximum file size | **Desktop 512 MiB**, configurable 20–512; **mobile 20 MiB** |
-| Deletion propagation | **Off**, with a separate experimental opt-in |
+| Deletion propagation | **Off**, with an independent “同步删除” toggle in “传输与恢复” |
 | Mobile background operation | Continuous background sync is **not provided** |
 
 Intervals are scheduling targets, not delivery deadlines. Busy tasks, network errors, rate limits, background suspension, and pauses can delay execution. Automated validation passed for 0.2.5; comprehensive Windows/iPad, Baidu throughput, and long-term multi-device validation remain incomplete.
@@ -273,7 +273,7 @@ This is version storage. Downloads reconstruct normal note paths; `blobs` is not
 
 Eligible ordinary files include Markdown, images, PDFs, Chinese paths, and zero-byte files, up to the current device limit (desktop 512 MiB; mobile 20 MiB) each. Exclusions include dot-prefixed path components, the current Obsidian configuration directory, `node_modules`, `Thumbs.db`, `VaultSail-conflicts/`, and `VaultSail-配置/`. Internal `.vaultsail-state/` data is excluded too. Themes, plugins, settings, and credentials are not copied as notes.
 
-Deletion propagation is off. Missing a file alone does not authorize deleting the other side. The experimental option uses versioned deletion records and local recovery data; it does not permanently remove cloud content objects.
+Deletion propagation is off by default. In **传输与恢复**, enable **同步删除** and confirm to include explicit deletes in manual and automatic sync. Missing a file alone does not authorize deleting the other side without a trusted baseline. The option uses versioned deletion records and local recovery data; it does not permanently remove cloud content objects.
 
 Downloads are staged and hash-checked before application; replacements retain recovery copies. Journals record upload, publication, local application, and baseline progress so recovery can verify actual outcomes.
 

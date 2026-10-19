@@ -28,8 +28,19 @@ test('legacy intent is preserved without inventing a verified binding or retaini
   assert.equal(migrateSettings({ appDirectory: '  ' }).appDirectory, '/apps/VaultSail');
   assert.equal(migrateSettings({ appDirectory: '/apps/我的应用' }).appDirectory, '/apps/我的应用');
 });
-test('malformed settings and deletion without experimental sync cannot enable writes', () => {
-  assert.equal(migrateSettings(null).providerId, 'none'); assert.equal(migrateSettings({ deletionEnabled: true }).deletionEnabled, false);
+test('deletion is independently opt-in and defaults off; malformed values cannot enable it', () => {
+  assert.equal(migrateSettings(null).providerId, 'none'); assert.equal(migrateSettings({}).deletionEnabled, false);
+  assert.equal(migrateSettings({ deletionEnabled: true }).deletionEnabled, true);
+  for (const value of [false, 'true', 1, null]) assert.equal(migrateSettings({ deletionEnabled: value }).deletionEnabled, false);
+});
+
+test('legacy deletion settings preserve their effective value and shed the obsolete experiment gate', () => {
+  for (const experimentalSync of [true, false]) for (const deletionEnabled of [true, false]) {
+    const settings = migrateSettings({ experimentalSync, deletionEnabled });
+    assert.equal(settings.deletionEnabled, experimentalSync && deletionEnabled);
+    assert.equal(Object.hasOwn(settings, 'experimentalSync'), false);
+    assert.equal(migrateSettings(settings).deletionEnabled, settings.deletionEnabled, 'a second load must preserve the migrated choice');
+  }
 });
 test('transfer concurrency defaults to eight and preserves valid device-local custom values', () => {
   assert.equal(migrateSettings({}).transferConcurrency, 8);

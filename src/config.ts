@@ -2,7 +2,7 @@ import { DEFAULT_TRANSFER_CONCURRENCY, validConcurrency } from './core/concurren
 export interface VaultSailSettings {
   providerId: 'none' | 'baidu'; remoteVaultId: string; appKey: string; appDirectory: string; secretRef: string;
   binding?: { vaultId: string; appKey: string; root: string; accountHash: string; displayName: string; };
-  experimentalSync: boolean; deletionEnabled: boolean;
+  deletionEnabled: boolean;
   pendingVaultName?: string;
   sessionRef?: string;
   transferConcurrency: number;
@@ -11,7 +11,7 @@ export interface VaultSailSettings {
   autoSyncEnabled: boolean; remotePollSeconds: number;
 }
 export const DEFAULT_APP_DIRECTORY = '/apps/VaultSail';
-export const DEFAULT_SETTINGS: VaultSailSettings = { providerId: 'none', remoteVaultId: '', appKey: '', appDirectory: DEFAULT_APP_DIRECTORY, secretRef: '', experimentalSync: false, deletionEnabled: false, transferConcurrency: DEFAULT_TRANSFER_CONCURRENCY, uploadChunkConcurrency: 2, maxFileMiB: 512, autoSyncEnabled: false, remotePollSeconds: 60 };
+export const DEFAULT_SETTINGS: VaultSailSettings = { providerId: 'none', remoteVaultId: '', appKey: '', appDirectory: DEFAULT_APP_DIRECTORY, secretRef: '', deletionEnabled: false, transferConcurrency: DEFAULT_TRANSFER_CONCURRENCY, uploadChunkConcurrency: 2, maxFileMiB: 512, autoSyncEnabled: false, remotePollSeconds: 60 };
 export function validChunkConcurrency(value: unknown): value is number { return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 4; }
 export function validFileMiB(value: unknown): value is number { return typeof value === 'number' && Number.isInteger(value) && value >= 20 && value <= 512; }
 export function effectiveFileLimit(settings: VaultSailSettings, mobile: boolean): number { return (mobile ? 20 : settings.maxFileMiB) * 1024 * 1024; }
@@ -30,6 +30,7 @@ export function migrateSettings(value: unknown): VaultSailSettings {
   if (typeof source.sessionRef === 'string' && /^vaultsail-session-[a-z0-9-]{1,100}$/.test(source.sessionRef)) result.sessionRef = source.sessionRef;
   const b = source.binding as Record<string, unknown> | undefined;
   if (b && typeof b.vaultId === 'string' && typeof b.appKey === 'string' && typeof b.root === 'string' && typeof b.accountHash === 'string' && typeof b.displayName === 'string') result.binding = b as unknown as VaultSailSettings['binding'];
-  result.experimentalSync = source.experimentalSync === true; result.deletionEnabled = result.experimentalSync && source.deletionEnabled === true;
+  // Preserve the effective legacy choice, then drop the obsolete gate on save.
+  result.deletionEnabled = source.deletionEnabled === true && (!Object.hasOwn(source, 'experimentalSync') || source.experimentalSync === true);
   return result;
 }

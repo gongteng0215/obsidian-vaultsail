@@ -1,6 +1,6 @@
 import { App, Modal, Notice, Platform, PluginSettingTab, Setting } from 'obsidian';
 import type VaultSailPlugin from '../main';
-import { safeMessage } from '../core/safety';
+import { safeMessage, VaultSailError } from '../core/safety';
 import { RemoteVaultStore } from '../sync/remote-vault';
 import { ConfirmModal } from './modals';
 import { DEFAULT_APP_DIRECTORY } from '../config';
@@ -118,7 +118,7 @@ export class VaultSailSettingTab extends PluginSettingTab {
     const vaultCard = card(panels.get('vault')!, 'DESTINATION', '为这份知识，选择一个泊位', '云端库 ID 用来配对设备，本地笔记库可以有不同名称。');
     const transferCard = card(panels.get('transfer')!, 'WORKSPACE', '先看清变化，再开始传输', `${p.fileLimit() / (1024 * 1024)} MiB / 文件 · 最多 ${p.settings.transferConcurrency} 个文件同时传输 · 并发改动自动保留双方副本。`);
     const recoveryCard = card(panels.get('transfer')!, 'RECOVERY', '每一次修改，都有回程', '未完成的任务可以恢复，旧内容以恢复副本保留。');
-    const advanced = panels.get('transfer')!.createEl('details', { cls: 'vaultsail-advanced' }); advanced.createEl('summary', { text: '实验功能与诊断' });
+    const advanced = panels.get('transfer')!.createEl('details', { cls: 'vaultsail-advanced' }); advanced.createEl('summary', { text: '诊断与报告' });
     const advancedCard = advanced.createDiv({ cls: 'vaultsail-card' });
     selectTab(this.activeTab);
     if (!p.settings.binding) new Setting(transferCard).setName('先选择云端知识库').setDesc('目录已配置不代表库已绑定。首次使用创建新库；已有其他设备时选择同一个云端库。')
@@ -196,6 +196,15 @@ export class VaultSailSettingTab extends PluginSettingTab {
       .addButton(button => button.setButtonText('先看同步清单').setDisabled(p.busy).onClick(() => { void p.run('扫描双向变更…', () => p.preview('sync')); }));
     new Setting(transferCard).setName('自动同步').setDesc('保存后安静 2 秒同步，连续编辑最多合并 15 秒；前台定期检查其他设备的版本。升级后需主动开启。')
       .addToggle(toggle => toggle.setValue(p.settings.autoSyncEnabled).setDisabled(p.busy).onChange(value => { void p.setAutomatic(value).catch(error => { toggle.setValue(p.settings.autoSyncEnabled); new Notice(safeMessage(error)); }); }));
+    new Setting(transferCard).setName('同步删除').setDesc('默认关闭。开启后，明确的删除会随手动或自动同步传播；本地保留恢复副本，云端保留历史内容。')
+      .addToggle(toggle => { toggle.setValue(p.settings.deletionEnabled).setDisabled(p.busy).onChange(value => {
+        if (!value) { void p.setDeletionEnabled(false).catch(error => { toggle.setValue(p.settings.deletionEnabled); new Notice(safeMessage(error)); }); return; }
+        toggle.setValue(false); const binding = p.settings.binding;
+        new ConfirmModal(this.app, '开启同步删除', '开启后，本地删除和明确的云端删除记录会通过手动或自动同步传播到其他设备；缺少可信基线时不会推断删除。应用删除前保留恢复数据，云端历史内容不永久清理。', async () => {
+          if (p.settings.binding !== binding) throw new VaultSailError('changed', '连接已变更，请重新开启同步删除。');
+          await p.setDeletionEnabled(true);
+        }).open();
+      }); });
     let interval = String(p.settings.remotePollSeconds);
     new Setting(transferCard).setName('远端检查间隔（秒）').setDesc('30–300 秒，默认 60。执行任务时不叠加检查，后台挂起时暂停。')
       .addText(text => text.setValue(interval).setDisabled(p.busy).onChange(value => { interval = value; }))
@@ -212,7 +221,7 @@ export class VaultSailSettingTab extends PluginSettingTab {
       .addButton(button => button.setButtonText('查看待解决冲突').setDisabled(p.busy).onClick(() => p.openConflicts()));
     let sizeDraft = String(p.fileLimit() / (1024 * 1024));
     new Setting(transferCard).setName('单文件大小上限（MiB）')
-      .setDesc(Platform.isMobile ? '移动端目前保留 20 MiB 上限；可识别并跳过电脑端的大附件记录。' : '电脑实验版默认 512，可设 20–512；超过 20 MiB 的附件逐个传输。其他设备请先更新至 0.2.3 或更新版本，旧版不能读取这些大附件记录。仍使用整文件内存缓冲，大附件会增加内存占用。')
+      .setDesc(Platform.isMobile ? '移动端目前保留 20 MiB 上限；可识别并跳过电脑端的大附件记录。' : '电脑默认 512，可设 20–512；超过 20 MiB 的附件逐个传输。其他设备请先更新至 0.2.3 或更新版本，旧版不能读取这些大附件记录。仍使用整文件内存缓冲，大附件会增加内存占用。')
       .addText(text => { text.inputEl.type = 'number'; text.inputEl.min = '20'; text.inputEl.max = '512'; text.inputEl.step = '1'; text.inputEl.setAttribute('aria-label', '单文件大小上限'); text.setValue(sizeDraft).setDisabled(p.busy || Platform.isMobile).onChange(value => { sizeDraft = value; }); })
       .addButton(button => button.setButtonText('保存大小上限').setDisabled(p.busy || Platform.isMobile).onClick(() => { void p.setFileMiB(Number(sizeDraft)).catch(error => new Notice(safeMessage(error))); }));
     let concurrencyDraft = String(p.settings.transferConcurrency);
@@ -240,18 +249,6 @@ export class VaultSailSettingTab extends PluginSettingTab {
       .addButton(button => button.setButtonText('恢复未完成任务').setDisabled(p.busy).onClick(() => { void p.run('核验并恢复任务…', () => p.recover()); }));
     new Setting(recoveryCard).setName('旧任务遇到新的编辑').setDesc('保留内容与恢复点，结束旧任务，然后重新预览双方差异。')
       .addButton(button => button.setButtonText('结束旧任务并重新预览').setDisabled(p.busy).onClick(() => new ConfirmModal(this.app, '结束旧任务', '未完成操作停止重试，所有已保存内容保留。下一次预览会重新判断双方差异。', () => p.run('结束旧任务…', () => p.abandonPending())).open()));
-    new Setting(advancedCard).setName('实验性删除传播').setDesc('默认关闭。开启后显示删除选项，本地保留恢复副本，云端保留历史对象。')
-      .addToggle(toggle => toggle.setValue(p.settings.experimentalSync).setDisabled(p.busy).onChange(async value => {
-        p.settings.experimentalSync = value; if (!value) p.settings.deletionEnabled = false; await p.saveSettings(); p.refreshUI();
-      }));
-    if (p.settings.experimentalSync) {
-      new Setting(advancedCard).setName('预览双向同步').addButton(button => button.setButtonText('预览').setDisabled(p.busy).onClick(() => { void p.run('扫描双向变更…', () => p.preview('sync')); }));
-      new Setting(advancedCard).setName('传播明确删除').setDesc('默认关闭；本地保留恢复副本，云端不永久清理。')
-        .addToggle(toggle => toggle.setValue(p.settings.deletionEnabled).setDisabled(p.busy).onChange(value => {
-          if (!value) { p.settings.deletionEnabled = false; void p.saveSettings(); return; }
-          toggle.setValue(false); new ConfirmModal(this.app, '开启删除传播', '实验功能：同步预览可以包含本地删除和远端删除记录。执行前仍需确认清单。', async () => { p.settings.deletionEnabled = true; await p.saveSettings(); p.refreshUI(); }).open();
-        }));
-    }
     new Setting(recoveryCard).setName('恢复历史').setDesc('先备份当前内容，再恢复所选版本。')
       .addButton(button => button.setButtonText('查看恢复点').setDisabled(p.busy).onClick(() => { void p.run('读取恢复点…', async () => {
         const points = await p.local.recoveryPoints(); const modal = new Modal(this.app); modal.titleEl.setText('本设备恢复点');

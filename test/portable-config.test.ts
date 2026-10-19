@@ -7,7 +7,7 @@ import { included, uuid } from '../src/core/safety.ts';
 test('portable configuration exports only application and pending vault pairing, excluding all credentials and device state', () => {
   const vaultId = uuid();
   const text = exportPortableConfig({ ...DEFAULT_SETTINGS, providerId: 'baidu', appKey: 'public-app', secretRef: 'private-secret-reference',
-    experimentalSync: true, deletionEnabled: true, binding: { vaultId, appKey: 'public-app', root: DEFAULT_SETTINGS.appDirectory, accountHash: 'private-account', displayName: '配对库' },
+    deletionEnabled: true, binding: { vaultId, appKey: 'public-app', root: DEFAULT_SETTINGS.appDirectory, accountHash: 'private-account', displayName: '配对库' },
     ...{ access_token: 'private-token', deviceId: uuid(), journals: ['private-state'] } }, true);
   const config = parsePortableConfig(text); assert.equal(config.remoteVault?.id, vaultId); assert.equal(config.remoteVault?.displayName, '配对库');
   assert.deepEqual(Object.keys(config).sort(), ['appDirectory', 'appKey', 'format', 'provider', 'remoteVault', 'version']);
