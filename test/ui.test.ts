@@ -521,5 +521,8 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   reopenedSelect.dispatchEvent(new window.Event('change'));
   assert.match(reopened.contentEl.textContent!, /private-large-attachment.pdf/);
   assert.equal(historyRestart.diagnostics().includes('private-large-attachment.pdf'), false);
+  const exportedPerformance = await historyRestart.performanceReport(), numericReport = JSON.parse(exportedPerformance);
+  assert.equal(numericReport.version, 1); assert.equal(numericReport.platform, 'desktop'); assert.equal(typeof numericReport.requestCount, 'number');
+  for (const privateValue of ['private-large-attachment.pdf', 'actual-video.mp4', 'private-access', 'private-refresh', 'https://']) assert.equal(exportedPerformance.includes(privateValue), false);
   reopened.close(); historyRestart.onunload();
 });

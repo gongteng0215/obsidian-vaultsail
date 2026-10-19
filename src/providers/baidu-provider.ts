@@ -161,6 +161,8 @@ export class BaiduProvider implements CloudStorageProvider {
       checkSize(file.size, this.bodyLimit(file.path));
       const inspectedTag = this.etag(entry, file.size);
       const prefix = typeof entry.md5 === 'string' ? `${file.id}:${entry.md5.toLowerCase()}:` : undefined;
+      if (file.etag && prefix && !file.etag.startsWith(prefix)) throw new VaultSailError('changed', '文件摘要在扫描期间发生变化，请重新扫描。');
+      if (entry.path !== undefined && entry.path !== this.absolute(file.path)) throw new VaultSailError('response', '下载元数据路径与目录不一致。');
       const etag = prefix && file.etag?.startsWith(prefix) ? file.etag : inspectedTag ?? file.etag;
       return { file: { ...file, etag }, url: this.downloadUrl(entry.dlink) };
     });
@@ -179,6 +181,19 @@ export class BaiduProvider implements CloudStorageProvider {
     for (let start = 0; start < missing.length; start += 100) {
       const batch = missing.slice(start, start + 100), inspected = await this.metadata(batch.map(row => row.file));
       batch.forEach((row, index) => { result[row.index] = inspected[index]; });
+    }
+    return result;
+  }
+  async prepareReads(objects: RemoteObject[]): Promise<RemoteObject[]> {
+    if (objects.length > 100) throw new VaultSailError('response', '批量读取准备超过 100 项。');
+    const result = objects.map(file => ({ ...file }));
+    const missing = result.flatMap((file, index) => {
+      const cached = this.downloadLinks.get(file.path);
+      return cached && cached.id === file.id && cached.size === file.size && cached.etag === file.etag && cached.expiresAt > Date.now() ? [] : [{ file, index }];
+    });
+    if (missing.length) {
+      const inspected = await this.metadata(missing.map(row => row.file));
+      missing.forEach((row, index) => { result[row.index] = inspected[index]; });
     }
     return result;
   }

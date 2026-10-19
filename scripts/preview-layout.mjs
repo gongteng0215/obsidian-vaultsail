@@ -50,6 +50,12 @@ if (params.get('view') === 'transfers') {
   if (params.get('phase') === 'paused') { sample.busy=false; sample.task.status='paused'; sample.progress.phase='paused'; sample.task.files.forEach(row=>{if(row.state==='running')row.state='paused';if(row.state==='queued')row.state='not-run';});sample.bytesPerSecond=0; }
   if (params.get('phase') === 'parallel') sample.progress.uploads[0].activeParts=[33,34];
   if (params.get('phase') === 'retry') { sample.progress.uploads[0].activeParts=[];sample.progress.uploads[0].waitingParts=[{part:33,until:now+30000,attempt:2}];sample.progress.uploads[0].retryCount=1;sample.bytesPerSecond=0;delete sample.timings[progress.path].bytesPerSecond; }
+  if (['scan','scan-reading'].includes(params.get('phase'))) {
+    sample.progress.phase='scanning-remote'; sample.progress.uploads=[];
+    sample.progress.scan={phase:'listing',devicesDone:2,devices:3,pages:5,listed:428,completed:0,cacheHits:0,read:0};
+    sample.task.files=[]; sample.bytesPerSecond=0;
+    if(params.get('phase')==='scan-reading')sample.progress.scan={phase:'reading',devicesDone:3,devices:3,pages:8,listed:428,completed:420,cacheHits:412,read:8};
+  }
   const host = document.createElement('section'); document.querySelector('#settings-host').append(host);
   new TransferCenterPanel(host,{snapshot:()=>sample,subscribe:()=>()=>{},refresh:async()=>{},sync:()=>{},pause:()=>{sample.pauseRequested=true;},resume:()=>{},history:()=>{}});
 } else {

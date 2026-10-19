@@ -3,6 +3,8 @@ import test from 'node:test';
 import { bytes, uuid, VaultSailError } from '../src/core/safety.ts';
 import { HISTORY_BYTE_LIMIT, HISTORY_FILE_LIMIT, HISTORY_TASK_LIMIT, SyncHistory, validateHistory, type FileHistoryEvent, type HistoryStore, type SyncHistoryTask } from '../src/sync/history.ts';
 import { ObsidianHistoryStore } from '../src/platform/sync-history-store.ts';
+import { scanSummary } from '../src/sync/scan-summary.ts';
+import { TransferPerformance } from '../src/sync/performance.ts';
 
 const context = 'a'.repeat(64), device = uuid();
 function task(startedAt = 1): SyncHistoryTask { return { version: 1, id: uuid(), context, deviceId: device, sequence: 0, mode: 'manual', startedAt, updatedAt: startedAt, status: 'running', truncated: false, files: [] }; }
@@ -32,6 +34,16 @@ test('file results stay live, persist across recorder restart, and separate skip
   const records = await new SyncHistory(store, context, device).list();
   assert.equal(records[0].status, 'partial'); assert.deepEqual(records[0].files.map(row => row.state), ['succeeded', 'skipped']);
   assert.equal(records[0].files[0].id, file.id); assert.ok(records[0].endedAt);
+});
+
+test('numeric performance summaries persist across history restart without becoming recovery state', async () => {
+  const store = memoryStore(), history = new SyncHistory(store, context, device), performance = new TransferPerformance();
+  performance.begin(); performance.scan({ listed: 7, cacheHits: 7, read: 0, missingFingerprints: 0 }); performance.finish();
+  history.begin('automatic'); history.setPerformance(scanSummary(performance.snapshot(), '0.2.9', false)); await history.finish();
+  const records = await new SyncHistory(store, context, device).list();
+  assert.equal(records[0].performance?.listed, 7); assert.equal(records[0].performance?.cacheHits, 7); assert.equal(records[0].performance?.read, 0);
+  history.begin('manual'); await history.finish(); const latest = await history.list();
+  assert.equal(latest[0].performance, undefined, 'a later task without measurements never inherits the old summary');
 });
 
 test('raw credentials/errors and excluded paths cannot enter serialized history', async () => {

@@ -14,7 +14,8 @@ import { ConfigExportModal, ConfigImportModal } from './ui/config-modals';
 import { formatBytes, progressRunning, PROGRESS_LABELS, type SyncProgress } from './sync/progress';
 import { withConfigurationLock } from './platform/configuration-lock';
 import { MAX_TRANSFER_CONCURRENCY, validConcurrency } from './core/concurrency';
-import { TransferPerformance, formatPerformance, REQUEST_LABELS } from './sync/performance';
+import { TransferPerformance, formatPerformance, formatScanDetails, REQUEST_LABELS } from './sync/performance';
+import { scanSummary } from './sync/scan-summary';
 import type { HttpTransport, HttpRequest, RequestPolicy } from './providers/http';
 import { requestPools } from './platform/request-pools';
 import { SyncQueue, type QueueBatch } from './sync/queue';
@@ -136,7 +137,7 @@ export default class VaultSailPlugin extends Plugin {
   private publishProgress(progress: SyncProgress): void {
     if (!this.alive) return;
     this.performance.phase(progress.phase);
-    this.progress = { ...progress, startedAt: this.transferStartedAt ?? progress.startedAt };
+    this.progress = { ...progress, scan: progress.phase === 'connecting' ? undefined : progress.scan ?? this.progress?.scan, startedAt: this.transferStartedAt ?? progress.startedAt };
     if (this.pauseRequested && progressRunning(progress)) this.statusText = '已请求暂停，等待当前请求结束。';
     else this.statusText = progress.message ?? (progress.phase === 'completed' && progress.blockedFiles ? '部分完成，请查看跳过文件。' : PROGRESS_LABELS[progress.phase]);
     if (!progressRunning(progress)) this.transferPauseRequested = false;
@@ -191,10 +192,11 @@ export default class VaultSailPlugin extends Plugin {
   private async recorded<T>(mode: HistoryMode, action: () => Promise<T>): Promise<T> {
     if (this.activeHistory) return action();
     const history = this.history(); if (!history) return action();
+    this.performance.begin();
     history.begin(mode); this.activeHistory = history;
     this.notifyTransfers();
-    try { const result = await action(); await history.finish(); return result; }
-    catch (error) { await history.finish(error, true); throw error; }
+    try { const result = await action(); history.setPerformance(scanSummary(this.performance.snapshot(), this.manifest.version, Platform.isMobile)); await history.finish(); return result; }
+    catch (error) { history.setPerformance(scanSummary(this.performance.snapshot(), this.manifest.version, Platform.isMobile)); await history.finish(error, true); throw error; }
     finally { this.activeHistory = undefined; this.notifyTransfers(); }
   }
   private recordHistoryFile(context: string, event: FileHistoryEvent): void {
@@ -221,7 +223,7 @@ export default class VaultSailPlugin extends Plugin {
     for (const row of task?.files ?? []) { const timing = this.uploadTelemetry.timing(row.path, now); if (timing) timings[row.path] = timing; }
     return { context, target: this.settings.binding ? `${this.app.vault.getName()} → ${this.settings.binding.displayName} · 百度网盘` : '尚未绑定云端库', busy: this.busy, pauseRequested: this.pauseRequested,
       queue: this.queueSummary(), task, progress, performance: progress ? this.performance.snapshot() : undefined,
-      timings, bytesPerSecond: this.uploadTelemetry.rate(now), historyWarning: history?.warning ?? false };
+      timings, networkWait: this.networkWaitText(), bytesPerSecond: this.uploadTelemetry.rate(now), historyWarning: history?.warning ?? false };
   }
   resumeTransfers(): void {
     if (this.busy) return;
@@ -432,7 +434,9 @@ export default class VaultSailPlugin extends Plugin {
       if (!validation?.passed) throw new VaultSailError('permission', '请先运行本设备的文件传输权限验证，确认上传下载权限。');
       if (this.engine) return this.engine;
       const context = hash(bytes(b.appKey + '|' + b.root + '|' + accountHash + '|' + b.vaultId));
-      this.engine = new SyncEngine(new RemoteVaultStore(provider, new ObsidianRevisionCache(this.app, this.deviceId, context), this.settings.transferConcurrency, stats => this.performance.scan(stats)), this.local,
+      this.engine = new SyncEngine(new RemoteVaultStore(provider, new ObsidianRevisionCache(this.app, this.deviceId, context), this.settings.transferConcurrency, stats => this.performance.scan(stats), scan => {
+        if (this.alive && this.progress && this.progressContext === context) this.publishProgress({ ...this.progress, phase: this.progress.phase === 'checking-remote' ? 'checking-remote' : 'scanning-remote', scan, updatedAt: Date.now() });
+      }), this.local,
         new ObsidianStateStore(this.app, this.deviceId, b.vaultId, context), b.vaultId, this.app.vault.configDir, event => this.publishProgress(event), this.settings.transferConcurrency,
         event => this.recordHistoryFile(context, event), this.fileLimit());
       return this.engine;
@@ -680,7 +684,19 @@ export default class VaultSailPlugin extends Plugin {
       realDeviceValidation: '用户在本设备完成；开发者未验证真实账号或 iPad', maxFileMiB: this.fileLimit() / (1024 * 1024), transferConcurrency: this.settings.transferConcurrency,
       uploadChunkConcurrency: Platform.isMobile ? 1 : this.settings.uploadChunkConcurrency, requestBudget: requestPools(this.app).requests.snapshot(), multipartBudget: requestPools(this.app).bodies.snapshot() }, null, 2);
   }
-  performanceText(): string { return formatPerformance(this.performance.snapshot()); }
+  networkWaitText(): string {
+    if (!this.busy) return '';
+    const pool = requestPools(this.app).requests.snapshot();
+    return pool.retryAt ? `接口繁忙，${Math.max(0, Math.ceil((pool.retryAt - Date.now()) / 1000))} 秒后继续` : pool.waiting ? `等待请求空位 ${pool.waiting} 项 · 正在请求 ${pool.active}/${pool.limit}` : '';
+  }
+  performanceText(): string { const value = this.performance.snapshot(); return [formatPerformance(value), formatScanDetails(value?.versions.details)].filter(Boolean).join('\n'); }
+  async performanceReport(): Promise<string> {
+    const current = this.progressContext && this.progressContext === this.context() ? scanSummary(this.performance.snapshot(), this.manifest.version, Platform.isMobile) : undefined;
+    if (current) return JSON.stringify(current, null, 2);
+    const context = this.context(), history = this.history(context), stored = history ? (await history.list())[0]?.performance : undefined;
+    if (context !== this.context()) throw new VaultSailError('changed', '云端库已变化，请重新导出性能报告。');
+    return JSON.stringify(stored ?? { version: 1, pluginVersion: this.manifest.version, platform: Platform.isMobile ? 'mobile' : 'desktop', status: 'no-record' }, null, 2);
+  }
 
   async loadSettings(): Promise<void> {
     await withConfigurationLock(this.app, async () => {

@@ -29,7 +29,7 @@ export class VaultSailSettingTab extends PluginSettingTab {
     if (state && state.textContent !== stateLabel) state.setText(stateLabel);
     const text = this.containerEl.querySelector<HTMLElement>('.vaultsail-progress-text');
     const meter = this.containerEl.querySelector<HTMLProgressElement>('.vaultsail-progress-meter');
-    const detail = progress ? formatProgress(progress) : '点击开始同步，或先预览文件变化。';
+    const detail = progress ? [formatProgress(progress), p.networkWaitText()].filter(Boolean).join('\n') : '点击开始同步，或先预览文件变化。';
     if (text && text.textContent !== detail) text.setText(detail);
     const uploads = this.containerEl.querySelector<HTMLElement>('.vaultsail-upload-progress');
     if (uploads) renderUploads(uploads, progress);
@@ -262,6 +262,7 @@ export class VaultSailSettingTab extends PluginSettingTab {
       }); }));
     new Setting(advancedCard).setName('诊断信息').setDesc('报告不含账号、文件名、凭据或笔记正文。')
       .addButton(button => button.setButtonText('查看脱敏报告').onClick(() => { const modal = new Modal(this.app); modal.titleEl.setText('脱敏诊断'); modal.contentEl.createEl('pre', { text: p.diagnostics() }); modal.open(); }))
+      .addButton(button => button.setButtonText('复制性能报告').onClick(async () => { try { await copyText(await p.performanceReport()); } catch (error) { new Notice(safeMessage(error)); } }))
       .addButton(button => button.setButtonText('暂停当前任务').onClick(() => { p.pause(); new Notice('已请求暂停，当前网络请求结束后生效。'); }));
     el.createEl('p', { cls: 'vaultsail-footer', text: '你的笔记直接传到自己的网盘 · 凭据保存在本设备' });
   }

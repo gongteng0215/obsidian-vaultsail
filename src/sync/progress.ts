@@ -1,4 +1,5 @@
 import type { ObjectTransferProgress } from '../providers/cloud-storage-provider';
+import type { RevisionScanProgress } from './remote-vault';
 export type FileUploadProgress = Omit<ObjectTransferProgress, 'stage'> & { path: string; contentHash?: string; sourcePreparationMs?: number; stage: ObjectTransferProgress['stage'] | 'publishing' };
 export type ProgressPhase = 'connecting' | 'scanning-remote' | 'checking-remote' | 'scanning-local' | 'checking' | 'preparing-upload' | 'uploading' | 'verifying' | 'publishing' | 'downloading' | 'applying' | 'preview-ready' | 'completed' | 'paused' | 'failed';
 export interface SyncProgress {
@@ -7,6 +8,12 @@ export interface SyncProgress {
   activeFiles?: number; concurrency?: number;
   blockedFiles?: number;
   uploads?: FileUploadProgress[];
+  scan?: RevisionScanProgress;
+}
+export function formatScan(scan?: RevisionScanProgress): string {
+  if (!scan) return '';
+  const labels = { listing: '读取设备目录', metadata: '批量查询记录信息', reading: '读取版本记录', validating: '校验版本关系', 'saving-cache': '检查并保存缓存', completed: '版本扫描完成' };
+  return `${labels[scan.phase]}${scan.phase === 'listing' ? ` ${scan.devicesDone}/${scan.devices || '待确定'} · 已发现 ${scan.listed} 条记录` : ` · ${scan.completed}/${scan.listed} 条 · 缓存命中 ${scan.cacheHits} · 实际读取 ${scan.read}`} · 目录分页 ${scan.pages} 次`;
 }
 export const PROGRESS_LABELS: Record<ProgressPhase, string> = {
   connecting: '检查百度连接与云端库',
@@ -41,5 +48,6 @@ export function formatProgress(progress: SyncProgress, now = Date.now()): string
   const parallel = progress.concurrency && !scanning ? `\n同时传输 ${progress.activeFiles ?? 0}/${progress.concurrency} 个文件` : '';
   const blocked = progress.blockedFiles ? `\n跳过 ${progress.blockedFiles} 项（超限或关联保护，未传输；可查看跳过文件）` : '';
   const label = progress.phase === 'completed' && progress.blockedFiles ? '部分完成 · 有跳过项' : PROGRESS_LABELS[progress.phase];
-  return `${label}${progress.path ? ' · ' + progress.path : ''}\n${count}${size} · 耗时 ${elapsed} 秒${parallel}${blocked}${waiting}${result}${stopped}`;
+  const scan = ['scanning-remote', 'checking-remote'].includes(progress.phase) && progress.scan ? '\n' + formatScan(progress.scan) : '';
+  return `${label}${progress.path ? ' · ' + progress.path : ''}\n${count}${size} · 耗时 ${elapsed} 秒${scan}${parallel}${blocked}${waiting}${result}${stopped}`;
 }

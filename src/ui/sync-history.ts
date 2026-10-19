@@ -1,5 +1,6 @@
 import { Modal, type App } from 'obsidian';
 import { formatBytes } from '../sync/progress';
+import { formatScanSummary } from '../sync/scan-summary';
 import { HISTORY_ACTIONS, HISTORY_CODES, HISTORY_REASONS, HISTORY_STATES, SyncHistory, type SyncHistoryTask } from '../sync/history';
 
 const MODES = { manual: '手动双向同步', automatic: '自动同步', upload: '上传清单', download: '下载清单', recover: '恢复任务', resolve: '解决冲突' };
@@ -66,6 +67,7 @@ export class SyncHistoryModal extends Modal {
     const counts = new Map<string, number>(); for (const row of task.files) counts.set(row.state, (counts.get(row.state) ?? 0) + 1);
     const totals = [...counts].map(([state, count]) => `${HISTORY_STATES[state as keyof typeof HISTORY_STATES]} ${count}`).join(' · ');
     this.summary.setText(`${TASK_STATES[task.status]} · ${MODES[task.mode]} · ${task.status === 'interrupted' ? '截至最后记录' : '耗时'} ${elapsed.toFixed(1)} 秒${task.code ? ' · ' + HISTORY_CODES[task.code] : ''}\n${totals || '本轮没有文件动作，或在文件处理前已停止。'}${task.truncated ? '\n列表已截断：仅保留容量范围内的前 1000 条，以下统计不代表完整任务。' : ''}`);
+    if (task.performance) this.summary.setText(this.summary.textContent + '\n' + formatScanSummary(task.performance));
     const query = this.search.value.toLocaleLowerCase();
     const files = task.files.filter(row => (!query || row.path.toLocaleLowerCase().includes(query)) && (!this.state.value || row.state === this.state.value) && (!this.action.value || row.action === this.action.value));
     this.page = Math.max(0, Math.min(this.page, Math.max(0, Math.ceil(files.length / PAGE_SIZE) - 1)));

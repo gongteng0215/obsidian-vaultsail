@@ -74,6 +74,10 @@ test('transfer center keeps file rows, focus drafts and expanded details through
   assert.equal(host.querySelectorAll('[role=listitem]').length, 15);
   snapshot.context = 'another-account'; snapshot.target = '另一个库'; snapshot.task = undefined; snapshot.progress = undefined; panel.render();
   assert.equal(host.querySelector('[data-file-id=video]'), null); assert.equal(search.value, '');
+  snapshot.busy = true; snapshot.progress = { ...progress(), phase: 'scanning-remote', scan: { phase: 'listing', devicesDone: 2, devices: 3, pages: 5, listed: 428, completed: 0, cacheHits: 0, read: 0 } };
+  snapshot.networkWait = '等待请求空位 2 项'; panel.render();
+  assert.match(host.textContent!, /读取设备目录 2\/3/); assert.match(host.textContent!, /已发现 428 条版本记录/); assert.match(host.textContent!, /等待请求空位 2 项/);
+  assert.equal(host.querySelector('.vs-transfer-total')!.hasAttribute('value'), false, 'unknown total never gets a fabricated percentage');
   panel.destroy(); assert.equal(unsubscribed, true);
 });
 

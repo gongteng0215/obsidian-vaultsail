@@ -1,4 +1,5 @@
 import { included, relativePath, uuid, validId, VaultSailError } from '../core/safety.ts';
+import { validateScanSummary, type ScanSummary } from './scan-summary.ts';
 
 export const HISTORY_TASK_LIMIT = 30;
 export const HISTORY_FILE_LIMIT = 1000;
@@ -15,6 +16,7 @@ export type HistoryMode = 'manual' | 'automatic' | 'upload' | 'download' | 'reco
 export interface FileHistoryEvent { id: string; path: string; action: HistoryAction; size: number; state: HistoryState; reason: HistoryReason; code?: string; }
 export interface FileHistoryRow extends Omit<FileHistoryEvent, 'code'> { code?: HistoryCode; startedAt?: number; updatedAt: number; }
 export interface SyncHistoryTask {
+  performance?: ScanSummary;
   version: 1; id: string; context: string; deviceId: string; sequence: number; mode: HistoryMode;
   startedAt: number; updatedAt: number; endedAt?: number; status: 'running' | 'completed' | 'partial' | 'failed' | 'paused' | 'interrupted';
   code?: HistoryCode; truncated: boolean; files: FileHistoryRow[];
@@ -46,7 +48,8 @@ export function validateHistory(value: unknown, context: string, deviceId: strin
     return { id: row.id, path: row.path, action: row.action, size: row.size, state: row.state, reason: row.reason, updatedAt: row.updatedAt,
       ...(row.startedAt !== undefined ? { startedAt: row.startedAt } : {}), ...(row.code ? { code: row.code } : {}) };
   });
-  return { version: 1, id: task.id, context, deviceId, sequence: task.sequence, mode: task.mode, startedAt: task.startedAt, updatedAt: task.updatedAt,
+  const performance = validateScanSummary(task.performance);
+  return { version: 1, id: task.id, context, deviceId, sequence: task.sequence, mode: task.mode, startedAt: task.startedAt, updatedAt: task.updatedAt, ...(performance ? { performance } : {}),
     ...(task.endedAt !== undefined ? { endedAt: task.endedAt } : {}), status: task.status, truncated: task.truncated, files, ...(task.code ? { code: task.code } : {}) };
 }
 export function interruptedHistory(task: SyncHistoryTask): SyncHistoryTask {
@@ -104,6 +107,10 @@ export class SyncHistory {
     this.recent.set(task.id, structuredClone(task));
     while (this.recent.size > HISTORY_TASK_LIMIT) this.recent.delete(this.recent.keys().next().value!);
     this.active = undefined; this.notify(); await this.flush(task);
+  }
+  setPerformance(value: ScanSummary | undefined): void {
+    const performance = validateScanSummary(value);
+    if (this.active && performance) { this.active.performance = performance; this.active.sequence++; }
   }
   async flush(task = this.active): Promise<void> {
     if (this.timer) { clearTimeout(this.timer); this.timer = undefined; }

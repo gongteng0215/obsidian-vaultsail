@@ -2,7 +2,7 @@
 
 **English** | [简体中文](ROADMAP.zh-CN.md) · [Feature inventory](../README.md#feature-inventory)
 
-Baseline: **0.2.4**, updated **2026-10-16**. This is the proposed implementation order, not a list of completed features or promised dates. Patch versions follow actual findings. If acceptance fails, continue fixing rather than advancing solely to reach a version number.
+Baseline: **0.2.9 local preview**, updated **2026-10-19**. Versions 0.2.6–0.2.8 add the transfer center, parallel slices and compact layouts; 0.2.9 adds scan improvements and local performance summaries. See [implementation and validation](releases/0.2.9.md). Native dual-device acceptance remains separate; later milestones advance on evidence, not promised dates.
 
 ## Direction and lasting boundaries
 
@@ -19,6 +19,7 @@ Make notes sync reliably between computers and iPad using the user's own cloud a
 
 | Version | Status | Focus | Completion evidence |
 | --- | --- | --- | --- |
+| 0.2.6–0.2.9 | Local previews implemented | Transfer center, parallel slices, compact UI, scan performance and local summaries | 207 automated tests in 0.2.9; native dual-device/Baidu performance acceptance pending |
 | 0.2.0 | Released | Automatic sync and merge foundation | README inventory; 158 automated tests, comprehensive native acceptance pending |
 | 0.2.4 | Released | Local sync history, oversized-file isolation, desktop 512 MiB attachments, live upload progress | 186 automated checks; 339/512 MiB simulated integrity checks; native acceptance pending |
 | 0.2.x follow-ups | Ongoing | Stabilize current behavior | Explainable repeat sync, queue, and recovery; no known blocking loss or cross-vault failures |
@@ -161,4 +162,4 @@ These candidates have no assigned release or implementation commitment. Live col
 4. Update both READMEs, roadmap status, and release notes, distinguishing completed work, gaps, and limits.
 5. With release authorization, verify metadata, attachments, and public downloads before updating the community installation target. Isolate previews on separate branches; the prerelease flag alone is insufficient.
 
-**Next implementation scope: 0.2.1 stabilization and reproduction. This change delivers the inventory and plan only, not future milestone code.**
+**Next: validate 0.2.9 on real repeated/restarted sync and another device's edits, fix findings, then seek community release authorization. Follow with 0.3.x dual-device reliability, 0.4.x attachment memory/chunking, 0.5.x history recovery and 0.6.x scope/languages.**

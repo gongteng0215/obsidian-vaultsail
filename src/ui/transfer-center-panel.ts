@@ -1,6 +1,8 @@
 import type { TransferCenterSnapshot } from '../sync/transfer-center';
 import { HISTORY_ACTIONS, HISTORY_CODES, HISTORY_REASONS, type FileHistoryRow } from '../sync/history';
-import { formatBytes, PROGRESS_LABELS, type FileUploadProgress } from '../sync/progress';
+import { formatBytes, formatScan, PROGRESS_LABELS, type FileUploadProgress } from '../sync/progress';
+import { formatScanDetails } from '../sync/performance';
+import { formatScanSummary } from '../sync/scan-summary';
 
 export interface TransferCenterSource {
   snapshot(): TransferCenterSnapshot; subscribe(listener: () => void): () => void;
@@ -97,10 +99,10 @@ export class TransferCenterPanel {
     this.resume.hidden = snapshot.busy || !(task && ['failed', 'paused', 'interrupted'].includes(task.status) || progress && ['paused', 'failed'].includes(progress.phase) || snapshot.queue.includes('暂停'));
     this.resume.disabled = !snapshot.context;
     const files = task?.files ?? [], done = files.filter(row => category(row) === 'done').length;
-    text(this.counts, files.length ? `已完成 ${done} / ${files.length} 个文件` : snapshot.busy && progress ? `已扫描 ${progress.doneFiles} 项` : '等待下一次同步');
+    text(this.counts, files.length ? `已完成 ${done} / ${files.length} 个文件` : snapshot.busy && progress ? progress.scan && ['scanning-remote', 'checking-remote'].includes(progress.phase) ? `已发现 ${progress.scan.listed} 条版本记录` : `已扫描 ${progress.doneFiles} 项` : '等待下一次同步');
     this.meter.max = Math.max(1, files.length); if (snapshot.busy && !files.length) this.meter.removeAttribute('value'); else this.meter.value = done;
     text(this.speed, snapshot.bytesPerSecond > 0 && snapshot.busy ? `上传 ${formatBytes(snapshot.bytesPerSecond)}/s` : snapshot.busy && progress?.uploads?.some(row => row.stage === 'uploading') ? '上传速度估算中' : '');
-    text(this.queue, snapshot.queue);
+    text(this.queue, [snapshot.networkWait, snapshot.busy && ['scanning-remote', 'checking-remote'].includes(progress?.phase ?? '') ? formatScan(progress?.scan) : '', snapshot.queue].filter(Boolean).join('\n'));
     text(this.warning, [task?.truncated ? '本轮记录已达到保存上限，列表与文件计数仅代表已记录部分；完整结果以任务结果为准。' : '', snapshot.historyWarning ? '部分本机记录读取或保存失败，不影响同步内容。' : '', !snapshot.busy && progress?.message ? progress.message : ''].filter(Boolean).join('\n'));
     this.warning.hidden = !this.warning.textContent;
     for (const [id, button] of this.buttons) { text(button, `${FILTERS[id]} ${id === 'all' ? files.length : files.filter(row => category(row) === id).length}`); button.setAttribute('aria-pressed', String(id === this.filter)); }
@@ -120,7 +122,7 @@ export class TransferCenterPanel {
     text(this.paging, `${filtered.length} 项 · ${this.page + 1} / ${Math.max(1, Math.ceil(filtered.length / 50))}`);
     this.previous.disabled = this.page === 0; this.next.disabled = (this.page + 1) * 50 >= filtered.length;
     const perf = snapshot.performance;
-    text(this.performance, perf ? `本轮经过 ${seconds(perf.elapsedMs)}\n连接 ${seconds(perf.stages.connecting)} · 云端扫描 ${seconds(perf.stages.remote)} · 本地扫描 ${seconds(perf.stages.local)} · 传输处理 ${seconds(perf.stages.transfer)}\n网络请求 ${perf.requestCount} 次 · 令牌刷新 ${perf.refreshCount} 次 · 重试 ${perf.retryCount} 次\n并发请求耗时不能相加当作本轮经过时间。` : '下一次任务开始后显示。');
+    text(this.performance, perf ? `本轮经过 ${seconds(perf.elapsedMs)}\n连接 ${seconds(perf.stages.connecting)} · 云端扫描 ${seconds(perf.stages.remote)} · 本地扫描 ${seconds(perf.stages.local)} · 传输处理 ${seconds(perf.stages.transfer)}\n网络请求 ${perf.requestCount} 次 · 令牌刷新 ${perf.refreshCount} 次 · 重试 ${perf.retryCount} 次\n${formatScanDetails(perf.versions.details)}\n并发请求耗时不能相加当作本轮经过时间。` : formatScanSummary(task?.performance) || '下一次任务开始后显示。');
   }
   private updateRow(elements: RowElements, row: FileHistoryRow, snapshot: TransferCenterSnapshot): void {
     const parts = row.path.split('/'), upload = this.uploads.get(row.path), active = row.state === 'running' && snapshot.busy;

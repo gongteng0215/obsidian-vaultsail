@@ -1,6 +1,8 @@
 import type { HttpRequest, HttpResponse, HttpTransport } from '../providers/http.ts';
 import type { ProgressPhase } from './progress.ts';
-import type { RevisionScanStats } from './remote-vault.ts';
+import type { RevisionScanStats, ScanDetails } from './remote-vault.ts';
+
+export const SCAN_DETAIL_KEYS = ['devices', 'pages', 'readBytes', 'cacheWrites', 'cacheSaveFailures', 'listingMs', 'metadataMs', 'readingMs', 'validatingMs', 'cacheMs'] as const;
 
 const STAGES = { connecting: '连接检查', remote: '云端扫描', local: '本地扫描', transfer: '传输处理' } as const;
 const REQUESTS = {
@@ -62,6 +64,10 @@ export class TransferPerformance {
     const state = this.state; if (!state || state.ended !== undefined) return;
     state.scans++;
     for (const key of ['listed', 'cacheHits', 'read', 'missingFingerprints'] as const) state.versions[key] += stats[key];
+    if (stats.details) {
+      const detail = state.versions.details ??= Object.fromEntries(SCAN_DETAIL_KEYS.map(key => [key, 0])) as unknown as ScanDetails;
+      for (const key of SCAN_DETAIL_KEYS) detail[key] += stats.details[key];
+    }
   }
   async transport(transport: HttpTransport, input: HttpRequest): Promise<HttpResponse> {
     const state = this.state;
@@ -93,7 +99,7 @@ export class TransferPerformance {
     }
     return { elapsedMs: Math.max(0, now - state.started), stages, requests,
       requestCount: Object.values(requests).reduce((sum, stat) => sum + stat.count, 0), refreshCount: requests.refresh?.count ?? 0,
-      retryCount: state.retryCount, retryWaitMs: state.retryWaitMs, scans: state.scans, versions: { ...state.versions } };
+      retryCount: state.retryCount, retryWaitMs: state.retryWaitMs, scans: state.scans, versions: { ...state.versions, ...(state.versions.details ? { details: { ...state.versions.details } } : {}) } };
   }
 }
 export function formatPerformance(value?: PerformanceSnapshot): string {
@@ -107,3 +113,6 @@ export function formatPerformance(value?: PerformanceSnapshot): string {
     + (value.versions.missingFingerprints ? `（${value.versions.missingFingerprints} 条缺少云端指纹）` : '');
 }
 export const REQUEST_LABELS = REQUESTS;
+export function formatScanDetails(value?: ScanDetails): string {
+  return value ? `目录分页 ${value.pages} 次 · 版本正文 ${(value.readBytes / 1024).toFixed(1)} KiB · 缓存写入 ${value.cacheWrites} 次${value.cacheSaveFailures ? ` · 缓存保存失败 ${value.cacheSaveFailures} 次` : ''}\n目录 ${(value.listingMs/1000).toFixed(2)} 秒 · 元数据 ${(value.metadataMs/1000).toFixed(2)} 秒 · 读取 ${(value.readingMs/1000).toFixed(2)} 秒 · 版本校验 ${(value.validatingMs/1000).toFixed(2)} 秒 · 缓存 ${(value.cacheMs/1000).toFixed(2)} 秒` : '';
+}

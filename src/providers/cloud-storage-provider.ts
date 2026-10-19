@@ -45,6 +45,8 @@ export interface CloudStorageProvider {
   exists(path: string): Promise<boolean>;
   /** Fresh metadata for listed files whose listing omitted a content fingerprint. */
   inspect?(objects: RemoteObject[]): Promise<RemoteObject[]>;
+  /** Prepare a bounded batch for reading; temporary download URLs stay inside the provider. */
+  prepareReads?(objects: RemoteObject[]): Promise<RemoteObject[]>;
   /** SHA-256 from a completed readback, only when this freshly listed object has the same server fingerprint. */
   verifiedContentHash?(object: RemoteObject): string | undefined;
 }

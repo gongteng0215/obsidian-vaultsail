@@ -10,6 +10,7 @@ export interface UploadTiming {
   waitingMs: number;
 }
 export interface TransferCenterSnapshot {
+  networkWait?: string;
   context?: string; target: string; busy: boolean; pauseRequested: boolean; queue: string;
   task?: SyncHistoryTask; progress?: SyncProgress; performance?: PerformanceSnapshot;
   timings: Record<string, UploadTiming>; bytesPerSecond: number; historyWarning: boolean;

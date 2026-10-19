@@ -137,7 +137,7 @@
 .vaultsail-transfer-center progress::-webkit-progress-bar { background: var(--background-modifier-border); border-radius: 99px; }
 .vaultsail-transfer-center progress::-webkit-progress-value { background: linear-gradient(90deg, #25897f, #4bbeb3); border-radius: 99px; }
 .vaultsail-transfer-center progress::-moz-progress-bar { background: var(--vs-transfer-accent); }
-.vs-transfer-muted { grid-column: 1 / -1; color: var(--text-muted); font-size: var(--font-ui-smaller); line-height: 1.5; margin: 0; }
+.vs-transfer-muted { grid-column: 1 / -1; color: var(--text-muted); font-size: var(--font-ui-smaller); line-height: 1.5; margin: 0; white-space: pre-wrap; }
 .vs-transfer-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 4px; }
 .vs-transfer-filters { display: flex; flex: 1 1 auto; flex-wrap: wrap; gap: 3px; min-width: 0; }
 .vs-transfer-filters button { box-shadow: none; background: transparent; color: var(--text-muted); font-size: var(--font-ui-small); padding: 4px 7px; border-radius: 5px; }

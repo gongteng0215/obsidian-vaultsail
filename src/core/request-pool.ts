@@ -8,7 +8,7 @@ export class RequestPool {
   private notBefore = 0; private wake?: ReturnType<typeof setTimeout>;
   constructor(limit: number) { if (!validConcurrency(limit)) throw new RangeError('Invalid request limit'); this.limit = limit; }
   configure(limit: number): void { if (!validConcurrency(limit)) throw new RangeError('Invalid request limit'); this.limit = limit; this.pump(); }
-  snapshot(): { active: number; waiting: number; limit: number } { return { active: this.active, waiting: this.waiting.length, limit: this.limit }; }
+  snapshot(): { active: number; waiting: number; limit: number; retryAt?: number } { return { active: this.active, waiting: this.waiting.length, limit: this.limit, ...(this.notBefore > Date.now() ? { retryAt: this.notBefore } : {}) }; }
   cooldown(until: number): void { this.notBefore = Math.max(this.notBefore, until); this.pump(); }
   private lease(): () => void { this.active++; let released = false; return () => { if (!released) { released = true; this.active--; this.pump(); } }; }
   private pump(): void {

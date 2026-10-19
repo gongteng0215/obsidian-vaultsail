@@ -17,13 +17,14 @@ export class ObsidianRevisionCache implements RevisionCache {
     if (stat.type !== 'file' || stat.size > 16 * 1024 * 1024) return undefined;
     return parseJson(await this.app.vault.adapter.readBinary(this.path));
   }
-  async save(value: unknown): Promise<void> {
-    const data = jsonBytes(value); if (data.byteLength > 16 * 1024 * 1024) return;
+  async save(value: unknown): Promise<boolean> {
+    const data = jsonBytes(value); if (data.byteLength > 16 * 1024 * 1024) return false;
     await mkdirs(this.app, this.path.slice(0, this.path.lastIndexOf('/')));
     const temporary = this.path + '.' + uuid() + '.next';
     await this.app.vault.adapter.writeBinary(temporary, data);
     if (await this.app.vault.adapter.exists(this.path)) await this.app.vault.adapter.remove(this.path);
     await this.app.vault.adapter.rename(temporary, this.path);
+    return true;
   }
 }
 
