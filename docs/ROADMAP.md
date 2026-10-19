@@ -1,10 +1,10 @@
 # VaultSail version roadmap
 
-Local preview **0.2.16** adds empty-folder versioning, plans, history and cloud-tree display; it includes 0.2.15 diagnostics. [Compatibility and validation](releases/0.2.16.md). The public release baseline remains listed below; native dual-device acceptance is pending.
+Release **0.2.18** adds remote history cache fixes, persistent directory caches and parallel inventories, including empty-folder sync, diagnostics and application setup guidance from 0.2.15–0.2.17. [Evidence and validation](releases/0.2.18.md). Native dual-device and live Baidu performance acceptance remain pending.
 
 **English** | [简体中文](ROADMAP.zh-CN.md) · [Feature inventory](../README.md#feature-inventory)
 
-Baseline: **0.2.14 release**, updated **2026-10-19**. Version 0.2.14 adds [stable background UI updates](releases/0.2.14.md). Version 0.2.13 makes [deletion sync a standard opt-in setting](releases/0.2.13.md). Version 0.2.12 adds the [cloud file tree](releases/0.2.12.md). Versions 0.2.6–0.2.8 add the transfer center, parallel slices and compact layouts; 0.2.9 adds scan improvements and local performance summaries. Versions 0.2.10–0.2.11 add immediate click feedback, automatic task notifications and ribbon activity/warning states. See [automatic notifications](releases/0.2.11.md), [click feedback](releases/0.2.10.md) and [scan validation](releases/0.2.9.md). Native dual-device acceptance remains separate; later milestones advance on evidence, not promised dates.
+Baseline: **0.2.18 release**, updated **2026-10-19**. Version 0.2.14 adds [stable background UI updates](releases/0.2.14.md). Version 0.2.13 makes [deletion sync a standard opt-in setting](releases/0.2.13.md). Version 0.2.12 adds the [cloud file tree](releases/0.2.12.md). Versions 0.2.6–0.2.8 add the transfer center, parallel slices and compact layouts; 0.2.9 adds scan improvements and local performance summaries. Versions 0.2.10–0.2.11 add immediate click feedback, automatic task notifications and ribbon activity/warning states. See [automatic notifications](releases/0.2.11.md), [click feedback](releases/0.2.10.md) and [scan validation](releases/0.2.9.md). Native dual-device acceptance remains separate; later milestones advance on evidence, not promised dates.
 
 ## Direction and lasting boundaries
 
