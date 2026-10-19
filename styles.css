@@ -203,7 +203,8 @@
 .vaultsail-cloud-modal .modal { width: min(880px, calc(100vw - 24px)); max-width: 880px; }
 .vaultsail-cloud-files { min-width: 0; }
 .vs-cloud-controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.vs-cloud-controls input { flex: 1 1 180px; min-width: 0; }
+.vs-cloud-controls input[type=search] { flex: 1 1 180px; min-width: 0; }
+.vs-cloud-deleted-toggle { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-size: var(--font-ui-small); }
 .vs-cloud-summary { color: var(--text-muted); font-size: var(--font-ui-small); margin: 8px 0; line-height: 1.5; }
 .vs-cloud-tree { max-height: 60vh; overflow: auto; padding: 2px; }
 .vs-cloud-row { cursor: pointer; display: list-item; padding: 5px 4px; border-radius: 4px; line-height: 1.6; overflow-wrap: anywhere; }

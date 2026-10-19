@@ -6,6 +6,8 @@
 
 **0.2.18 更新：** 减少远程历史重复读取，目录缓存跨重启保留，并行加载远程列表；同时包含空文件夹同步、详细本机诊断和百度应用创建六步引导。升级保留配置与连接；空目录功能需要两端更新。见 [现场依据与验证](docs/releases/0.2.18.md)。
 
+**0.2.20 本地预览：** 云文件树默认隐藏已删除路径，按需打开“显示已删除”；搜索与计数同步筛选，有效冲突仍保留显示。包含 0.2.19 性能优化。[更新说明](docs/releases/0.2.20.md)。
+
 **0.2.19 本地预览：** 文件与目录预检并行，同时发生的相同目录请求合并；任一检查失败后等待已开始的读取结束，再释放任务。新增只导出数字统计的本机性能报告工具。保留授权、绑定及默认设置。[证据与验收](docs/releases/0.2.19.md)。公开发布版本仍为上方的 0.2.18，本预览尚未提交社区。
 
 [社区插件页面](https://community.obsidian.md/plugins/vaultsail) · [下载 0.2.18](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.18) · [版本说明](docs/releases/0.2.18.md) · [版本规划](docs/ROADMAP.zh-CN.md) · [反馈问题](https://github.com/gongteng0215/obsidian-vaultsail/issues)

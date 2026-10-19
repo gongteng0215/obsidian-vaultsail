@@ -6,13 +6,15 @@ import { preserveInteraction } from './interaction';
 export interface CloudFolder { kind: 'folder'; name: string; path: string; children: CloudNode[]; files: number; }
 export interface CloudFile { kind: 'file'; name: string; path: string; versions: Revision[]; }
 export type CloudNode = CloudFolder | CloudFile;
+const deleted = (versions: Revision[]) => versions.length > 0 && versions.every(version => version.kind === 'delete');
 
 /** A separate folder map preserves a deleted file even when its path is now a directory. */
-export function cloudFileTree(heads: Map<string, Revision[]>, query = '', directories: string[] = []): CloudFolder {
+export function cloudFileTree(heads: Map<string, Revision[]>, query = '', directories: string[] = [], showDeleted = false): CloudFolder {
   const root: CloudFolder = { kind: 'folder', name: '', path: '', children: [], files: 0 };
   const folders = new Map<string, CloudFolder>([['', root]]);
   const filter = query.trim().toLocaleLowerCase();
   for (const [path, versions] of heads) {
+    if (!versions.length || !showDeleted && deleted(versions)) continue;
     if (filter && !path.toLocaleLowerCase().includes(filter)) continue;
     const parts = path.split('/'); let parent = root; parent.files++;
     for (let index = 0; index < parts.length - 1; index++) {
@@ -42,11 +44,16 @@ export class CloudFilesPanel {
   private search: HTMLInputElement;
   private list: HTMLElement;
   private summary: HTMLElement;
+  private showDeleted: HTMLInputElement;
   constructor(private host: HTMLElement, private heads: Map<string, Revision[]>, private location: string, private directories: string[] = []) {
     host.classList.add('vaultsail-cloud-files');
     const controls = host.createDiv({ cls: 'vs-cloud-controls' });
     this.search = controls.createEl('input'); this.search.type = 'search'; this.search.placeholder = '搜索文件或目录'; this.search.setAttribute('aria-label', '搜索云端文件路径');
     this.search.addEventListener('input', () => this.render());
+    const deletedControl = controls.createEl('label', { cls: 'vs-cloud-deleted-toggle' });
+    this.showDeleted = deletedControl.createEl('input'); this.showDeleted.type = 'checkbox'; this.showDeleted.checked = false;
+    this.showDeleted.setAttribute('aria-label', '显示已删除'); deletedControl.createEl('span', { text: '显示已删除' });
+    this.showDeleted.addEventListener('change', () => this.render(true));
     for (const [label, expand] of [['全部展开', true], ['全部折叠', false]] as const) {
       controls.createEl('button', { text: label }).addEventListener('click', () => {
         this.expanded.clear();
@@ -61,15 +68,19 @@ export class CloudFilesPanel {
     for (const child of cloudFileTree(heads, '', directories).children) if (child.kind === 'folder') this.expanded.add(child.path);
     this.render();
   }
-  private render(): void {
-    preserveInteraction(this.host, () => this.update(), false, false);
+  private render(restoreDetails = false): void {
+    preserveInteraction(this.host, () => this.update(), false, restoreDetails);
   }
   private update(): void {
-    const query = this.search.value.trim(), tree = cloudFileTree(this.heads, query, this.directories);
+    const query = this.search.value.trim(), showDeleted = this.showDeleted.checked, tree = cloudFileTree(this.heads, query, this.directories, showDeleted);
+    const deletedCount = [...this.heads].filter(([path, versions]) => deleted(versions) && (!query || path.toLocaleLowerCase().includes(query.toLocaleLowerCase()))).length;
+    const total = [...this.heads.values()].filter(versions => versions.length && (showDeleted || !deleted(versions))).length;
     const folders = this.directories.filter(path => !query || path.toLocaleLowerCase().includes(query.toLocaleLowerCase())).length;
-    this.summary.setText(`${query ? '找到' : '共'} ${tree.files} 个文件路径${query ? ` / ${this.heads.size}` : ''}${folders ? ` · ${folders} 个已记录目录` : ''} · 展开文件查看版本；删除记录与历史内容保留`);
+    this.summary.setText(`${query ? '找到' : '共'} ${tree.files} 个文件路径${query ? ` / ${total}` : ''}${folders ? ` · ${folders} 个已记录目录` : ''}${deletedCount ? showDeleted ? ` · 含 ${deletedCount} 个已删除路径` : ` · 已隐藏 ${deletedCount} 个已删除路径` : ''} · 展开文件查看版本`);
     this.list.empty();
-    if (!tree.children.length) this.list.createEl('p', { cls: 'vs-cloud-empty', text: query ? '没有匹配的文件或目录。' : '当前云端库还没有笔记或目录版本。创建库不会自动上传笔记，请预览上传后执行。' });
+    if (!tree.children.length) this.list.createEl('p', { cls: 'vs-cloud-empty', text: query ? '没有匹配的文件或目录。' + (!showDeleted && deletedCount ? '已删除文件默认隐藏，可开启“显示已删除”查看。' : '')
+      : !showDeleted && deletedCount ? '当前没有可显示的文件或目录。已删除文件默认隐藏，可开启“显示已删除”查看历史记录。'
+      : '当前云端库还没有笔记或目录版本。创建库不会自动上传笔记，请预览上传后执行。' });
     for (const node of tree.children) this.node(this.list, node, 0, !!query);
   }
   private node(parent: HTMLElement, node: CloudNode, depth: number, searching: boolean): void {
@@ -95,7 +106,7 @@ export class CloudFilesPanel {
     if (node.kind === 'folder') title.createEl('span', { cls: 'vs-cloud-meta', text: node.children.length ? `${node.files} 个文件` : '空目录' });
     else {
       const updates = node.versions.filter(op => op.kind === 'update');
-      const state = node.versions.length > 1 ? 'conflict' : updates.length ? 'current' : 'deleted'; row.setAttribute('data-state', state);
+      const state = deleted(node.versions) ? 'deleted' : node.versions.length > 1 ? 'conflict' : 'current'; row.setAttribute('data-state', state);
       title.createEl('span', { cls: 'vs-cloud-meta', text: state === 'conflict' ? `有冲突 · ${updates.length} 个内容版本` : state === 'deleted' ? '已删除 · 历史保留' : formatBytes(updates[0].size) + ' · 1 个内容版本' });
     }
     row.addEventListener('toggle', () => {
