@@ -8,6 +8,7 @@ import type { SyncProgress } from '../src/sync/progress.ts';
 import { BaiduProvider } from '../src/providers/baidu-provider.ts';
 import { baiduHarness } from './fixtures/baidu.ts';
 import type { FileHistoryEvent } from '../src/sync/history.ts';
+import { scanInventories } from '../src/sync/preflight.ts';
 
 class MemoryCloud implements CloudStorageProvider {
   readonly id = 'mock'; readonly displayName = 'mock'; readonly root = '/apps/test';
@@ -63,6 +64,48 @@ async function setup(concurrency = 3) {
   const ea = new SyncEngine(remote, a, sa, vault.vaultId, '.obsidian', () => {}, concurrency); const eb = new SyncEngine(remote, b, sb, vault.vaultId, '.obsidian', () => {}, concurrency);
   return { cloud, remote, vault, a, b, sa, sb, ea, eb };
 }
+
+test('parallel inventory failure prevents file publication and baseline changes', async () => {
+  const { a, ea, sa, cloud } = await setup(); a.files.set('pending.md', bytes('not yet uploaded'));
+  const oldState = structuredClone(sa.value), oldCount = cloud.files.size;
+  await assert.rejects((async () => {
+    const [ops] = await scanInventories(() => ea.prepareRemote(), async () => { throw new VaultSailError('response', 'incomplete directories'); });
+    await ea.sync(false, { ops });
+  })(), { code: 'response' });
+  assert.equal(cloud.files.size, oldCount); assert.equal(JSON.stringify(sa.value), JSON.stringify(oldState)); assert.equal(a.files.size, 1);
+});
+
+test('prepared remote inventories retain competing edits published while another preflight check is running', async () => {
+  const { a, b, ea, eb, remote, vault } = await setup(); a.files.set('note.md', bytes('original'));
+  await ea.sync(); await eb.sync();
+  a.files.set('note.md', bytes('local edit')); b.files.set('note.md', bytes('other device edit'));
+  const ops = await ea.prepareRemote(); await eb.sync();
+  const result = await ea.sync(false, { ops }); assert.equal(result.incomingChanges, 1);
+  const heads = buildHeads(await remote.revisions(vault.vaultId), true).get('note.md')!;
+  assert.equal(heads.length, 2);
+  assert.deepEqual(new Set(heads.map(head => head.hash)), new Set([hash(bytes('local edit')), hash(bytes('other device edit'))]));
+  await ea.sync(); const preserved = new Set([...a.files.values()].map(data => hash(data)));
+  assert.ok(preserved.has(hash(bytes('local edit'))) && preserved.has(hash(bytes('other device edit'))), 'overlapping text edits preserve both contents');
+});
+
+test('prepared automatic polls discover another device update and do not repeat the initial inventory', async () => {
+  const { a, b, ea, eb, remote } = await setup(); a.files.set('note.md', bytes('original'));
+  await ea.sync(); await eb.sync(); b.files.set('note.md', bytes('remote change')); await eb.sync();
+  let scans = 0; const original = remote.revisions.bind(remote); remote.revisions = async (...args) => { scans++; return original(...args); };
+  const ops = await ea.prepareRemote(); const result = await ea.syncAutomatic([], true, false, false, ops);
+  assert.equal(result.downloadedFiles, 1); assert.equal(hash(a.files.get('note.md')!), hash(bytes('remote change')));
+  assert.equal(scans, 2, 'one initial inventory and one post-write verification');
+  scans = 0; const unchanged = await ea.prepareRemote(); await ea.syncAutomatic([], true, false, false, unchanged); assert.equal(scans, 1);
+});
+
+test('pause during inventory preparation does not publish or complete a transfer', async () => {
+  const { a, ea, sa, cloud } = await setup(); a.files.set('pending.md', bytes('unchanged'));
+  let entered!: () => void, release!: () => void;
+  const ready = new Promise<void>(resolve => { entered = resolve; }), gate = new Promise<void>(resolve => { release = resolve; });
+  const original = cloud.list.bind(cloud); cloud.list = async (...args) => { entered(); await gate; return original(...args); };
+  const preparing = ea.prepareRemote(); await ready; ea.pause(); release();
+  await assert.rejects(preparing, { code: 'paused' }); assert.equal(cloud.published, 0); assert.deepEqual(sa.value.knownOps, []);
+});
 
 test('parallel engine progress attributes acknowledged bytes to each unfinished file, without advancing baselines', async () => {
   const h = baiduHarness(), data = new Uint8Array(9 * 1024 * 1024); data.fill(31);

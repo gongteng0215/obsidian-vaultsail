@@ -342,6 +342,12 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   assert.equal(plugin.lastSuccess()!.bytes, files.get('note.md')!.byteLength);
   assert.ok(document.body.textContent!.includes('已校验内容')); assert.equal(plugin.diagnostics().includes('note.md'), false);
   await plugin.run('files', () => plugin.showCloudFiles()); assert.ok(document.body.textContent!.includes('note.md'));
+  const firstCloudReader = plugin.cloudReader;
+  await plugin.run('files', () => plugin.showCloudFiles()); assert.equal(plugin.cloudReader, firstCloudReader, 'reopening the list keeps its verified in-memory caches');
+  plugin.cloudReader.context = 'stale-context';
+  await plugin.run('files', () => plugin.showCloudFiles()); assert.notEqual(plugin.cloudReader, firstCloudReader, 'a different connection context must never reuse cached readers');
+  const previousGenerationReader = plugin.cloudReader; plugin.cloudReader.generation--;
+  await plugin.run('files', () => plugin.showCloudFiles()); assert.notEqual(plugin.cloudReader, previousGenerationReader, 'a connection generation change invalidates readers even for the same vault');
   assert.ok(document.querySelector('[data-cloud-folder="论文/调研研究"]'));
   assert.ok([...remoteObjects.keys()].some(path => path.includes('/directories/')));
   const cloudFile = document.querySelector('details[data-cloud-file="note.md"]')!;
@@ -378,6 +384,8 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   const bindingBeforeConcurrency = structuredClone(plugin.settings.binding);
   const engineBeforeConcurrency = plugin.engine;
   await plugin.setTransferConcurrency(4); assert.equal(plugin.settings.transferConcurrency, 4); assert.equal(plugin.saved.transferConcurrency, 4);
+  const oldConcurrencyReader = plugin.cloudReader;
+  await plugin.run('files', () => plugin.showCloudFiles()); assert.notEqual(plugin.cloudReader, oldConcurrencyReader); assert.equal(plugin.cloudReader.concurrency, 4);
   assert.equal(plugin.engine, engineBeforeConcurrency, 'changing concurrency must retain the current engine and preview context');
   assert.equal(plugin.auth.status(), 'connected'); assert.deepEqual(plugin.settings.binding, bindingBeforeConcurrency);
   plugin.busy = true; await assert.rejects(plugin.setTransferConcurrency(2), { code: 'busy' }); plugin.busy = false;
@@ -523,7 +531,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
     saveLocalStorage: (key: string, value: unknown) => key.startsWith('vaultsail-queue-') ? notifierQueueStorage.set(key, value) : app.saveLocalStorage(key, value),
   }); notifier.saved = { ...structuredClone(plugin.saved), autoSyncEnabled: true };
   let automaticError: unknown, outcome = { incomingChanges: 0, preservedConflicts: 0, uploadedFiles: 0, downloadedFiles: 0, deletedFiles: 0, autoMergedFiles: 0, blockedFiles: 0 };
-  notifier.getEngine = async () => ({ recoverPending: async () => {}, syncAutomatic: async () => { if (automaticError) throw automaticError; return outcome; } });
+  notifier.getEngine = async () => ({ recoverPending: async () => {}, prepareRemote: async () => [], syncAutomatic: async () => { if (automaticError) throw automaticError; return outcome; } });
   notifier.directories = { recover: async () => {}, preview: async () => ({}), finishUnchanged: async () => undefined, sync: async () => ({ created: 0, deleted: 0, skipped: 0 }) };
   await notifier.onload();
   const automaticCloud = notifier.ribbons.find((ribbon: any) => ribbon.icon === 'cloud').el;

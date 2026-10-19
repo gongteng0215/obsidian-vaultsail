@@ -1,7 +1,7 @@
 import { VaultSailError } from '../core/safety.ts';
 import type { CloudStorageProvider, RemoteObject } from './cloud-storage-provider';
 
-export async function listAll(provider: CloudStorageProvider, directory: string, onPage?: (objects: number) => void, maximumObjects = Infinity): Promise<RemoteObject[]> {
+export async function listAll(provider: Pick<CloudStorageProvider, 'list'>, directory: string, onPage?: (objects: number) => void, maximumObjects = Infinity): Promise<RemoteObject[]> {
   const objects: RemoteObject[] = []; const seen = new Set<string>(); const cursors = new Set<string>(); let cursor: string | undefined;
   for (let pageCount = 0; pageCount < 1000; pageCount++) {
     const page = await provider.list(directory, cursor);

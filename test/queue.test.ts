@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { SyncQueue, type QueueBatch, type QueueState } from '../src/sync/queue.ts';
+import { scanInventories } from '../src/sync/preflight.ts';
 import { VaultSailError } from '../src/core/safety.ts';
 function fixture(run: (batch: QueueBatch) => Promise<void> = async () => {}) {
   let now = 1000, saved: QueueState | undefined, enabled = true, available = true; const batches: QueueBatch[] = [];
@@ -10,6 +11,22 @@ function fixture(run: (batch: QueueBatch) => Promise<void> = async () => {}) {
   let queue = new SyncQueue(options);
   return { get queue() { return queue; }, batches, get saved() { return saved!; }, time: (value: number) => { now = value; }, enabled: (value: boolean) => { enabled = value; }, available: (value: boolean) => { available = value; }, restart: () => { queue.dispose(); queue = new SyncQueue(options); } };
 }
+
+test('a failed parallel preflight holds the queue until reads drain and retains intervening edits across reload', async () => {
+  let fail = false, entered!: () => void, release!: () => void;
+  const ready = new Promise<void>(r => { entered = r; }), gate = new Promise<void>(r => { release = r; });
+  const f = fixture(async () => {
+    if (fail) await scanInventories(async () => { throw new VaultSailError('response', 'incomplete file inventory'); }, async () => { entered(); await gate; });
+  });
+  await f.queue.pump(); fail = true; f.queue.request('manual'); const running = f.queue.pump(); await ready;
+  f.queue.request('local', 'during-preflight.md'); f.queue.request('remote'); await f.queue.pump();
+  assert.equal(f.queue.activity, 'running'); assert.equal(f.batches.length, 2);
+  release(); await running; assert.equal(f.saved.blocked, true); assert.ok(f.saved.dirty['during-preflight.md']);
+  f.restart(); await f.queue.pump(); assert.equal(f.batches.length, 2, 'reload must preserve a blocking inventory error');
+  fail = false; f.queue.request('manual'); await f.queue.pump();
+  assert.ok(f.batches.at(-1)!.paths.includes('during-preflight.md')); assert.equal(f.batches.at(-1)!.remote, true);
+  assert.deepEqual(Object.keys(f.saved.dirty), []); assert.equal(f.saved.blocked, false);
+});
 test('burst edits coalesce by path, stay quiet for two seconds and have a maximum wait', async () => {
   const f = fixture(); await f.queue.pump(); f.batches.length = 0;
   for (let i = 0; i < 100; i++) f.queue.request('local', 'note.md');

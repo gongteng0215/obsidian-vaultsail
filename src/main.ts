@@ -8,6 +8,7 @@ import { BaiduProvider } from './providers/baidu-provider';
 import { ObsidianCredentials, ObsidianLocalFiles, ObsidianRevisionCache, ObsidianStateStore, deviceIdentity, obsidianTransport } from './platform/obsidian-adapters';
 import { buildHeads, RemoteVaultStore, type RemoteVault } from './sync/remote-vault';
 import { SyncEngine, type SyncPlan, type BlockedFile } from './sync/engine';
+import { scanInventories } from './sync/preflight';
 import { CloudVaultSetupModal, PlanModal } from './ui/modals';
 import { CONFIG_EXPORT_DIRECTORY, exportPortableConfig, parsePortableConfig } from './portable-config';
 import { ConfigExportModal, ConfigImportModal } from './ui/config-modals';
@@ -75,6 +76,7 @@ export default class VaultSailPlugin extends Plugin {
   private generation = 0;
   private connectionRequests = new AbortController();
   private engine?: SyncEngine;
+  private cloudReader?: { context: string; generation: number; concurrency: number; files: RemoteVaultStore; directories: RemoteDirectoryStore };
   private directories?: DirectorySync;
   private alive = true;
   private settingTab!: VaultSailSettingTab;
@@ -154,6 +156,7 @@ export default class VaultSailPlugin extends Plugin {
 
   onunload(): void { this.alive = false; this.automaticToast?.hide(); this.queue?.dispose(); this.performance.finish(); this.connectionRequests.abort(); this.pause(false); this.auth?.cancel(); if (this.progressTimer) clearInterval(this.progressTimer); this.progressTimer = undefined; this.progressListeners.clear(); this.transferListeners.clear(); for (const history of this.histories.values()) history.dispose(); this.diagnostic?.close(); for (const leaf of this.app.workspace?.getLeavesOfType?.(TRANSFER_CENTER_VIEW) ?? []) leaf.detach(); }
   private invalidateConnection(): void {
+    this.cloudReader = undefined;
     this.automaticNotifications.reset(); this.automaticToast?.hide(); this.automaticToast = undefined;
     this.queue?.dispose(); this.queue = undefined; this.queueContext = undefined;
     this.generation++; this.connectionRequests.abort(); this.connectionRequests = new AbortController();
@@ -563,8 +566,9 @@ export default class VaultSailPlugin extends Plugin {
   }
   async preview(mode: SyncPlan['mode']): Promise<void> {
     const engine = await this.getEngine(); const directories = this.directories!;
-    const directoryPlan = await directories.preview(mode, this.settings.deletionEnabled);
-    const plan = await engine.preview(mode, this.settings.deletionEnabled, { allowRenames: true });
+    const [plan, directoryPlan] = await scanInventories(
+      () => engine.preview(mode, this.settings.deletionEnabled, { allowRenames: true }),
+      () => directories.preview(mode, this.settings.deletionEnabled));
     new PlanModal(this.app, plan, async progress => { if (this.busy) throw new VaultSailError('busy', '当前有其他操作。'); this.busy = true;
       this.beginTransfer(); this.refreshUI();
       try {
@@ -609,10 +613,12 @@ export default class VaultSailPlugin extends Plugin {
     await this.directories!.recover(this.settings.deletionEnabled);
     // Validate directory/file collisions before any file publication or local application.
     if (this.progress) this.publishProgress({ ...this.progress, phase: 'scanning-remote', message: '读取云端目录版本（包含空目录）', updatedAt: Date.now() });
-    const directoryPlan = await this.directories!.preview('sync', this.settings.deletionEnabled);
+    const [initialOps, directoryPlan] = await scanInventories(
+      () => engine.prepareRemote(), () => this.directories!.preview('sync', this.settings.deletionEnabled));
     // One extra pass catches concurrent publications without an unbounded background loop.
     for (let pass = 0; pass < 2; pass++) {
-      const result = batch && !batch.manual ? await engine.syncAutomatic(paths, batch.remote, batch.full || pass > 0, this.settings.deletionEnabled) : await engine.sync(this.settings.deletionEnabled); conflicts += result.preservedConflicts; incoming = result.incomingChanges; merged += result.autoMergedFiles ?? 0;
+      const ops = pass === 0 ? initialOps : undefined;
+      const result = batch && !batch.manual ? await engine.syncAutomatic(paths, batch.remote, batch.full || pass > 0, this.settings.deletionEnabled, ops) : await engine.sync(this.settings.deletionEnabled, { ops }); conflicts += result.preservedConflicts; incoming = result.incomingChanges; merged += result.autoMergedFiles ?? 0;
       uploaded += result.uploadedFiles; downloaded += result.downloadedFiles; deleted += result.deletedFiles;
       blocked = result.blockedFiles;
       files += this.progress?.doneFiles ?? 0; contentBytes += this.progress?.doneBytes ?? 0;
@@ -653,12 +659,17 @@ export default class VaultSailPlugin extends Plugin {
     const generation = this.generation;
     const { provider, binding } = await this.boundProvider();
     const context = hash(bytes(binding.appKey + '|' + binding.root + '|' + binding.accountHash + '|' + binding.vaultId));
-    const store = new RemoteVaultStore(provider, new ObsidianRevisionCache(this.app, this.deviceId, context));
-    const [revisions, directoryRevisions] = await Promise.all([
-      store.revisions(binding.vaultId),
-      new RemoteDirectoryStore(provider, binding.vaultId, this.settings.transferConcurrency,
-        new ObsidianRevisionCache(this.app, this.deviceId, context, 'directory'), (step, error) => this.diagnostic?.record('cache', 'warning', { step }, error)).revisions(),
-    ]);
+    if (!this.alive || generation !== this.generation) return;
+    if (!this.cloudReader || this.cloudReader.context !== context || this.cloudReader.generation !== generation || this.cloudReader.concurrency !== this.settings.transferConcurrency) {
+      const onCacheError = (step: string, error: unknown) => { this.diagnostic?.record('cache', 'warning', { step }, error); };
+      this.cloudReader = { context, generation, concurrency: this.settings.transferConcurrency,
+        files: new RemoteVaultStore(provider, new ObsidianRevisionCache(this.app, this.deviceId, context), this.settings.transferConcurrency, undefined, undefined, onCacheError),
+        directories: new RemoteDirectoryStore(provider, binding.vaultId, this.settings.transferConcurrency, new ObsidianRevisionCache(this.app, this.deviceId, context, 'directory'), onCacheError) };
+    }
+    const reader = this.cloudReader;
+    const [revisions, directoryRevisions] = await scanInventories(
+      () => reader.files.revisions(binding.vaultId), () => reader.directories.revisions(),
+    );
     const heads = buildHeads(revisions);
     const folders = [...directoryHeads(directoryRevisions)].filter(([, versions]) => directoryPresent(versions)).map(([path]) => path);
     if (!this.alive || generation !== this.generation) return;

@@ -26,6 +26,7 @@ export class BaiduProvider implements CloudStorageProvider {
   private pendingDirectories = new Map<string, Promise<void>>();
   private pendingWrites = new Map<string, { hash: string; operation: Promise<void>; observers: Set<TransferObserver>; latest: ObjectTransferProgress }>();
   private pendingLookups = new Map<string, Promise<RemoteObject[]>>();
+  private pendingPages = new Map<string, Promise<RemotePage>>();
   private downloadLinks = new Map<string, { id: string; size: number; etag?: string; url: string; expiresAt: number }>();
   constructor(root: string, transport: HttpTransport, auth: TokenSource, active = () => true,
     onActivity: (phase: 'verifying' | 'downloading') => void = () => {}, requestPolicy: BaiduRequestPolicy = {}) {
@@ -116,6 +117,16 @@ export class BaiduProvider implements CloudStorageProvider {
     return { total: value.total, used: value.used };
   }
   async list(directory: string, cursor = '0'): Promise<RemotePage> {
+    this.guard();
+    const key = JSON.stringify([directory, cursor]);
+    let operation = this.pendingPages.get(key);
+    if (!operation) { operation = this.listPage(directory, cursor); this.pendingPages.set(key, operation); }
+    try {
+      const page = await operation; this.guard();
+      return { ...page, objects: page.objects.map(object => ({ ...object })) };
+    } finally { if (this.pendingPages.get(key) === operation) this.pendingPages.delete(key); }
+  }
+  private async listPage(directory: string, cursor = '0'): Promise<RemotePage> {
     const offset = Number(cursor); if (!Number.isSafeInteger(offset) || offset < 0) throw new VaultSailError('response', '分页游标无效。');
     const full = this.absolute(directory);
     const value = await this.retry(() => this.api(XPAN + 'file', { method: 'list', dir: full, start: String(offset), limit: '100', order: 'name', desc: '0', web: '0' }));
@@ -202,7 +213,7 @@ export class BaiduProvider implements CloudStorageProvider {
   private async lookup(directory: string, fresh: boolean): Promise<RemoteObject[]> {
     // Share only overlapping ordinary lookups, never retain an absence cache.
     // Recovery/uncertain-write verification must start a new server listing.
-    if (fresh) return this.listAll(directory);
+    if (fresh) return listAll({ list: (path, cursor) => this.listPage(path, cursor) }, directory);
     const pending = this.pendingLookups.get(directory); if (pending) return pending;
     const operation = this.listAll(directory); this.pendingLookups.set(directory, operation);
     try { return await operation; } finally { if (this.pendingLookups.get(directory) === operation) this.pendingLookups.delete(directory); }

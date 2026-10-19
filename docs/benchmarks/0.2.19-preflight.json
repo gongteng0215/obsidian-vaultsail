@@ -1,0 +1,4924 @@
+{
+  "version": 1,
+  "simulated": true,
+  "baselineCommit": "bd6a1cea6b71fd0b1606c5926bb5011614f45307",
+  "candidateVersion": "0.2.19",
+  "runtime": {
+    "node": "v26.8.2",
+    "platform": "win32"
+  },
+  "method": "Same-process alternating implementation order, 10 independent fixtures per side; 15 ms per synthetic request; includes fixture CPU and timer variation",
+  "datasets": [
+    {
+      "size": 7,
+      "baseline": {
+        "baselineRef": "bd6a1cea6b71fd0b1606c5926bb5011614f45307",
+        "side": "baseline",
+        "simulated": true,
+        "scenario": "0.2.18 versus parallel preflight; trusted server digests; two devices; reload and single-file edits",
+        "size": 7,
+        "latencyMs": 15,
+        "rounds": 10,
+        "summary": {
+          "cold": {
+            "elapsedMs": 385,
+            "requests": 20,
+            "lists": 7,
+            "metadata": 3,
+            "downloads": 9,
+            "fileRecords": 7,
+            "directoryRecords": 1,
+            "cacheWrites": 2,
+            "medianMs": 306,
+            "p95Ms": 385
+          },
+          "warm": {
+            "elapsedMs": 177,
+            "requests": 8,
+            "lists": 7,
+            "metadata": 0,
+            "downloads": 0,
+            "fileRecords": 0,
+            "directoryRecords": 0,
+            "cacheWrites": 0,
+            "medianMs": 156,
+            "p95Ms": 198
+          },
+          "restart": {
+            "elapsedMs": 229,
+            "requests": 10,
+            "lists": 7,
+            "metadata": 1,
+            "downloads": 1,
+            "fileRecords": 0,
+            "directoryRecords": 0,
+            "cacheWrites": 0,
+            "medianMs": 214,
+            "p95Ms": 244
+          },
+          "local-edit": {
+            "elapsedMs": 630,
+            "requests": 27,
+            "lists": 16,
+            "metadata": 2,
+            "downloads": 2,
+            "fileRecords": 1,
+            "directoryRecords": 0,
+            "cacheWrites": 1,
+            "medianMs": 610,
+            "p95Ms": 630
+          },
+          "remote-edit": {
+            "elapsedMs": 414,
+            "requests": 17,
+            "lists": 12,
+            "metadata": 2,
+            "downloads": 2,
+            "fileRecords": 1,
+            "directoryRecords": 0,
+            "cacheWrites": 1,
+            "medianMs": 351,
+            "p95Ms": 414
+          },
+          "browse": {
+            "elapsedMs": 165,
+            "requests": 10,
+            "lists": 7,
+            "metadata": 1,
+            "downloads": 1,
+            "fileRecords": 0,
+            "directoryRecords": 0,
+            "cacheWrites": 0,
+            "medianMs": 138,
+            "p95Ms": 168
+          },
+          "browse-repeat": {
+            "elapsedMs": 169,
+            "requests": 10,
+            "lists": 7,
+            "metadata": 1,
+            "downloads": 1,
+            "fileRecords": 0,
+            "directoryRecords": 0,
+            "cacheWrites": 0,
+            "medianMs": 136,
+            "p95Ms": 172
+          }
+        },
+        "rows": [
+          {
+            "cold": {
+              "elapsedMs": 385,
+              "requests": 20,
+              "lists": 7,
+              "metadata": 3,
+              "downloads": 9,
+              "fileRecords": 7,
+              "directoryRecords": 1,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 177,
+              "requests": 8,
+              "lists": 7,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 229,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 630,
+              "requests": 27,
+              "lists": 16,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 414,
+              "requests": 17,
+              "lists": 12,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 165,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 169,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 320,
+              "requests": 20,
+              "lists": 7,
+              "metadata": 3,
+              "downloads": 9,
+              "fileRecords": 7,
+              "directoryRecords": 1,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 198,
+              "requests": 8,
+              "lists": 7,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 215,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 610,
+              "requests": 27,
+              "lists": 16,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 366,
+              "requests": 17,
+              "lists": 12,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 150,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 172,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 320,
+              "requests": 20,
+              "lists": 7,
+              "metadata": 3,
+              "downloads": 9,
+              "fileRecords": 7,
+              "directoryRecords": 1,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 198,
+              "requests": 8,
+              "lists": 7,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 244,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 610,
+              "requests": 27,
+              "lists": 16,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 351,
+              "requests": 17,
+              "lists": 12,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 138,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 167,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 322,
+              "requests": 20,
+              "lists": 7,
+              "metadata": 3,
+              "downloads": 9,
+              "fileRecords": 7,
+              "directoryRecords": 1,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 183,
+              "requests": 8,
+              "lists": 7,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 215,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 610,
+              "requests": 27,
+              "lists": 16,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 369,
+              "requests": 17,
+              "lists": 12,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 138,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 125,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 307,
+              "requests": 20,
+              "lists": 7,
+              "metadata": 3,
+              "downloads": 9,
+              "fileRecords": 7,
+              "directoryRecords": 1,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 153,
+              "requests": 8,
+              "lists": 7,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 227,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 608,
+              "requests": 27,
+              "lists": 16,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 323,
+              "requests": 17,
+              "lists": 12,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 167,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 140,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 277,
+              "requests": 20,
+              "lists": 7,
+              "metadata": 3,
+              "downloads": 9,
+              "fileRecords": 7,
+              "directoryRecords": 1,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 139,
+              "requests": 8,
+              "lists": 7,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 214,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 579,
+              "requests": 27,
+              "lists": 16,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 321,
+              "requests": 17,
+              "lists": 12,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 109,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 109,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 305,
+              "requests": 20,
+              "lists": 7,
+              "metadata": 3,
+              "downloads": 9,
+              "fileRecords": 7,
+              "directoryRecords": 1,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 153,
+              "requests": 8,
+              "lists": 7,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 170,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 462,
+              "requests": 27,
+              "lists": 16,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 353,
+              "requests": 17,
+              "lists": 12,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 138,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 123,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 305,
+              "requests": 20,
+              "lists": 7,
+              "metadata": 3,
+              "downloads": 9,
+              "fileRecords": 7,
+              "directoryRecords": 1,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 139,
+              "requests": 8,
+              "lists": 7,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 184,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 610,
+              "requests": 27,
+              "lists": 16,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 337,
+              "requests": 17,
+              "lists": 12,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 168,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 152,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 306,
+              "requests": 20,
+              "lists": 7,
+              "metadata": 3,
+              "downloads": 9,
+              "fileRecords": 7,
+              "directoryRecords": 1,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 156,
+              "requests": 8,
+              "lists": 7,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 213,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 614,
+              "requests": 27,
+              "lists": 16,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 381,
+              "requests": 17,
+              "lists": 12,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 138,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 122,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 305,
+              "requests": 20,
+              "lists": 7,
+              "metadata": 3,
+              "downloads": 9,
+              "fileRecords": 7,
+              "directoryRecords": 1,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 169,
+              "requests": 8,
+              "lists": 7,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 184,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 524,
+              "requests": 27,
+              "lists": 16,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 351,
+              "requests": 17,
+              "lists": 12,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 138,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 136,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          }
+        ]
+      },
+      "current": {
+        "baselineRef": "bd6a1cea6b71fd0b1606c5926bb5011614f45307",
+        "side": "current",
+        "simulated": true,
+        "scenario": "0.2.18 versus parallel preflight; trusted server digests; two devices; reload and single-file edits",
+        "size": 7,
+        "latencyMs": 15,
+        "rounds": 10,
+        "summary": {
+          "cold": {
+            "elapsedMs": 239,
+            "requests": 19,
+            "lists": 6,
+            "metadata": 3,
+            "downloads": 9,
+            "fileRecords": 7,
+            "directoryRecords": 1,
+            "cacheWrites": 2,
+            "medianMs": 187,
+            "p95Ms": 239
+          },
+          "warm": {
+            "elapsedMs": 113,
+            "requests": 7,
+            "lists": 6,
+            "metadata": 0,
+            "downloads": 0,
+            "fileRecords": 0,
+            "directoryRecords": 0,
+            "cacheWrites": 0,
+            "medianMs": 106,
+            "p95Ms": 113
+          },
+          "restart": {
+            "elapsedMs": 167,
+            "requests": 9,
+            "lists": 6,
+            "metadata": 1,
+            "downloads": 1,
+            "fileRecords": 0,
+            "directoryRecords": 0,
+            "cacheWrites": 0,
+            "medianMs": 153,
+            "p95Ms": 182
+          },
+          "local-edit": {
+            "elapsedMs": 611,
+            "requests": 26,
+            "lists": 15,
+            "metadata": 2,
+            "downloads": 2,
+            "fileRecords": 1,
+            "directoryRecords": 0,
+            "cacheWrites": 1,
+            "medianMs": 490,
+            "p95Ms": 611
+          },
+          "remote-edit": {
+            "elapsedMs": 306,
+            "requests": 16,
+            "lists": 11,
+            "metadata": 2,
+            "downloads": 2,
+            "fileRecords": 1,
+            "directoryRecords": 0,
+            "cacheWrites": 1,
+            "medianMs": 289,
+            "p95Ms": 319
+          },
+          "browse": {
+            "elapsedMs": 167,
+            "requests": 9,
+            "lists": 6,
+            "metadata": 1,
+            "downloads": 1,
+            "fileRecords": 0,
+            "directoryRecords": 0,
+            "cacheWrites": 0,
+            "medianMs": 152,
+            "p95Ms": 167
+          },
+          "browse-repeat": {
+            "elapsedMs": 122,
+            "requests": 7,
+            "lists": 6,
+            "metadata": 0,
+            "downloads": 0,
+            "fileRecords": 0,
+            "directoryRecords": 0,
+            "cacheWrites": 0,
+            "medianMs": 92,
+            "p95Ms": 122
+          }
+        },
+        "rows": [
+          {
+            "cold": {
+              "elapsedMs": 239,
+              "requests": 19,
+              "lists": 6,
+              "metadata": 3,
+              "downloads": 9,
+              "fileRecords": 7,
+              "directoryRecords": 1,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 113,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 167,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 611,
+              "requests": 26,
+              "lists": 15,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 306,
+              "requests": 16,
+              "lists": 11,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 167,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 122,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 200,
+              "requests": 19,
+              "lists": 6,
+              "metadata": 3,
+              "downloads": 9,
+              "fileRecords": 7,
+              "directoryRecords": 1,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 108,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 182,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 582,
+              "requests": 26,
+              "lists": 15,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 304,
+              "requests": 16,
+              "lists": 11,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 152,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 92,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 168,
+              "requests": 19,
+              "lists": 6,
+              "metadata": 3,
+              "downloads": 9,
+              "fileRecords": 7,
+              "directoryRecords": 1,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 92,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 168,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 532,
+              "requests": 26,
+              "lists": 15,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 278,
+              "requests": 16,
+              "lists": 11,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 165,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 96,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 184,
+              "requests": 19,
+              "lists": 6,
+              "metadata": 3,
+              "downloads": 9,
+              "fileRecords": 7,
+              "directoryRecords": 1,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 107,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 151,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 504,
+              "requests": 26,
+              "lists": 15,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 289,
+              "requests": 16,
+              "lists": 11,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 166,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 122,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 199,
+              "requests": 19,
+              "lists": 6,
+              "metadata": 3,
+              "downloads": 9,
+              "fileRecords": 7,
+              "directoryRecords": 1,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 106,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 108,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 460,
+              "requests": 26,
+              "lists": 15,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 290,
+              "requests": 16,
+              "lists": 11,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 152,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 107,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 198,
+              "requests": 19,
+              "lists": 6,
+              "metadata": 3,
+              "downloads": 9,
+              "fileRecords": 7,
+              "directoryRecords": 1,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 93,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 152,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 403,
+              "requests": 26,
+              "lists": 15,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 304,
+              "requests": 16,
+              "lists": 11,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 152,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 78,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 152,
+              "requests": 19,
+              "lists": 6,
+              "metadata": 3,
+              "downloads": 9,
+              "fileRecords": 7,
+              "directoryRecords": 1,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 107,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 137,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 416,
+              "requests": 26,
+              "lists": 15,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 247,
+              "requests": 16,
+              "lists": 11,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 139,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 77,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 202,
+              "requests": 19,
+              "lists": 6,
+              "metadata": 3,
+              "downloads": 9,
+              "fileRecords": 7,
+              "directoryRecords": 1,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 107,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 153,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 490,
+              "requests": 26,
+              "lists": 15,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 262,
+              "requests": 16,
+              "lists": 11,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 152,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 78,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 187,
+              "requests": 19,
+              "lists": 6,
+              "metadata": 3,
+              "downloads": 9,
+              "fileRecords": 7,
+              "directoryRecords": 1,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 91,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 168,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 505,
+              "requests": 26,
+              "lists": 15,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 319,
+              "requests": 16,
+              "lists": 11,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 154,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 90,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 185,
+              "requests": 19,
+              "lists": 6,
+              "metadata": 3,
+              "downloads": 9,
+              "fileRecords": 7,
+              "directoryRecords": 1,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 93,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 153,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 475,
+              "requests": 26,
+              "lists": 15,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 289,
+              "requests": 16,
+              "lists": 11,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 152,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 92,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "size": 100,
+      "baseline": {
+        "baselineRef": "bd6a1cea6b71fd0b1606c5926bb5011614f45307",
+        "side": "baseline",
+        "simulated": true,
+        "scenario": "0.2.18 versus parallel preflight; trusted server digests; two devices; reload and single-file edits",
+        "size": 100,
+        "latencyMs": 15,
+        "rounds": 10,
+        "summary": {
+          "cold": {
+            "elapsedMs": 725,
+            "requests": 125,
+            "lists": 7,
+            "metadata": 3,
+            "downloads": 114,
+            "fileRecords": 100,
+            "directoryRecords": 13,
+            "cacheWrites": 2,
+            "medianMs": 673,
+            "p95Ms": 725
+          },
+          "warm": {
+            "elapsedMs": 212,
+            "requests": 8,
+            "lists": 7,
+            "metadata": 0,
+            "downloads": 0,
+            "fileRecords": 0,
+            "directoryRecords": 0,
+            "cacheWrites": 0,
+            "medianMs": 169,
+            "p95Ms": 212
+          },
+          "restart": {
+            "elapsedMs": 212,
+            "requests": 10,
+            "lists": 7,
+            "metadata": 1,
+            "downloads": 1,
+            "fileRecords": 0,
+            "directoryRecords": 0,
+            "cacheWrites": 0,
+            "medianMs": 229,
+            "p95Ms": 247
+          },
+          "local-edit": {
+            "elapsedMs": 720,
+            "requests": 28,
+            "lists": 17,
+            "metadata": 2,
+            "downloads": 2,
+            "fileRecords": 1,
+            "directoryRecords": 0,
+            "cacheWrites": 1,
+            "medianMs": 670,
+            "p95Ms": 720
+          },
+          "remote-edit": {
+            "elapsedMs": 441,
+            "requests": 18,
+            "lists": 13,
+            "metadata": 2,
+            "downloads": 2,
+            "fileRecords": 1,
+            "directoryRecords": 0,
+            "cacheWrites": 1,
+            "medianMs": 413,
+            "p95Ms": 456
+          },
+          "browse": {
+            "elapsedMs": 166,
+            "requests": 10,
+            "lists": 7,
+            "metadata": 1,
+            "downloads": 1,
+            "fileRecords": 0,
+            "directoryRecords": 0,
+            "cacheWrites": 0,
+            "medianMs": 153,
+            "p95Ms": 169
+          },
+          "browse-repeat": {
+            "elapsedMs": 168,
+            "requests": 10,
+            "lists": 7,
+            "metadata": 1,
+            "downloads": 1,
+            "fileRecords": 0,
+            "directoryRecords": 0,
+            "cacheWrites": 0,
+            "medianMs": 156,
+            "p95Ms": 186
+          }
+        },
+        "rows": [
+          {
+            "cold": {
+              "elapsedMs": 725,
+              "requests": 125,
+              "lists": 7,
+              "metadata": 3,
+              "downloads": 114,
+              "fileRecords": 100,
+              "directoryRecords": 13,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 212,
+              "requests": 8,
+              "lists": 7,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 212,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 720,
+              "requests": 28,
+              "lists": 17,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 441,
+              "requests": 18,
+              "lists": 13,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 166,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 168,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 673,
+              "requests": 125,
+              "lists": 7,
+              "metadata": 3,
+              "downloads": 114,
+              "fileRecords": 100,
+              "directoryRecords": 13,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 197,
+              "requests": 8,
+              "lists": 7,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 247,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 684,
+              "requests": 28,
+              "lists": 17,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 393,
+              "requests": 18,
+              "lists": 13,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 152,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 184,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 647,
+              "requests": 125,
+              "lists": 7,
+              "metadata": 3,
+              "downloads": 114,
+              "fileRecords": 100,
+              "directoryRecords": 13,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 167,
+              "requests": 8,
+              "lists": 7,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 214,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 674,
+              "requests": 28,
+              "lists": 17,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 445,
+              "requests": 18,
+              "lists": 13,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 169,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 186,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 718,
+              "requests": 125,
+              "lists": 7,
+              "metadata": 3,
+              "downloads": 114,
+              "fileRecords": 100,
+              "directoryRecords": 13,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 168,
+              "requests": 8,
+              "lists": 7,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 219,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 633,
+              "requests": 28,
+              "lists": 17,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 442,
+              "requests": 18,
+              "lists": 13,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 153,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 168,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 660,
+              "requests": 125,
+              "lists": 7,
+              "metadata": 3,
+              "downloads": 114,
+              "fileRecords": 100,
+              "directoryRecords": 13,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 154,
+              "requests": 8,
+              "lists": 7,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 244,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 701,
+              "requests": 28,
+              "lists": 17,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 413,
+              "requests": 18,
+              "lists": 13,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 140,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 153,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 693,
+              "requests": 125,
+              "lists": 7,
+              "metadata": 3,
+              "downloads": 114,
+              "fileRecords": 100,
+              "directoryRecords": 13,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 166,
+              "requests": 8,
+              "lists": 7,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 218,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 687,
+              "requests": 28,
+              "lists": 17,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 399,
+              "requests": 18,
+              "lists": 13,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 163,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 137,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 600,
+              "requests": 125,
+              "lists": 7,
+              "metadata": 3,
+              "downloads": 114,
+              "fileRecords": 100,
+              "directoryRecords": 13,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 169,
+              "requests": 8,
+              "lists": 7,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 230,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 593,
+              "requests": 28,
+              "lists": 17,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 396,
+              "requests": 18,
+              "lists": 13,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 137,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 156,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 706,
+              "requests": 125,
+              "lists": 7,
+              "metadata": 3,
+              "downloads": 114,
+              "fileRecords": 100,
+              "directoryRecords": 13,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 169,
+              "requests": 8,
+              "lists": 7,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 242,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 616,
+              "requests": 28,
+              "lists": 17,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 396,
+              "requests": 18,
+              "lists": 13,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 138,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 125,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 660,
+              "requests": 125,
+              "lists": 7,
+              "metadata": 3,
+              "downloads": 114,
+              "fileRecords": 100,
+              "directoryRecords": 13,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 184,
+              "requests": 8,
+              "lists": 7,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 229,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 610,
+              "requests": 28,
+              "lists": 17,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 456,
+              "requests": 18,
+              "lists": 13,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 154,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 139,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 692,
+              "requests": 125,
+              "lists": 7,
+              "metadata": 3,
+              "downloads": 114,
+              "fileRecords": 100,
+              "directoryRecords": 13,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 184,
+              "requests": 8,
+              "lists": 7,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 231,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 670,
+              "requests": 28,
+              "lists": 17,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 423,
+              "requests": 18,
+              "lists": 13,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 167,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 182,
+              "requests": 10,
+              "lists": 7,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          }
+        ]
+      },
+      "current": {
+        "baselineRef": "bd6a1cea6b71fd0b1606c5926bb5011614f45307",
+        "side": "current",
+        "simulated": true,
+        "scenario": "0.2.18 versus parallel preflight; trusted server digests; two devices; reload and single-file edits",
+        "size": 100,
+        "latencyMs": 15,
+        "rounds": 10,
+        "summary": {
+          "cold": {
+            "elapsedMs": 543,
+            "requests": 124,
+            "lists": 6,
+            "metadata": 3,
+            "downloads": 114,
+            "fileRecords": 100,
+            "directoryRecords": 13,
+            "cacheWrites": 2,
+            "medianMs": 493,
+            "p95Ms": 552
+          },
+          "warm": {
+            "elapsedMs": 134,
+            "requests": 7,
+            "lists": 6,
+            "metadata": 0,
+            "downloads": 0,
+            "fileRecords": 0,
+            "directoryRecords": 0,
+            "cacheWrites": 0,
+            "medianMs": 111,
+            "p95Ms": 134
+          },
+          "restart": {
+            "elapsedMs": 180,
+            "requests": 9,
+            "lists": 6,
+            "metadata": 1,
+            "downloads": 1,
+            "fileRecords": 0,
+            "directoryRecords": 0,
+            "cacheWrites": 0,
+            "medianMs": 165,
+            "p95Ms": 180
+          },
+          "local-edit": {
+            "elapsedMs": 664,
+            "requests": 27,
+            "lists": 16,
+            "metadata": 2,
+            "downloads": 2,
+            "fileRecords": 1,
+            "directoryRecords": 0,
+            "cacheWrites": 1,
+            "medianMs": 579,
+            "p95Ms": 664
+          },
+          "remote-edit": {
+            "elapsedMs": 365,
+            "requests": 17,
+            "lists": 12,
+            "metadata": 2,
+            "downloads": 2,
+            "fileRecords": 1,
+            "directoryRecords": 0,
+            "cacheWrites": 1,
+            "medianMs": 336,
+            "p95Ms": 393
+          },
+          "browse": {
+            "elapsedMs": 167,
+            "requests": 9,
+            "lists": 6,
+            "metadata": 1,
+            "downloads": 1,
+            "fileRecords": 0,
+            "directoryRecords": 0,
+            "cacheWrites": 0,
+            "medianMs": 166,
+            "p95Ms": 181
+          },
+          "browse-repeat": {
+            "elapsedMs": 108,
+            "requests": 7,
+            "lists": 6,
+            "metadata": 0,
+            "downloads": 0,
+            "fileRecords": 0,
+            "directoryRecords": 0,
+            "cacheWrites": 0,
+            "medianMs": 108,
+            "p95Ms": 109
+          }
+        },
+        "rows": [
+          {
+            "cold": {
+              "elapsedMs": 543,
+              "requests": 124,
+              "lists": 6,
+              "metadata": 3,
+              "downloads": 114,
+              "fileRecords": 100,
+              "directoryRecords": 13,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 134,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 180,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 664,
+              "requests": 27,
+              "lists": 16,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 365,
+              "requests": 17,
+              "lists": 12,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 167,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 108,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 552,
+              "requests": 124,
+              "lists": 6,
+              "metadata": 3,
+              "downloads": 114,
+              "fileRecords": 100,
+              "directoryRecords": 13,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 120,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 140,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 576,
+              "requests": 27,
+              "lists": 16,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 336,
+              "requests": 17,
+              "lists": 12,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 151,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 93,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 535,
+              "requests": 124,
+              "lists": 6,
+              "metadata": 3,
+              "downloads": 114,
+              "fileRecords": 100,
+              "directoryRecords": 13,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 110,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 153,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 579,
+              "requests": 27,
+              "lists": 16,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 323,
+              "requests": 17,
+              "lists": 12,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 153,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 109,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 493,
+              "requests": 124,
+              "lists": 6,
+              "metadata": 3,
+              "downloads": 114,
+              "fileRecords": 100,
+              "directoryRecords": 13,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 93,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 152,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 548,
+              "requests": 27,
+              "lists": 16,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 393,
+              "requests": 17,
+              "lists": 12,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 167,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 93,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 476,
+              "requests": 124,
+              "lists": 6,
+              "metadata": 3,
+              "downloads": 114,
+              "fileRecords": 100,
+              "directoryRecords": 13,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 111,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 167,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 592,
+              "requests": 27,
+              "lists": 16,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 350,
+              "requests": 17,
+              "lists": 12,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 181,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 106,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 477,
+              "requests": 124,
+              "lists": 6,
+              "metadata": 3,
+              "downloads": 114,
+              "fileRecords": 100,
+              "directoryRecords": 13,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 95,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 180,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 594,
+              "requests": 27,
+              "lists": 16,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 317,
+              "requests": 17,
+              "lists": 12,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 137,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 109,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 505,
+              "requests": 124,
+              "lists": 6,
+              "metadata": 3,
+              "downloads": 114,
+              "fileRecords": 100,
+              "directoryRecords": 13,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 123,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 165,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 562,
+              "requests": 27,
+              "lists": 16,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 366,
+              "requests": 17,
+              "lists": 12,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 168,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 108,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 467,
+              "requests": 124,
+              "lists": 6,
+              "metadata": 3,
+              "downloads": 114,
+              "fileRecords": 100,
+              "directoryRecords": 13,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 107,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 177,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 579,
+              "requests": 27,
+              "lists": 16,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 336,
+              "requests": 17,
+              "lists": 12,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 166,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 109,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 476,
+              "requests": 124,
+              "lists": 6,
+              "metadata": 3,
+              "downloads": 114,
+              "fileRecords": 100,
+              "directoryRecords": 13,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 124,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 154,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 549,
+              "requests": 27,
+              "lists": 16,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 336,
+              "requests": 17,
+              "lists": 12,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 166,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 109,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 505,
+              "requests": 124,
+              "lists": 6,
+              "metadata": 3,
+              "downloads": 114,
+              "fileRecords": 100,
+              "directoryRecords": 13,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 124,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 166,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 622,
+              "requests": 27,
+              "lists": 16,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 381,
+              "requests": 17,
+              "lists": 12,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 154,
+              "requests": 9,
+              "lists": 6,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 108,
+              "requests": 7,
+              "lists": 6,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "size": 1000,
+      "baseline": {
+        "baselineRef": "bd6a1cea6b71fd0b1606c5926bb5011614f45307",
+        "side": "baseline",
+        "simulated": true,
+        "scenario": "0.2.18 versus parallel preflight; trusted server digests; two devices; reload and single-file edits",
+        "size": 1000,
+        "latencyMs": 15,
+        "rounds": 10,
+        "summary": {
+          "cold": {
+            "elapsedMs": 5008,
+            "requests": 1158,
+            "lists": 18,
+            "metadata": 13,
+            "downloads": 1126,
+            "fileRecords": 1000,
+            "directoryRecords": 125,
+            "cacheWrites": 2,
+            "medianMs": 4637,
+            "p95Ms": 5008
+          },
+          "warm": {
+            "elapsedMs": 494,
+            "requests": 19,
+            "lists": 18,
+            "metadata": 0,
+            "downloads": 0,
+            "fileRecords": 0,
+            "directoryRecords": 0,
+            "cacheWrites": 0,
+            "medianMs": 457,
+            "p95Ms": 494
+          },
+          "restart": {
+            "elapsedMs": 562,
+            "requests": 21,
+            "lists": 18,
+            "metadata": 1,
+            "downloads": 1,
+            "fileRecords": 0,
+            "directoryRecords": 0,
+            "cacheWrites": 0,
+            "medianMs": 551,
+            "p95Ms": 568
+          },
+          "local-edit": {
+            "elapsedMs": 1717,
+            "requests": 63,
+            "lists": 52,
+            "metadata": 2,
+            "downloads": 2,
+            "fileRecords": 1,
+            "directoryRecords": 0,
+            "cacheWrites": 1,
+            "medianMs": 1572,
+            "p95Ms": 1717
+          },
+          "remote-edit": {
+            "elapsedMs": 1218,
+            "requests": 48,
+            "lists": 43,
+            "metadata": 2,
+            "downloads": 2,
+            "fileRecords": 1,
+            "directoryRecords": 0,
+            "cacheWrites": 1,
+            "medianMs": 1194,
+            "p95Ms": 1246
+          },
+          "browse": {
+            "elapsedMs": 340,
+            "requests": 21,
+            "lists": 18,
+            "metadata": 1,
+            "downloads": 1,
+            "fileRecords": 0,
+            "directoryRecords": 0,
+            "cacheWrites": 0,
+            "medianMs": 333,
+            "p95Ms": 362
+          },
+          "browse-repeat": {
+            "elapsedMs": 351,
+            "requests": 21,
+            "lists": 18,
+            "metadata": 1,
+            "downloads": 1,
+            "fileRecords": 0,
+            "directoryRecords": 0,
+            "cacheWrites": 0,
+            "medianMs": 343,
+            "p95Ms": 372
+          }
+        },
+        "rows": [
+          {
+            "cold": {
+              "elapsedMs": 5008,
+              "requests": 1158,
+              "lists": 18,
+              "metadata": 13,
+              "downloads": 1126,
+              "fileRecords": 1000,
+              "directoryRecords": 125,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 494,
+              "requests": 19,
+              "lists": 18,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 562,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 1717,
+              "requests": 63,
+              "lists": 52,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 1218,
+              "requests": 48,
+              "lists": 43,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 340,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 351,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 4860,
+              "requests": 1158,
+              "lists": 18,
+              "metadata": 13,
+              "downloads": 1126,
+              "fileRecords": 1000,
+              "directoryRecords": 125,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 457,
+              "requests": 19,
+              "lists": 18,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 560,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 1623,
+              "requests": 63,
+              "lists": 52,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 1246,
+              "requests": 48,
+              "lists": 43,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 337,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 343,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 4552,
+              "requests": 1158,
+              "lists": 18,
+              "metadata": 13,
+              "downloads": 1126,
+              "fileRecords": 1000,
+              "directoryRecords": 125,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 459,
+              "requests": 19,
+              "lists": 18,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 476,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 1617,
+              "requests": 63,
+              "lists": 52,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 1222,
+              "requests": 48,
+              "lists": 43,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 325,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 372,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 4702,
+              "requests": 1158,
+              "lists": 18,
+              "metadata": 13,
+              "downloads": 1126,
+              "fileRecords": 1000,
+              "directoryRecords": 125,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 474,
+              "requests": 19,
+              "lists": 18,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 562,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 1572,
+              "requests": 63,
+              "lists": 52,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 1238,
+              "requests": 48,
+              "lists": 43,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 340,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 370,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 4570,
+              "requests": 1158,
+              "lists": 18,
+              "metadata": 13,
+              "downloads": 1126,
+              "fileRecords": 1000,
+              "directoryRecords": 125,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 448,
+              "requests": 19,
+              "lists": 18,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 551,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 1576,
+              "requests": 63,
+              "lists": 52,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 1176,
+              "requests": 48,
+              "lists": 43,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 330,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 353,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 4736,
+              "requests": 1158,
+              "lists": 18,
+              "metadata": 13,
+              "downloads": 1126,
+              "fileRecords": 1000,
+              "directoryRecords": 125,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 444,
+              "requests": 19,
+              "lists": 18,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 522,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 1543,
+              "requests": 63,
+              "lists": 52,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 1194,
+              "requests": 48,
+              "lists": 43,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 333,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 335,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 4599,
+              "requests": 1158,
+              "lists": 18,
+              "metadata": 13,
+              "downloads": 1126,
+              "fileRecords": 1000,
+              "directoryRecords": 125,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 450,
+              "requests": 19,
+              "lists": 18,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 536,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 1533,
+              "requests": 63,
+              "lists": 52,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 1182,
+              "requests": 48,
+              "lists": 43,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 325,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 324,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 4352,
+              "requests": 1158,
+              "lists": 18,
+              "metadata": 13,
+              "downloads": 1126,
+              "fileRecords": 1000,
+              "directoryRecords": 125,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 460,
+              "requests": 19,
+              "lists": 18,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 494,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 1528,
+              "requests": 63,
+              "lists": 52,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 1146,
+              "requests": 48,
+              "lists": 43,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 346,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 341,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 4637,
+              "requests": 1158,
+              "lists": 18,
+              "metadata": 13,
+              "downloads": 1126,
+              "fileRecords": 1000,
+              "directoryRecords": 125,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 442,
+              "requests": 19,
+              "lists": 18,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 554,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 1546,
+              "requests": 63,
+              "lists": 52,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 1178,
+              "requests": 48,
+              "lists": 43,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 329,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 341,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 4657,
+              "requests": 1158,
+              "lists": 18,
+              "metadata": 13,
+              "downloads": 1126,
+              "fileRecords": 1000,
+              "directoryRecords": 125,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 477,
+              "requests": 19,
+              "lists": 18,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 568,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 1706,
+              "requests": 63,
+              "lists": 52,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 1227,
+              "requests": 48,
+              "lists": 43,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 362,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 359,
+              "requests": 21,
+              "lists": 18,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          }
+        ]
+      },
+      "current": {
+        "baselineRef": "bd6a1cea6b71fd0b1606c5926bb5011614f45307",
+        "side": "current",
+        "simulated": true,
+        "scenario": "0.2.18 versus parallel preflight; trusted server digests; two devices; reload and single-file edits",
+        "size": 1000,
+        "latencyMs": 15,
+        "rounds": 10,
+        "summary": {
+          "cold": {
+            "elapsedMs": 4143,
+            "requests": 1157,
+            "lists": 17,
+            "metadata": 13,
+            "downloads": 1126,
+            "fileRecords": 1000,
+            "directoryRecords": 125,
+            "cacheWrites": 2,
+            "medianMs": 3804,
+            "p95Ms": 4143
+          },
+          "warm": {
+            "elapsedMs": 410,
+            "requests": 18,
+            "lists": 17,
+            "metadata": 0,
+            "downloads": 0,
+            "fileRecords": 0,
+            "directoryRecords": 0,
+            "cacheWrites": 0,
+            "medianMs": 345,
+            "p95Ms": 410
+          },
+          "restart": {
+            "elapsedMs": 498,
+            "requests": 20,
+            "lists": 17,
+            "metadata": 1,
+            "downloads": 1,
+            "fileRecords": 0,
+            "directoryRecords": 0,
+            "cacheWrites": 0,
+            "medianMs": 425,
+            "p95Ms": 498
+          },
+          "local-edit": {
+            "elapsedMs": 1668,
+            "requests": 62,
+            "lists": 51,
+            "metadata": 2,
+            "downloads": 2,
+            "fileRecords": 1,
+            "directoryRecords": 0,
+            "cacheWrites": 1,
+            "medianMs": 1488,
+            "p95Ms": 1668
+          },
+          "remote-edit": {
+            "elapsedMs": 1050,
+            "requests": 47,
+            "lists": 42,
+            "metadata": 2,
+            "downloads": 2,
+            "fileRecords": 1,
+            "directoryRecords": 0,
+            "cacheWrites": 1,
+            "medianMs": 1072,
+            "p95Ms": 1100
+          },
+          "browse": {
+            "elapsedMs": 373,
+            "requests": 20,
+            "lists": 17,
+            "metadata": 1,
+            "downloads": 1,
+            "fileRecords": 0,
+            "directoryRecords": 0,
+            "cacheWrites": 0,
+            "medianMs": 369,
+            "p95Ms": 380
+          },
+          "browse-repeat": {
+            "elapsedMs": 296,
+            "requests": 18,
+            "lists": 17,
+            "metadata": 0,
+            "downloads": 0,
+            "fileRecords": 0,
+            "directoryRecords": 0,
+            "cacheWrites": 0,
+            "medianMs": 284,
+            "p95Ms": 296
+          }
+        },
+        "rows": [
+          {
+            "cold": {
+              "elapsedMs": 4143,
+              "requests": 1157,
+              "lists": 17,
+              "metadata": 13,
+              "downloads": 1126,
+              "fileRecords": 1000,
+              "directoryRecords": 125,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 410,
+              "requests": 18,
+              "lists": 17,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 498,
+              "requests": 20,
+              "lists": 17,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 1668,
+              "requests": 62,
+              "lists": 51,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 1050,
+              "requests": 47,
+              "lists": 42,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 373,
+              "requests": 20,
+              "lists": 17,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 296,
+              "requests": 18,
+              "lists": 17,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 4002,
+              "requests": 1157,
+              "lists": 17,
+              "metadata": 13,
+              "downloads": 1126,
+              "fileRecords": 1000,
+              "directoryRecords": 125,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 360,
+              "requests": 18,
+              "lists": 17,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 425,
+              "requests": 20,
+              "lists": 17,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 1478,
+              "requests": 62,
+              "lists": 51,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 1072,
+              "requests": 47,
+              "lists": 42,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 373,
+              "requests": 20,
+              "lists": 17,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 275,
+              "requests": 18,
+              "lists": 17,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 3932,
+              "requests": 1157,
+              "lists": 17,
+              "metadata": 13,
+              "downloads": 1126,
+              "fileRecords": 1000,
+              "directoryRecords": 125,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 345,
+              "requests": 18,
+              "lists": 17,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 460,
+              "requests": 20,
+              "lists": 17,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 1491,
+              "requests": 62,
+              "lists": 51,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 1100,
+              "requests": 47,
+              "lists": 42,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 380,
+              "requests": 20,
+              "lists": 17,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 289,
+              "requests": 18,
+              "lists": 17,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 3701,
+              "requests": 1157,
+              "lists": 17,
+              "metadata": 13,
+              "downloads": 1126,
+              "fileRecords": 1000,
+              "directoryRecords": 125,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 356,
+              "requests": 18,
+              "lists": 17,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 435,
+              "requests": 20,
+              "lists": 17,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 1503,
+              "requests": 62,
+              "lists": 51,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 1095,
+              "requests": 47,
+              "lists": 42,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 359,
+              "requests": 20,
+              "lists": 17,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 290,
+              "requests": 18,
+              "lists": 17,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 3824,
+              "requests": 1157,
+              "lists": 17,
+              "metadata": 13,
+              "downloads": 1126,
+              "fileRecords": 1000,
+              "directoryRecords": 125,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 328,
+              "requests": 18,
+              "lists": 17,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 415,
+              "requests": 20,
+              "lists": 17,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 1471,
+              "requests": 62,
+              "lists": 51,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 1085,
+              "requests": 47,
+              "lists": 42,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 344,
+              "requests": 20,
+              "lists": 17,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 279,
+              "requests": 18,
+              "lists": 17,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 3756,
+              "requests": 1157,
+              "lists": 17,
+              "metadata": 13,
+              "downloads": 1126,
+              "fileRecords": 1000,
+              "directoryRecords": 125,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 357,
+              "requests": 18,
+              "lists": 17,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 424,
+              "requests": 20,
+              "lists": 17,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 1400,
+              "requests": 62,
+              "lists": 51,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 1050,
+              "requests": 47,
+              "lists": 42,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 356,
+              "requests": 20,
+              "lists": 17,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 284,
+              "requests": 18,
+              "lists": 17,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 3665,
+              "requests": 1157,
+              "lists": 17,
+              "metadata": 13,
+              "downloads": 1126,
+              "fileRecords": 1000,
+              "directoryRecords": 125,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 326,
+              "requests": 18,
+              "lists": 17,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 419,
+              "requests": 20,
+              "lists": 17,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 1493,
+              "requests": 62,
+              "lists": 51,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 1089,
+              "requests": 47,
+              "lists": 42,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 369,
+              "requests": 20,
+              "lists": 17,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 292,
+              "requests": 18,
+              "lists": 17,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 3804,
+              "requests": 1157,
+              "lists": 17,
+              "metadata": 13,
+              "downloads": 1126,
+              "fileRecords": 1000,
+              "directoryRecords": 125,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 342,
+              "requests": 18,
+              "lists": 17,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 434,
+              "requests": 20,
+              "lists": 17,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 1427,
+              "requests": 62,
+              "lists": 51,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 1063,
+              "requests": 47,
+              "lists": 42,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 376,
+              "requests": 20,
+              "lists": 17,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 289,
+              "requests": 18,
+              "lists": 17,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 3760,
+              "requests": 1157,
+              "lists": 17,
+              "metadata": 13,
+              "downloads": 1126,
+              "fileRecords": 1000,
+              "directoryRecords": 125,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 364,
+              "requests": 18,
+              "lists": 17,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 413,
+              "requests": 20,
+              "lists": 17,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 1488,
+              "requests": 62,
+              "lists": 51,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 1050,
+              "requests": 47,
+              "lists": 42,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 369,
+              "requests": 20,
+              "lists": 17,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 275,
+              "requests": 18,
+              "lists": 17,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          },
+          {
+            "cold": {
+              "elapsedMs": 3834,
+              "requests": 1157,
+              "lists": 17,
+              "metadata": 13,
+              "downloads": 1126,
+              "fileRecords": 1000,
+              "directoryRecords": 125,
+              "cacheWrites": 2
+            },
+            "warm": {
+              "elapsedMs": 321,
+              "requests": 18,
+              "lists": 17,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "restart": {
+              "elapsedMs": 431,
+              "requests": 20,
+              "lists": 17,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "local-edit": {
+              "elapsedMs": 1495,
+              "requests": 62,
+              "lists": 51,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "remote-edit": {
+              "elapsedMs": 1080,
+              "requests": 47,
+              "lists": 42,
+              "metadata": 2,
+              "downloads": 2,
+              "fileRecords": 1,
+              "directoryRecords": 0,
+              "cacheWrites": 1
+            },
+            "browse": {
+              "elapsedMs": 370,
+              "requests": 20,
+              "lists": 17,
+              "metadata": 1,
+              "downloads": 1,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            },
+            "browse-repeat": {
+              "elapsedMs": 274,
+              "requests": 18,
+              "lists": 17,
+              "metadata": 0,
+              "downloads": 0,
+              "fileRecords": 0,
+              "directoryRecords": 0,
+              "cacheWrites": 0
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

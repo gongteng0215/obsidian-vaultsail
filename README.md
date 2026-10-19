@@ -6,6 +6,8 @@ Sync Obsidian notes and attachments through your own Baidu Netdisk account, with
 
 **Release 0.2.18** reduces repeated remote history reads, preserves directory caches across reloads, and loads remote inventories concurrently. It also includes empty-folder sync, detailed local diagnostics, and a six-step Baidu application setup guide. Existing settings and connections are preserved; update both devices for empty folders. See [evidence and validation](docs/releases/0.2.18.md).
 
+**Local preview 0.2.19:** file and directory preflight checks run concurrently, overlapping directory pages share one request, and failed checks drain before the task ends. Includes a numeric-only local performance report tool. Existing authorization, bindings and defaults are preserved. [Evidence and acceptance](docs/releases/0.2.19.md). The public GitHub release remains 0.2.18; this preview has not been submitted for community review.
+
 [Community plugin](https://community.obsidian.md/plugins/vaultsail) · [Download 0.2.18](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.18) · [Release notes](docs/releases/0.2.18.md) · [Version roadmap](docs/ROADMAP.md) · [Report an issue](https://github.com/gongteng0215/obsidian-vaultsail/issues)
 
 **Contents:** [All features](#feature-inventory) · [Roadmap](#version-roadmap) · [Install](#install-or-update) · [First connection](#connect-your-first-vault) · [Device pairing](#pair-a-computer-ipad-or-another-vault) · [Automatic sync](#automatic-sync-and-the-queue) · [Conflicts](#versions-and-conflict-resolution) · [Cloud location](#where-the-cloud-data-goes) · [Recovery](#file-scope-deletion-and-recovery) · [FAQ](#performance-and-troubleshooting) · [Privacy](#privacy-and-network-access)

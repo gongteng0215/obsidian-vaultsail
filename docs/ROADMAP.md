@@ -1,5 +1,7 @@
 # VaultSail version roadmap
 
+Local preview **0.2.19** overlaps read-only preflight checks, coalesces in-flight listing pages, and adds numeric local performance reporting. [Validation and remaining native acceptance](releases/0.2.19.md).
+
 Release **0.2.18** adds remote history cache fixes, persistent directory caches and parallel inventories, including empty-folder sync, diagnostics and application setup guidance from 0.2.15–0.2.17. [Evidence and validation](releases/0.2.18.md). Native dual-device and live Baidu performance acceptance remain pending.
 
 **English** | [简体中文](ROADMAP.zh-CN.md) · [Feature inventory](../README.md#feature-inventory)

@@ -131,7 +131,7 @@ export class SyncEngine {
   }
   get pauseRequested(): boolean { return this.running && this.stopped; }
   private guard(): void { if (this.stopped) throw new VaultSailError('paused', '任务已暂停，未完成操作保留在恢复日志中。'); }
-  private async exclusive<T>(run: () => Promise<T>, successPhase: 'completed' | 'preview-ready' = 'completed'): Promise<T> {
+  private async exclusive<T>(run: () => Promise<T>, successPhase: 'completed' | 'preview-ready' | 'scanning-remote' = 'completed'): Promise<T> {
     if (this.running) throw new VaultSailError('busy', '当前库已有任务在运行。');
     this.running = true; this.stopped = false; this.fileRecords.clear();
     this.uploads.clear();
@@ -185,12 +185,20 @@ export class SyncEngine {
       catch (error) { if (error instanceof VaultSailError && error.code === 'changed') throw new VaultSailError('recovery', '未完成任务遇到新的编辑，内容已保留，请先处理旧任务。'); throw error; }
     }
   }
-  async syncAutomatic(paths: string[], remote: boolean, full: boolean, deletionEnabled = false): Promise<SyncResult> {
+  /** A read-only inventory for the coordinator's parallel file/directory preflight. */
+  async prepareRemote(): Promise<Revision[]> {
+    return this.exclusive(async () => {
+      this.emit('scanning-remote'); this.guard();
+      const ops = await this.remote.revisions(this.vaultId, (doneFiles, totalFiles) => this.emit('scanning-remote', { doneFiles, totalFiles }), true);
+      this.guard(); return ops;
+    }, 'scanning-remote');
+  }
+  async syncAutomatic(paths: string[], remote: boolean, full: boolean, deletionEnabled = false, preparedOps?: Revision[]): Promise<SyncResult> {
     paths.forEach(path => this.markDirty(path));
     await this.recoverPending();
-    let ops: Revision[] | undefined;
+    let ops = preparedOps;
     if (remote && !full && this.localIndex) {
-      ops = await this.exclusive(async () => { this.emit('checking-remote'); return this.remote.revisions(this.vaultId, undefined, true); });
+      ops ??= await this.exclusive(async () => { this.emit('checking-remote'); return this.remote.revisions(this.vaultId, undefined, true); });
       if (!paths.length && this.signature(ops) === this.remoteSignature) return { incomingChanges: 0, preservedConflicts: 0, uploadedFiles: 0, downloadedFiles: 0, deletedFiles: 0, autoMergedFiles: 0, blockedFiles: this.blocked.size };
     }
     return this.sync(deletionEnabled, { incremental: !full, ops });
