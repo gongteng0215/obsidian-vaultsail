@@ -21,7 +21,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   proto.setText = function(this: HTMLElement, value: string) { this.textContent = value; };
   proto.createEl = function(this: HTMLElement, tag: string, options?: { text?: string; cls?: string }) { const el = this.appendChild(document.createElement(tag)); el.textContent = options?.text ?? ''; if (options?.cls) el.className = options.cls; return el; };
   proto.createDiv = function(this: HTMLElement, options?: { cls?: string }) { const el = this.appendChild(document.createElement('div')); if (options?.cls) el.className = options.cls; return el; };
-  const result = await build({ stdin: { contents: "export { default as Plugin } from './src/main.ts'; export { AuthManager } from './src/auth/auth-manager.ts'; export { ObsidianLocalFiles, ObsidianStateStore } from './src/platform/obsidian-adapters.ts'; export { TFile, Modal, Notice } from 'obsidian';", resolveDir: process.cwd() }, bundle: true, format: 'esm', platform: 'node', write: false,
+  const result = await build({ stdin: { contents: "export { default as Plugin } from './src/main.ts'; export { AuthManager } from './src/auth/auth-manager.ts'; export { VaultSailError } from './src/core/safety.ts'; export { ObsidianLocalFiles, ObsidianStateStore } from './src/platform/obsidian-adapters.ts'; export { TFile, Modal, Notice } from 'obsidian';", resolveDir: process.cwd() }, bundle: true, format: 'esm', platform: 'node', write: false,
     plugins: [{ name: 'obsidian-harness', setup(builder) { builder.onResolve({ filter: /^obsidian$/ }, () => ({ path: path.resolve('test/fixtures/obsidian.ts') })); } }] });
   mkdirSync('dist/test', { recursive: true }); const harnessPath = path.resolve('dist/test/ui-harness.mjs');
   writeFileSync(harnessPath, result.outputFiles[0].text); const module = await import(pathToFileURL(harnessPath).href);
@@ -439,6 +439,50 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
     cloud.click(); await feedback.queue.pump();
     assert.equal(cloud.getAttribute('data-vaultsail-sync-state'), 'idle', 'failed tasks must clear the active indicator');
   } finally { releaseFeedback(); await firstFeedbackRun; feedback.onunload(); }
+  // Exercise automatic notifications through the real queue/run/history path.
+  // Controlled engine outcomes isolate presentation without making live requests.
+  const notifierQueueStorage = new Map<string, unknown>();
+  const notifier = new module.Plugin({ ...app,
+    loadLocalStorage: (key: string) => key.startsWith('vaultsail-queue-') ? notifierQueueStorage.get(key) : app.loadLocalStorage(key),
+    saveLocalStorage: (key: string, value: unknown) => key.startsWith('vaultsail-queue-') ? notifierQueueStorage.set(key, value) : app.saveLocalStorage(key, value),
+  }); notifier.saved = { ...structuredClone(plugin.saved), autoSyncEnabled: true };
+  let automaticError: unknown, outcome = { incomingChanges: 0, preservedConflicts: 0, uploadedFiles: 0, downloadedFiles: 0, deletedFiles: 0, autoMergedFiles: 0, blockedFiles: 0 };
+  notifier.getEngine = async () => ({ recoverPending: async () => {}, syncAutomatic: async () => { if (automaticError) throw automaticError; return outcome; } });
+  await notifier.onload();
+  const automaticCloud = notifier.ribbons.find((ribbon: any) => ribbon.icon === 'cloud').el;
+  const notificationClock = Date.now; let notificationNow = notificationClock();
+  try {
+    Date.now = () => notificationNow;
+    let beforeNotices = module.Notice.messages.length;
+    await notifier.queue.pump(); assert.equal(module.Notice.messages.length, beforeNotices, 'automatic no-change checks stay quiet');
+    outcome = { ...outcome, uploadedFiles: 2, downloadedFiles: 1 };
+    notifier.queue.request('remote'); await notifier.queue.pump();
+    assert.equal(module.Notice.messages.length, beforeNotices + 1); assert.match(module.Notice.messages.at(-1), /自动同步完成：上传 2 个；下载 1 个/);
+    const firstAutomaticToast = module.Notice.instances.at(-1);
+    outcome = { ...outcome, uploadedFiles: 0, downloadedFiles: 0, preservedConflicts: 1, blockedFiles: 1 };
+    notifier.queue.request('remote'); await notifier.queue.pump();
+    assert.match(module.Notice.messages.at(-1), /冲突已保留双方/); assert.match(module.Notice.messages.at(-1), /跳过 1 项/);
+    assert.equal(firstAutomaticToast.hidden, true, 'automatic toasts replace the previous toast instead of stacking');
+    beforeNotices = module.Notice.messages.length;
+    notifier.queue.request('remote'); await notifier.queue.pump(); assert.equal(module.Notice.messages.length, beforeNotices, 'the same warnings are not repeated every poll');
+    automaticError = new module.VaultSailError('network', 'private-access https://private.invalid');
+    notifier.queue.request('remote'); await notifier.queue.pump();
+    assert.match(module.Notice.messages.at(-1), /自动同步未完成.*将自动重试/);
+    assert.equal(automaticCloud.getAttribute('data-vaultsail-sync-state'), 'attention');
+    assert.match(automaticCloud.getAttribute('aria-label'), /网络异常/);
+    const failureToast = module.Notice.instances.at(-1);
+    beforeNotices = module.Notice.messages.length; notificationNow += 10_000;
+    await notifier.queue.pump(); assert.equal(module.Notice.messages.length, beforeNotices, 'automatic retries do not repeat the failure notification');
+    automaticError = undefined; outcome = { ...outcome, preservedConflicts: 0, blockedFiles: 0 }; notificationNow += 20_000;
+    await notifier.queue.pump(); assert.equal(module.Notice.messages.length, beforeNotices, 'recovered no-change checks remain quiet');
+    assert.equal(automaticCloud.getAttribute('data-vaultsail-sync-state'), 'idle');
+    assert.equal(failureToast.hidden, true, 'verified recovery removes a stale failure toast');
+    automaticError = new module.VaultSailError('network', 'private-access');
+    notifier.queue.request('remote'); await notifier.queue.pump(); assert.equal(module.Notice.messages.length, beforeNotices + 1, 'a new failure after recovery is announced');
+    notifier.pause(); assert.equal(automaticCloud.getAttribute('data-vaultsail-sync-state'), 'idle', 'user pause clears retry warnings');
+    assert.equal(notifier.automaticNotifications.attention, undefined);
+    notifier.invalidateConnection(); assert.equal(notifier.automaticToast, undefined); assert.equal(notifier.automaticNotifications.attention, undefined);
+  } finally { Date.now = notificationClock; notifier.onunload(); }
   // Exercise a real timer against the rendered view, including a pending file
   // request, failure, recovery actions and a new task replacing the old snapshot.
   const realNow = Date.now; const clock = realNow();

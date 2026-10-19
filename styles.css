@@ -191,5 +191,6 @@
   background-color: var(--background-modifier-hover);
 }
 [data-vaultsail-sync-state=running] svg { animation: vaultsail-sync-pulse 1.4s ease-in-out infinite; }
+[data-vaultsail-sync-state=attention] { color: var(--text-warning); background-color: var(--background-modifier-hover); }
 @keyframes vaultsail-sync-pulse { 50% { opacity: .4; } }
 @media (prefers-reduced-motion: reduce) { [data-vaultsail-sync-state=running] svg { animation: none; } }

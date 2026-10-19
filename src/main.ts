@@ -19,6 +19,7 @@ import { scanSummary } from './sync/scan-summary';
 import type { HttpTransport, HttpRequest, RequestPolicy } from './providers/http';
 import { requestPools } from './platform/request-pools';
 import { SyncQueue, type QueueBatch } from './sync/queue';
+import { AutomaticNotifications, type SyncNotice, type SyncNoticeSummary } from './sync/automatic-notifications';
 import { withVaultTaskLock } from './platform/task-lock';
 import { ConflictDrafts } from './platform/conflict-drafts';
 import { ConflictInbox } from './ui/conflicts';
@@ -68,6 +69,8 @@ export default class VaultSailPlugin extends Plugin {
   private queue?: SyncQueue; private queueContext?: string; private automaticRun = false;
   private layoutReady = false; private pendingManualSync = false;
   private syncRibbon?: HTMLElement;
+  private automaticNotifications = new AutomaticNotifications(() => Date.now());
+  private automaticToast?: Notice;
   private histories = new Map<string, SyncHistory>(); private activeHistory?: SyncHistory;
   private transferListeners = new Set<() => void>(); private uploadTelemetry = new UploadTelemetry();
   private loadedTransferTask?: { context: string; task?: SyncHistoryTask }; private progressContext?: string;
@@ -127,8 +130,9 @@ export default class VaultSailPlugin extends Plugin {
     await this.auditLocalRecovery();
   }
 
-  onunload(): void { this.alive = false; this.queue?.dispose(); this.performance.finish(); this.connectionRequests.abort(); this.pause(false); this.auth?.cancel(); if (this.progressTimer) clearInterval(this.progressTimer); this.progressTimer = undefined; this.progressListeners.clear(); this.transferListeners.clear(); for (const history of this.histories.values()) history.dispose(); for (const leaf of this.app.workspace?.getLeavesOfType?.(TRANSFER_CENTER_VIEW) ?? []) leaf.detach(); }
+  onunload(): void { this.alive = false; this.automaticToast?.hide(); this.queue?.dispose(); this.performance.finish(); this.connectionRequests.abort(); this.pause(false); this.auth?.cancel(); if (this.progressTimer) clearInterval(this.progressTimer); this.progressTimer = undefined; this.progressListeners.clear(); this.transferListeners.clear(); for (const history of this.histories.values()) history.dispose(); for (const leaf of this.app.workspace?.getLeavesOfType?.(TRANSFER_CENTER_VIEW) ?? []) leaf.detach(); }
   private invalidateConnection(): void {
+    this.automaticNotifications.reset(); this.automaticToast?.hide(); this.automaticToast = undefined;
     this.queue?.dispose(); this.queue = undefined; this.queueContext = undefined;
     this.generation++; this.connectionRequests.abort(); this.connectionRequests = new AbortController();
     this.progress = undefined; this.progressContext = undefined; this.uploadTelemetry.reset(); this.loadedTransferTask = undefined; this.notifyTransfers();
@@ -176,7 +180,14 @@ export default class VaultSailPlugin extends Plugin {
     this.queue = new SyncQueue({ load: () => this.app.loadLocalStorage(key), save: state => this.app.saveLocalStorage(key, state),
       enabled: () => this.settings.autoSyncEnabled, pollMs: () => this.settings.remotePollSeconds * 1000,
       canRun: () => this.alive && !this.busy && !document.hidden && globalThis.navigator?.onLine !== false,
-      run: async batch => { this.automaticRun = !batch.manual; try { await this.run(batch.manual ? '正在同步…' : '自动检查与同步…', () => this.startSync(batch), true, !batch.manual); } finally { this.automaticRun = false; } },
+      run: async batch => {
+        const generation = this.generation; this.automaticRun = !batch.manual;
+        try { await this.run(batch.manual ? '正在同步…' : '自动检查与同步…', () => this.startSync(batch), true, !batch.manual); }
+        catch (error) {
+          if (!batch.manual && this.alive && generation === this.generation) this.showAutomaticNotice(this.automaticNotifications.failed(error));
+          throw error;
+        } finally { this.automaticRun = false; }
+      },
       change: () => { try { this.settingTab?.updateProgress(); } catch { /* Detached view. */ } this.notifyTransfers(); } });
     if (document.hidden) this.queue.suspend(true);
   }
@@ -201,13 +212,19 @@ export default class VaultSailPlugin extends Plugin {
   }
   private updateSyncRibbon(): void {
     if (!this.syncRibbon) return;
-    const state = this.pendingManualSync ? 'queued' : this.queue?.activity
+    const activity = this.pendingManualSync ? 'queued' : this.queue?.activity
       ?? (this.busy && this.progress && progressRunning(this.progress) ? 'running' : 'idle');
-    const label = state === 'running' ? this.statusText : state === 'queued'
+    const state = activity !== 'running' && this.automaticNotifications.attention ? 'attention' : activity;
+    const label = state === 'attention' ? this.automaticNotifications.attention : state === 'running' ? this.statusText : state === 'queued'
       ? this.pendingManualSync ? '等待笔记库加载完成后同步' : this.queueSummary() : '开始同步';
     this.syncRibbon.setAttribute('data-vaultsail-sync-state', state);
-    this.syncRibbon.setAttribute('aria-busy', String(state !== 'idle'));
+    this.syncRibbon.setAttribute('aria-busy', String(activity !== 'idle'));
     this.syncRibbon.setAttribute('aria-label', 'VaultSail：' + label);
+  }
+  private showAutomaticNotice(notice?: SyncNotice): void {
+    if (!this.alive) return;
+    if (notice) { this.automaticToast?.hide(); this.automaticToast = new Notice(notice.message, notice.duration); }
+    this.updateSyncRibbon();
   }
   queueSummary(): string { return this.queue?.summary() ?? '绑定云端库后可开启自动同步。'; }
   private history(context = this.context()): SyncHistory | undefined {
@@ -322,7 +339,7 @@ export default class VaultSailPlugin extends Plugin {
     finally { this.performance.finish(); this.busy = false; this.refreshUI(); }
   }
   pause(user = true): void {
-    if (user) this.queue?.pause();
+    if (user) { this.queue?.pause(); this.automaticNotifications.clearFailure(); this.automaticToast?.hide(); this.automaticToast = undefined; }
     this.engine?.pause();
     if (this.authPhase === 'idle' && this.busy && this.progress && progressRunning(this.progress)) {
       this.transferPauseRequested = true; this.statusText = '已请求暂停，等待当前请求结束。';
@@ -486,9 +503,16 @@ export default class VaultSailPlugin extends Plugin {
         finally { this.performance.finish(); this.busy = false; this.refreshUI(); } }, () => this.pause(), listener => this.subscribeProgress(listener)).open();
   }
   async startSync(batch?: QueueBatch): Promise<void> {
-    return this.recorded(batch && !batch.manual ? 'automatic' : 'manual', () => this.performSync(batch));
+    const generation = this.generation;
+    const result = await this.recorded(batch && !batch.manual ? 'automatic' : 'manual', () => this.performSync(batch));
+    if (result && this.alive && generation === this.generation) {
+      const wasAttention = !!this.automaticNotifications.attention;
+      const notice = this.automaticNotifications.completed(result, this.automaticRun);
+      if (wasAttention && !notice) { this.automaticToast?.hide(); this.automaticToast = undefined; }
+      this.showAutomaticNotice(notice);
+    }
   }
-  private async performSync(batch?: QueueBatch): Promise<void> {
+  private async performSync(batch?: QueueBatch): Promise<SyncNoticeSummary | undefined> {
     if (batch && !batch.manual && !batch.full && !batch.remote && this.engine) {
       const paths = await this.engine.changedFromBaseline(batch.paths);
       if (!paths.length) { this.statusText = '文件内容已与基线一致，无需同步。'; return; }
@@ -511,6 +535,7 @@ export default class VaultSailPlugin extends Plugin {
     const key = this.successKey(); if (key) this.app.saveLocalStorage(key, { completedAt: Date.now(), mode: 'sync', files, bytes: contentBytes, elapsedMs: Date.now() - startedAt, blockedFiles: blocked });
     const message = `同步${blocked ? '部分完成' : '完成'}：上传 ${uploaded} 个，下载 ${downloaded} 个${merged ? `，自动合并 ${merged} 个` : ''}${deleted ? `，删除 ${deleted} 项` : ''}，失败 0 项${blocked ? `；跳过 ${blocked} 项超限或关联文件，未传输，请查看跳过文件` : ''}${conflicts ? `；${conflicts} 项冲突已保留双方，可打开待解决冲突` : ''}${incoming ? '；期间又有新版本，下一次同步会继续处理' : ''}。`;
     this.statusText = message; if (!this.automaticRun) new Notice(message, 9000);
+    return { uploaded, downloaded, deleted, merged, conflicts, blocked };
   }
   cloudLocation(): string {
     const id = this.settings.binding?.vaultId ?? this.settings.remoteVaultId;

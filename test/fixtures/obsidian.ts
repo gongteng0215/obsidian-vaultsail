@@ -3,7 +3,11 @@ const element = (parent: HTMLElement, tag: string) => parent.appendChild(documen
 export class App {}
 export const Platform = { isMobile: false, isDesktop: true };
 export class TFile { path: string; stat: { size: number }; constructor(path: string, size: number) { this.path = path; this.stat = { size }; } }
-export class Notice { static messages: string[] = []; constructor(message: string) { Notice.messages.push(message); } }
+export class Notice {
+  static messages: string[] = []; static instances: Notice[] = []; hidden = false;
+  constructor(message: string, public duration?: number) { Notice.messages.push(message); Notice.instances.push(this); }
+  hide(): void { this.hidden = true; }
+}
 export function requireApiVersion(): boolean { return true; }
 export async function requestUrl(input: unknown): Promise<unknown> { return (globalThis as unknown as { mockRequest: (input: unknown) => Promise<unknown> }).mockRequest(input); }
 export class Plugin {
