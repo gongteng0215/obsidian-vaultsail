@@ -57,6 +57,21 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   const plugin = new module.Plugin(app); plugin.saved = { providerId: 'baidu', appKey: 'my-app', secretRef: 'own-secret', appDirectory: '/apps/test', remoteVaultId: 'legacy-name', access_token: 'must-be-stripped' };
   t.after(() => plugin.onunload());
   await plugin.onload(); plugin.tabs[0].display();
+  const appGuide = plugin.tabs[0].containerEl.querySelector('#vaultsail-baidu-app-guide')!;
+  assert.equal(appGuide.hasAttribute('open'), false, 'configured users can keep the onboarding compact');
+  assert.equal(appGuide.querySelectorAll('li').length, 6);
+  assert.match(appGuide.textContent!, /创建应用/); assert.match(appGuide.textContent!, /编辑/); assert.match(appGuide.textContent!, /应用凭证/);
+  assert.match(appGuide.textContent!, /保存密钥/); assert.match(appGuide.textContent!, /无需填写 AppID 或 SignKey/);
+  [...plugin.tabs[0].containerEl.querySelectorAll('button')].find(button => button.textContent === '打开我的应用')!.click();
+  assert.deepEqual(openedUrls, ['https://pan.baidu.com/union/console/applist']); openedUrls.length = 0;
+  appGuide.setAttribute('open', ''); plugin.tabs[0].display();
+  assert.equal(plugin.tabs[0].containerEl.querySelector('#vaultsail-baidu-app-guide')!.hasAttribute('open'), true, 'background refresh preserves guide disclosure');
+  const firstUse = new module.Plugin(app);
+  try {
+    await firstUse.onload(); firstUse.tabs[0].display();
+    assert.equal(firstUse.tabs[0].containerEl.querySelector('#vaultsail-baidu-app-guide')!.hasAttribute('open'), true, 'new users see the application creation steps immediately');
+    assert.equal(firstUse.tabs[0].containerEl.textContent!.includes('never-render-private-secret'), false);
+  } finally { firstUse.onunload(); firstUse.tabs[0]?.containerEl.remove(); }
   const buttons = () => [...document.querySelectorAll('button')].map(button => button.textContent);
   for (const label of ['连接百度网盘', '验证文件传输', '创建并绑定', '预览上传', '预览下载', '恢复未完成任务']) assert.ok(buttons().includes(label));
   assert.ok(document.body.textContent!.includes('尚未验证绑定'));

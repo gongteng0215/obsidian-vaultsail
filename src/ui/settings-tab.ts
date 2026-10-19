@@ -11,6 +11,7 @@ import { DEFAULT_TRANSFER_CONCURRENCY, MAX_TRANSFER_CONCURRENCY } from '../core/
 import { acceptFields, preserveInteraction, rememberFields } from './interaction';
 
 const AUTH_LABELS = { unconfigured: '应用未配置', disconnected: '未授权', pending: '等待授权', connected: '已授权', reauthorize: '需要重新授权' };
+const BAIDU_APP_CONSOLE_URL = 'https://pan.baidu.com/union/console/applist';
 export class VaultSailSettingTab extends PluginSettingTab {
   private plugin: VaultSailPlugin;
   private activeTab = 'connect';
@@ -151,8 +152,25 @@ export class VaultSailSettingTab extends PluginSettingTab {
     if (!p.settings.binding) new Setting(transferCard).setName('先选择云端知识库').setDesc('目录已配置不代表库已绑定。首次使用创建新库；已有其他设备时选择同一个云端库。')
       .addButton(button => button.setButtonText('前往云端知识库').onClick(() => selectTab('vault')));
     new Setting(appCard).setName('云端服务').addDropdown(dropdown => this.lock(dropdown.addOption('none', '未配置').addOption('baidu', '百度网盘').setValue(p.settings.providerId)).onChange(value => { void p.changeConfiguration({ providerId: value as 'none' | 'baidu' }).catch(error => new Notice(safeMessage(error))); }));
-    const guide = new Setting(appCard).setName('应用接入').setDesc('使用自己的百度应用。已有 AppKey 和 SecretKey，可直接填写。');
-    guide.addButton(button => button.setButtonText('打开百度开放平台').onClick(() => window.open('https://yun.baidu.com/open/platform', '_blank', 'noopener,noreferrer')));
+    const secretSaved = p.settings.secretRef && !p.settings.secretRef.startsWith('vaultsail-session-') && Boolean(this.app.secretStorage.getSecret(p.settings.secretRef)?.trim());
+    const guide = new Setting(appCard).setName('创建或选择百度应用').setDesc('直接进入百度网盘「我的应用」，创建应用后返回填写下面的两项凭证。');
+    guide.addButton(button => button.setButtonText('打开我的应用').onClick(() => window.open(BAIDU_APP_CONSOLE_URL, '_blank', 'noopener,noreferrer')));
+    const appGuide = appCard.createEl('details', { cls: 'vaultsail-app-guide' });
+    appGuide.id = 'vaultsail-baidu-app-guide';
+    if (!p.settings.appKey || !secretSaved) appGuide.setAttribute('open', '');
+    appGuide.createEl('summary', { text: '首次使用：创建应用与连接（6 步）' });
+    appGuide.createEl('p', { text: '已有应用无需重建，直接从第 3 步开始。', cls: 'vaultsail-app-guide-hint' });
+    const steps = appGuide.createEl('ol');
+    for (const [title, text] of [
+      ['进入「我的应用」', '点击上方按钮，在百度官方页面登录。若要求开发者认证或入驻，按页面提示完成后返回应用列表。'],
+      ['创建自己的应用', '点击右上角「创建应用」。名称可填 VaultSail，描述可填「用于 Obsidian 个人笔记跨设备同步」。类别、用途等必填项按实际场景填写，提交后按百度提示完成审核。'],
+      ['找到应用凭证', '在应用列表选择自己的应用，点击「编辑」，找到「应用凭证」，复制 AppKey 和 SecretKey。插件需要这两项，无需填写 AppID 或 SignKey。'],
+      ['返回插件分别保存', '将 AppKey 粘贴到下方同名输入框并点击「保存」；将 SecretKey 粘贴到密码框并点击「保存密钥」。确认两项均显示已保存。'],
+      ['连接百度账号', '点击「连接百度网盘」，在打开的百度官方页面登录并同意授权；如提示验证码，使用插件显示的设备验证码。创建应用和账号授权是两个步骤。'],
+      ['验证并选择云端库', '授权完成后验证文件传输，再到「云端知识库」创建新库或选择已有库，即可开始同步。应用目录以实际获准路径为准。'],
+    ]) {
+      const item = steps.createEl('li'); item.createEl('strong', { text: title }); item.createEl('span', { text });
+    }
     const saveField = (name: string, key: 'appKey' | 'appDirectory', placeholder: string, description: string) => {
       let draft = p.settings[key];
       const field = new Setting(appCard).setName(name).setDesc(description);
@@ -165,7 +183,6 @@ export class VaultSailSettingTab extends PluginSettingTab {
     };
     saveField('AppKey', 'appKey', '粘贴应用 AppKey', p.settings.appKey ? '已保存。修改后需重新连接。' : '尚未保存。');
     let secret = ''; let secretInput: HTMLInputElement;
-    const secretSaved = p.settings.secretRef && !p.settings.secretRef.startsWith('vaultsail-session-') && Boolean(this.app.secretStorage.getSecret(p.settings.secretRef)?.trim());
     const secretField = new Setting(appCard).setName('SecretKey').setDesc(secretSaved ? '已保存至本地密钥存储。输入新值可替换。' : p.settings.secretRef ? '旧密钥关联无效或为空，请重新保存一次。' : '尚未保存；输入后点击保存密钥。');
     secretField.addText(text => { secretInput = text.inputEl; text.inputEl.type = 'password'; text.inputEl.autocomplete = 'new-password';
       this.lock(text.setPlaceholder(secretSaved ? '已保存 · 输入新值以更换' : '粘贴应用 SecretKey')).onChange(value => { secret = value; secretField.setDesc('密钥尚未保存，请点击保存密钥。'); }); })

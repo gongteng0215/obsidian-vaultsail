@@ -84,6 +84,14 @@
 .vaultsail-merge-block button { margin: 4px; }
 .vaultsail-progress-meter { display: block; width: 100%; min-width: 0; max-width: 100%; height: 6px; margin: 6px 0; accent-color: #43b6ad; }
 .vaultsail-progress-state { font-size: 11px; color: var(--text-muted); }
+.vaultsail-app-guide { margin: 4px 0 10px; padding: 8px 10px; border: 1px solid var(--background-modifier-border); border-radius: 8px; font-size: var(--font-ui-small); overflow-wrap: anywhere; }
+.vaultsail-app-guide summary { cursor: pointer; color: var(--text-normal); }
+.vaultsail-app-guide-hint { margin: 6px 0; color: var(--text-muted); }
+.vaultsail-app-guide ol { margin: 6px 0 0; padding-inline-start: 20px; }
+.vaultsail-app-guide li { padding-inline-start: 2px; margin: 8px 0; line-height: 1.5; }
+.vaultsail-app-guide li:last-child { margin-bottom: 0; }
+.vaultsail-app-guide li strong, .vaultsail-app-guide li span { display: block; }
+.vaultsail-app-guide li span { color: var(--text-muted); }
 .vaultsail-progress-card[aria-busy="true"] .vaultsail-progress-state::before { content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 7px; border-radius: 50%; background: #43b6ad; animation: vaultsail-progress-pulse 1.2s ease-in-out infinite; }
 @keyframes vaultsail-progress-pulse { 50% { opacity: 0.3; } }
 @media (prefers-reduced-motion: reduce) { .vaultsail-progress-card[aria-busy="true"] .vaultsail-progress-state::before { animation: none; } }

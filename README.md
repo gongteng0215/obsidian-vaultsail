@@ -10,6 +10,8 @@ Sync Obsidian notes and attachments through your own Baidu Netdisk account, with
 
 **Local preview 0.2.16:** empty-folder sync, directory previews/history, and empty directories in the cloud tree. Update both devices for this feature; existing connections are preserved. Deletion remains opt-in and removes only empty folders. Includes 0.2.15 diagnostics. [Usage, compatibility and validation](docs/releases/0.2.16.md).
 
+**Local preview 0.2.17:** application setup opens Baidu's application list directly, with a six-step guide inside settings. [Release details](docs/releases/0.2.17.md).
+
 [Community plugin](https://community.obsidian.md/plugins/vaultsail) · [Download 0.2.14](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.14) · [Release notes](docs/releases/0.2.14.md) · [Version roadmap](docs/ROADMAP.md) · [Report an issue](https://github.com/gongteng0215/obsidian-vaultsail/issues)
 
 **Contents:** [All features](#feature-inventory) · [Roadmap](#version-roadmap) · [Install](#install-or-update) · [First connection](#connect-your-first-vault) · [Device pairing](#pair-a-computer-ipad-or-another-vault) · [Automatic sync](#automatic-sync-and-the-queue) · [Conflicts](#versions-and-conflict-resolution) · [Cloud location](#where-the-cloud-data-goes) · [Recovery](#file-scope-deletion-and-recovery) · [FAQ](#performance-and-troubleshooting) · [Privacy](#privacy-and-network-access)
@@ -168,7 +170,9 @@ Settings have three tabs: **Connection & authorization** (`连接与授权`), **
 
 ### 1. Save your application configuration
 
-Select Baidu Netdisk. Enter AppKey and click **Save** (`保存`), then enter SecretKey and click **Save secret** (`保存密钥`). Typing alone does not save a value; check the saved-state descriptions.
+Select Baidu Netdisk and click **Open my applications** (`打开我的应用`) to open the [Baidu Netdisk application list](https://pan.baidu.com/union/console/applist). The settings include a six-step guide. For a new application, click **Create application** (`创建应用`), fill in its name, description and required fields for your actual use, and follow Baidu's approval prompts. For an existing application, choose **Edit** (`编辑`) → **Application credentials** (`应用凭证`).
+
+Copy **AppKey** and **SecretKey**; AppID and SignKey are not required by this plugin. Enter AppKey and click **Save** (`保存`), then enter SecretKey and click **Save secret** (`保存密钥`). Typing alone does not save a value; check both saved-state descriptions before continuing with account authorization.
 
 Set the application directory to the path actually authorized for your application. The default `/apps/VaultSail` is a location suggestion, not proof of granted access. Use the actual approved path if different.
 
