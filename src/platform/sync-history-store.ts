@@ -1,5 +1,6 @@
 import type { App } from 'obsidian';
 import { ensureDirectories, storageAdapter } from './local-io.ts';
+import { diagnosticLog } from '../diagnostics/log.ts';
 import { bytes, hash, parseJson, validId } from '../core/safety.ts';
 import { HISTORY_BYTE_LIMIT, HISTORY_TASK_LIMIT, validateHistory, type HistoryStore, type SyncHistoryTask } from '../sync/history.ts';
 
@@ -67,7 +68,7 @@ export class ObsidianHistoryStore implements HistoryStore {
             const task = validateHistory(parseJson(await adapter.readBinary(path)), this.context, this.deviceId, this.app.vault.configDir);
             if (task.id !== group.id || task.startedAt !== group.startedAt) { this.warning = true; continue; }
             if (!best || task.sequence > best.sequence) best = task;
-          } catch { this.warning = true; }
+          } catch (error) { this.warning = true; const log = diagnosticLog(this.app); log?.record('history', 'warning', { step: 'load-history', fileRef: log.ref(path) }, error); }
         }
         if (best) result.push(best);
       }

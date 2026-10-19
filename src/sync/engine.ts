@@ -82,18 +82,22 @@ export class SyncEngine {
   private fileLimit: number;
   private uploads = new Map<string, FileUploadProgress>();
   private sourcePreparations = new Map<string, number>();
+  private onFailure: (error: unknown, path: string, action: HistoryAction, phase: ProgressPhase) => string | undefined;
   blockedFiles(): BlockedFile[] { return [...this.blocked.values()].map(file => ({ ...file })); }
   constructor(remote: RemoteVaultStore, local: LocalFiles, store: StateStore, vaultId: string, configDir = '.obsidian', report: (progress: SyncProgress) => void = () => {}, concurrency = DEFAULT_TRANSFER_CONCURRENCY,
-    onFile: (event: FileHistoryEvent) => void = () => {}, fileLimit = MAX_FILE_SIZE) {
+    onFile: (event: FileHistoryEvent) => void = () => {}, fileLimit = MAX_FILE_SIZE,
+    onFailure: (error: unknown, path: string, action: HistoryAction, phase: ProgressPhase) => string | undefined = () => undefined) {
     checkSize(0, fileLimit); this.fileLimit = fileLimit;
     if (!validConcurrency(concurrency)) throw new VaultSailError('configuration', `传输并发数必须为 1–${MAX_TRANSFER_CONCURRENCY} 之间的整数。`);
     this.concurrency = concurrency;
     this.remote = remote; this.local = local; this.store = store; this.vaultId = vaultId; this.configDir = configDir;
     this.report = report;
-    this.onFile = onFile;
+    this.onFile = onFile; this.onFailure = onFailure;
   }
   private recordFile(path: string, action: HistoryAction, size: number, state: HistoryState, reason: HistoryReason = 'planned', error?: unknown): void {
-    const event: FileHistoryEvent = { id: this.fileRecords.get(path)?.id ?? uuid(), path, action, size, state, reason, ...(error ? { code: historyCode(error) } : {}) };
+    let diagnosticId: string | undefined;
+    if (error !== undefined && state !== 'not-run') { try { diagnosticId = this.onFailure(error, path, action, this.progress.phase); } catch { /* Diagnostics cannot fail a transfer. */ } }
+    const event: FileHistoryEvent = { id: this.fileRecords.get(path)?.id ?? uuid(), path, action, size, state, reason, ...(error ? { code: historyCode(error) } : {}), ...(validId(diagnosticId) ? { diagnosticId } : {}) };
     this.fileRecords.set(path, event);
     try { this.onFile({ ...event }); } catch { /* Display history must not affect verified sync. */ }
   }

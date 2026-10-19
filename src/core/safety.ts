@@ -9,9 +9,10 @@ export class VaultSailError extends Error {
   code: string;
   retryable: boolean;
   retryAfter: number;
-  constructor(code: string, message: string, retryable = false, retryAfter = 0) {
+  constructor(code: string, message: string, retryable = false, retryAfter = 0, cause?: unknown) {
     super(message); this.name = 'VaultSailError'; this.code = code;
     this.retryable = retryable; this.retryAfter = retryAfter;
+    if (cause !== undefined) this.cause = cause;
   }
 }
 export function safeMessage(error: unknown): string {

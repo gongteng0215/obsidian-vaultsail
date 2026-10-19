@@ -25,7 +25,7 @@ export async function request(transport: HttpTransport, input: HttpRequest, allo
     policy.beforeStart?.();
     try { policy.onStarted?.(); } catch { /* UI callbacks cannot affect requests. */ }
     return transport(input);
-  }).catch(error => { throw error instanceof VaultSailError && error.code === 'cancelled' ? error : new VaultSailError('network', '网络请求失败；远端状态未知，请重试。', true); }).then(result => {
+  }).catch(error => { throw error instanceof VaultSailError && error.code === 'cancelled' ? error : new VaultSailError('network', '网络请求失败；远端状态未知，请重试。', true, 0, error); }).then(result => {
     // Set the shared cooldown before releasing the raw request lease and admitting another waiter.
     if (result.status === 429 || result.status >= 500) { try { transport.cooldown?.(Date.now() + Math.max(1000, serviceRetryDelay(result.headers))); } catch { /* Keep the original response. */ } }
     return result;

@@ -162,7 +162,7 @@ export class TransferCenterPanel {
       : stage === 'verifying' ? `正在回读云端内容并校验${timing ? ` · 本阶段 ${seconds(timing.elapsedMs)}` : ''}`
       : `${STAGES[stage!]}${timing ? ` · 本阶段 ${seconds(timing.elapsedMs)}` : ''}`) + retryNote
       : row.state === 'succeeded' ? ['upload', 'download'].includes(row.action) ? '已校验并保存版本' : '已完成并保存结果' : row.state === 'queued' ? '等待本轮任务调度' : row.code ? HISTORY_CODES[row.code] : HISTORY_REASONS[row.reason];
-    text(elements.note, note);
+    text(elements.note, note + (row.diagnosticId ? '\n诊断编号：' + row.diagnosticId : ''));
     text(elements.detail, `${row.path}\n${HISTORY_REASONS[row.reason]}${row.code ? '\n' + HISTORY_CODES[row.code] : ''}${upload ? `\n已确认分片 ${upload.completedParts} / ${upload.totalParts}${upload.activeParts?.length ? ` · 正在传第 ${upload.activeParts.join('、')} 片` : upload.currentPart ? ` · 正在传第 ${upload.currentPart} 片` : ''} · 第 ${upload.attempt} 次尝试 · 重试 ${upload.retryCount ?? 0} 次\n进度按服务端确认更新，正在传输的分片尚未计入。` : ''}`);
     text(elements.timings, timing ? [timing.sourcePreparationMs !== undefined ? `本地核验与恢复准备 ${seconds(timing.sourcePreparationMs)}` : '', ...Object.entries(timing.stages).map(([name, ms]) => `${STAGES[name as keyof typeof STAGES]} ${seconds(ms!)}`)].filter(Boolean).join(' · ') : '');
   }

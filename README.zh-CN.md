@@ -6,6 +6,8 @@
 
 **0.2.14 更新：** 后台更新保留滚动、焦点、草稿和展开状态；提供独立传输中心、云文件目录树、自动同步提醒、常规删除设置，以及扫描和上传优化。升级保留配置、授权与云端库绑定。见 [本次发布与验证](docs/releases/0.2.14.md)、[功能清单](#完整功能清单) 和 [版本规划](docs/ROADMAP.zh-CN.md)。
 
+**0.2.15 本地预览：** 新增可关联任务与文件的错误日志、诊断编号、脱敏导出和源码位置还原。详见 [记录设计与复现流程](docs/DIAGNOSTIC_LOGGING.md)。本机预览与下方社区发布版本分开管理。
+
 [社区插件页面](https://community.obsidian.md/plugins/vaultsail) · [下载 0.2.14](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.14) · [版本说明](docs/releases/0.2.14.md) · [版本规划](docs/ROADMAP.zh-CN.md) · [反馈问题](https://github.com/gongteng0215/obsidian-vaultsail/issues)
 
 **目录：** [完整功能清单](#完整功能清单) · [版本规划](#版本规划) · [安装升级](#安装与升级) · [首次连接](#第一次连接) · [设备配对](#电脑ipad-与其他-vault-配对) · [自动同步](#自动同步与队列) · [冲突处理](#版本与冲突处理) · [云端位置](#百度网盘里放在哪里) · [恢复](#文件范围删除与恢复) · [常见问题](#性能与常见问题) · [隐私](#隐私与网络访问)

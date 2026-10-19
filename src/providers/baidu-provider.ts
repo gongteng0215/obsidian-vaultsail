@@ -77,7 +77,7 @@ export class BaiduProvider implements CloudStorageProvider {
         return value;
       } catch (error) {
         if (refresh === 0 && error instanceof VaultSailError && error.code === 'token-expired') { rejectedToken = token; continue; }
-        if (error instanceof VaultSailError) throw new VaultSailError(error.code, `${stage}：${error.message}`, error.retryable, error.retryAfter);
+        if (error instanceof VaultSailError) throw new VaultSailError(error.code, `${stage}：${error.message}`, error.retryable, error.retryAfter, error);
         throw error;
       }
     }

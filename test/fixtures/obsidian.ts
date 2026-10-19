@@ -2,6 +2,7 @@
 const element = (parent: HTMLElement, tag: string) => parent.appendChild(document.createElement(tag));
 export class App {}
 export const Platform = { isMobile: false, isDesktop: true };
+export const apiVersion = '1.11.4';
 export class TFile { path: string; stat: { size: number }; constructor(path: string, size: number) { this.path = path; this.stat = { size }; } }
 export class Notice {
   static messages: string[] = []; static instances: Notice[] = []; hidden = false;

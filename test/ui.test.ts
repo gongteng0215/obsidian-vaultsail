@@ -97,7 +97,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   for (let i = 0; i < 80 && !plugin.settings.binding; i++) await Promise.resolve();
   for (let i = 0; i < 80 && plugin.busy; i++) await Promise.resolve();
   assert.ok(plugin.settings.binding); assert.equal(plugin.settings.binding.displayName, '测试笔记库');
-  assert.equal(plugin.settings.binding.root, '/apps/test'); assert.equal(remoteObjects.size, 1); assert.equal(files.size, 0);
+  assert.equal(plugin.settings.binding.root, '/apps/test'); assert.equal(remoteObjects.size, 1); assert.equal([...files.keys()].filter(path => !path.startsWith('.vaultsail-state/')).length, 0);
   for (let i = 0; i < 80 && !document.body.textContent!.includes('云端库已绑定。请先验证文件传输'); i++) await Promise.resolve();
   assert.ok(document.body.textContent!.includes('云端库已绑定。请先验证文件传输'));
   setupButton('完成').click();
@@ -293,7 +293,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
     const importedReads: string[] = [];
     target.pairingProvider = () => ({ ...fakeProvider, read: async (path: string) => { importedReads.push(path); return fakeProvider.read(path); },
       list: async (path: string) => { importedReads.push(path); return fakeProvider.list(path); } });
-    const localBefore = [...files].map(([path, data]) => [path, hash(data)]);
+    const localBefore = [...files].filter(([path]) => !path.includes('/diagnostics/')).map(([path, data]) => [path, hash(data)]);
     const browserBefore = openedUrls.length;
     target.openConfigImport(); assert.equal(toggleSetting('绑定配对码中的同一个云端库').checked, false);
     const targetInput = [...document.querySelectorAll('textarea[aria-label="粘贴配对配置"]')].at(-1)! as HTMLTextAreaElement;
@@ -302,7 +302,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
     setupButton('确认').click(); await until(() => !!target.settings.sessionRef && !target.busy);
     assert.equal(target.auth.status(), 'connected'); assert.equal(target.settings.remoteVaultId, ''); assert.equal(target.settings.binding, undefined);
     assert.equal(target.settings.pendingVaultName, undefined); assert.equal(JSON.stringify(target.saved).includes(existingId), false);
-    assert.equal(openedUrls.length, browserBefore); assert.deepEqual([...files].map(([path, data]) => [path, hash(data)]), localBefore);
+    assert.equal(openedUrls.length, browserBefore); assert.deepEqual([...files].filter(([path]) => !path.includes('/diagnostics/')).map(([path, data]) => [path, hash(data)]), localBefore);
     assert.ok(importedReads.every(path => !path.startsWith('vaultsail/vaults/')), 'account-only import must not inspect the source vault');
     await assert.rejects(target.preview('upload'), { code: 'binding' });
     target.provider = () => fakeProvider;
@@ -658,5 +658,18 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   const exportedPerformance = await historyRestart.performanceReport(), numericReport = JSON.parse(exportedPerformance);
   assert.equal(numericReport.version, 1); assert.equal(numericReport.platform, 'desktop'); assert.equal(typeof numericReport.requestCount, 'number');
   for (const privateValue of ['private-large-attachment.pdf', 'actual-video.mp4', 'private-access', 'private-refresh', 'https://']) assert.equal(exportedPerformance.includes(privateValue), false);
-  reopened.close(); historyRestart.onunload();
+  reopened.close();
+  const sensitive = 'synthetic-secret-private-value';
+  await historyRestart.run('模拟本机失败', async () => { throw Object.assign(new Error(sensitive), { code: 'EPERM' }); });
+  assert.match(historyRestart.statusText, /诊断编号/);
+  const diagnosticReport = await historyRestart.diagnosticReport(), parsedLog = JSON.parse(diagnosticReport);
+  assert.ok(parsedLog.records.some((record: any) => record.errors?.some((error: any) => error.code === 'EPERM')));
+  for (const privateValue of [sensitive, 'private-large-attachment.pdf', 'actual-video.mp4', 'private-access', 'private-refresh', 'https://']) assert.equal(diagnosticReport.includes(privateValue), false);
+  historyRestart.showDiagnosticLog(); const diagnosticModal = module.Modal.instances.at(-1)!;
+  await until(() => !!diagnosticModal.contentEl.querySelector('textarea')?.value);
+  [...diagnosticModal.contentEl.querySelectorAll('button')].find(button => button.textContent === '导出日志文件')!.click();
+  await until(() => [...files.keys()].some(path => path.startsWith('VaultSail-配置/vaultsail-diagnostics-')));
+  const diagnosticPath = [...files.keys()].find(path => path.startsWith('VaultSail-配置/vaultsail-diagnostics-'))!;
+  assert.equal(JSON.parse(new TextDecoder().decode(files.get(diagnosticPath)!)).format, 'vaultsail-diagnostics');
+  diagnosticModal.close(); historyRestart.onunload();
 });

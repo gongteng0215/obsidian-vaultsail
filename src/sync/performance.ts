@@ -19,7 +19,7 @@ export interface PerformanceSnapshot {
 }
 // Only fixed categories and numbers enter the report. No URL, path, response,
 // token, error text or request body is retained, even for failed requests.
-function kind(input: HttpRequest): RequestKind {
+export function requestKind(input: HttpRequest): RequestKind {
   const url = new URL(input.url);
   if (url.hostname === 'openapi.baidu.com' && url.pathname.startsWith('/oauth/2.0/'))
     return url.searchParams.get('grant_type') === 'refresh_token' ? 'refresh' : 'authorize';
@@ -72,7 +72,7 @@ export class TransferPerformance {
   async transport(transport: HttpTransport, input: HttpRequest): Promise<HttpResponse> {
     const state = this.state;
     if (!state || state.ended !== undefined) return transport(input);
-    const category = kind(input), started = this.now(), id = {};
+    const category = requestKind(input), started = this.now(), id = {};
     const stats = state.requests[category] ??= { count: 0, failed: 0, elapsedMs: 0, maxMs: 0, pending: 0 };
     stats.count++; state.pending.set(id, { kind: category, started });
     let failed = false;

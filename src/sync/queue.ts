@@ -4,6 +4,7 @@ export interface QueueState { version: 1; sequence: number; dirty: Record<string
 export interface QueueOptions {
   load(): unknown; save(state: QueueState): void; run(batch: QueueBatch): Promise<void>; canRun(): boolean; enabled(): boolean; pollMs(): number;
   change?(): void; now?: () => number; random?: () => number; timer?: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>; clear?: (id: ReturnType<typeof setTimeout>) => void;
+  onError?: (error: unknown, step: 'queue-save' | 'queue-load') => void;
 }
 const empty = (): QueueState => ({ version: 1, sequence: 0, dirty: Object.create(null), remote: 0, full: 0, manual: 0, paused: false, retryAt: 0, failures: 0, blocked: false });
 export class SyncQueue {
@@ -25,7 +26,8 @@ export class SyncQueue {
         this.state = { ...raw, dirty: Object.assign(Object.create(null), raw.dirty), paused: raw.paused === true,
           retryAt: Number.isSafeInteger(raw.retryAt) && raw.retryAt >= 0 ? raw.retryAt : 0,
           failures: Number.isSafeInteger(raw.failures) && raw.failures >= 0 ? raw.failures : 0, blocked: raw.blocked === true };
-    } catch { /* Startup's full reconciliation covers invalid pending state. */ }
+      else if (raw !== null && raw !== undefined) { try { options.onError?.(new VaultSailError('state', '本机队列格式无效，已回退到完整核验。'), 'queue-load'); } catch { /* Advisory. */ } }
+    } catch (error) { try { options.onError?.(error, 'queue-load'); } catch { /* Advisory. */ } /* Startup's full reconciliation covers invalid pending state. */ }
     this.retryAt = this.state.retryAt; this.failures = this.state.failures; this.blocked = this.state.blocked;
     this.resetDue();
     if (options.enabled()) this.request('full');
@@ -33,7 +35,7 @@ export class SyncQueue {
   private now(): number { return (this.options.now ?? Date.now)(); }
   private resetDue(): void { const now = this.now(); this.remoteDue = now + this.options.pollMs() * (1 + (this.options.random?.() ?? Math.random()) * .1); this.fullDue = now + 600_000; }
   private notify(): void {
-    try { this.options.save({ ...this.state, dirty: { ...this.state.dirty }, retryAt: this.retryAt, failures: this.failures, blocked: this.blocked }); } catch { this.blocked = true; }
+    try { this.options.save({ ...this.state, dirty: { ...this.state.dirty }, retryAt: this.retryAt, failures: this.failures, blocked: this.blocked }); } catch (error) { this.blocked = true; try { this.options.onError?.(error, 'queue-save'); } catch { /* Advisory. */ } }
     try { this.options.change?.(); } catch { /* A detached view cannot affect scheduling. */ }
   }
   request(reason: 'local' | 'remote' | 'full' | 'manual', path?: string): void {

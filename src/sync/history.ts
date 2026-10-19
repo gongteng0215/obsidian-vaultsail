@@ -13,7 +13,7 @@ export type HistoryState = keyof typeof HISTORY_STATES;
 export type HistoryReason = keyof typeof HISTORY_REASONS;
 export type HistoryCode = keyof typeof HISTORY_CODES;
 export type HistoryMode = 'manual' | 'automatic' | 'upload' | 'download' | 'recover' | 'resolve';
-export interface FileHistoryEvent { id: string; path: string; action: HistoryAction; size: number; state: HistoryState; reason: HistoryReason; code?: string; }
+export interface FileHistoryEvent { id: string; path: string; action: HistoryAction; size: number; state: HistoryState; reason: HistoryReason; code?: string; diagnosticId?: string; }
 export interface FileHistoryRow extends Omit<FileHistoryEvent, 'code'> { code?: HistoryCode; startedAt?: number; updatedAt: number; }
 export interface SyncHistoryTask {
   performance?: ScanSummary;
@@ -46,7 +46,7 @@ export function validateHistory(value: unknown, context: string, deviceId: strin
     ids.add(row.id);
     // Whitelist fields: no raw exceptions, requests, bodies, tokens or URLs.
     return { id: row.id, path: row.path, action: row.action, size: row.size, state: row.state, reason: row.reason, updatedAt: row.updatedAt,
-      ...(row.startedAt !== undefined ? { startedAt: row.startedAt } : {}), ...(row.code ? { code: row.code } : {}) };
+      ...(row.startedAt !== undefined ? { startedAt: row.startedAt } : {}), ...(row.code ? { code: row.code } : {}), ...(validId(row.diagnosticId) ? { diagnosticId: row.diagnosticId } : {}) };
   });
   const performance = validateScanSummary(task.performance);
   return { version: 1, id: task.id, context, deviceId, sequence: task.sequence, mode: task.mode, startedAt: task.startedAt, updatedAt: task.updatedAt, ...(performance ? { performance } : {}),
@@ -70,7 +70,9 @@ export class SyncHistory {
   private sawPartial = false;
   warning = false;
   readonly store: HistoryStore; readonly context: string; readonly deviceId: string; private configDir: string;
-  constructor(store: HistoryStore, context: string, deviceId: string, configDir = '.obsidian') { this.store = store; this.context = context; this.deviceId = deviceId; this.configDir = configDir; }
+  private onError: (error: unknown, step: string, historyId?: string) => void;
+  constructor(store: HistoryStore, context: string, deviceId: string, configDir = '.obsidian', onError: (error: unknown, step: string, historyId?: string) => void = () => {}) { this.store = store; this.context = context; this.deviceId = deviceId; this.configDir = configDir; this.onError = onError; }
+  private report(error: unknown, step: string, historyId?: string): void { try { this.onError(error, step, historyId); } catch { /* Advisory. */ } }
   subscribe(listener: () => void): () => void { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   private notify(): void { for (const listener of this.listeners) { try { listener(); } catch { /* A view cannot stop sync. */ } } }
   private schedule(): void { this.notify(); if (!this.timer) this.timer = setTimeout(() => { this.timer = undefined; void this.flush(); }, 1000); }
@@ -88,11 +90,11 @@ export class SyncHistory {
       if (!old && (this.rows.size >= HISTORY_FILE_LIMIT || this.reservedBytes + 3 * event.path.length + 512 > HISTORY_BYTE_LIMIT)) { this.active.truncated = true; this.active.sequence++; this.schedule(); return; }
       const row: FileHistoryRow = { id: event.id, path: event.path, action: event.action, size: event.size, state: event.state, reason: event.reason,
         updatedAt: Date.now(), ...(old?.startedAt !== undefined ? { startedAt: old.startedAt } : event.state === 'running' ? { startedAt: Date.now() } : {}),
-        ...(event.code && has(HISTORY_CODES, event.code) ? { code: event.code as HistoryCode } : {}) };
+        ...(event.code && has(HISTORY_CODES, event.code) ? { code: event.code as HistoryCode } : {}), ...(validId(event.diagnosticId) ? { diagnosticId: event.diagnosticId } : {}) };
       validateHistory({ ...this.active, files: [row] }, this.context, this.deviceId, this.configDir);
       if (!old) this.reservedBytes += 3 * row.path.length + 512;
       this.rows.set(row.id, row); this.active.files = [...this.rows.values()]; this.active.updatedAt = row.updatedAt; this.active.sequence++; this.schedule();
-    } catch { this.warning = true; this.notify(); }
+    } catch (error) { this.warning = true; this.report(error, 'save-history', this.active.id); this.notify(); }
   }
   async finish(error?: unknown, failed = error !== undefined): Promise<void> {
     const task = this.active; if (!task) return;
@@ -116,12 +118,12 @@ export class SyncHistory {
     if (this.timer) { clearTimeout(this.timer); this.timer = undefined; }
     if (!task) return this.saving;
     const snapshot = structuredClone(task);
-    this.saving = this.saving.then(async () => { try { await this.store.save(snapshot); } catch { this.warning = true; this.notify(); } });
+    this.saving = this.saving.then(async () => { try { await this.store.save(snapshot); } catch (error) { this.warning = true; this.report(error, 'save-history', snapshot.id); this.notify(); } });
     await this.saving;
   }
   async list(): Promise<SyncHistoryTask[]> {
     let stored: SyncHistoryTask[] = [];
-    try { stored = await this.store.list(); this.warning ||= this.store.warning === true; } catch { this.warning = true; }
+    try { stored = await this.store.list(); this.warning ||= this.store.warning === true; } catch (error) { this.warning = true; this.report(error, 'load-history'); }
     const tasks = new Map(stored.map(task => [task.id, interruptedHistory(task)]));
     for (const task of this.recent.values()) tasks.set(task.id, structuredClone(task));
     if (this.active) tasks.set(this.active.id, structuredClone(this.active));

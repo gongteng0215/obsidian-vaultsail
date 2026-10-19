@@ -4,7 +4,8 @@ import type { CredentialStore } from '../auth/auth-manager';
 import type { HttpTransport } from '../providers/http';
 import { newState, validateState, type LocalFiles, type StateStore, type SyncState } from '../sync/engine';
 import type { RevisionCache } from '../sync/remote-vault';
-import { ensureDirectories as mkdirs, localIO, storageAdapter } from './local-io';
+import { ensureDirectories as mkdirs, vaultIO, storageAdapter } from './local-io';
+import { diagnosticLog } from '../diagnostics/log';
 
 export class ObsidianRevisionCache implements RevisionCache {
   private app: App; private path: string;
@@ -39,16 +40,24 @@ export const obsidianTransport: HttpTransport = async input => {
 export class ObsidianCredentials implements CredentialStore {
   private app: App;
   constructor(app: App) { this.app = app; }
-  get(id: string): string | null { return id ? this.app.secretStorage.getSecret(id) : null; }
+  private access<T>(run: () => T): T {
+    try { return run(); } catch (error) {
+      const mapped = error instanceof VaultSailError ? error : new VaultSailError('state', '访问本机密钥存储失败，请检查 Obsidian 密钥存储是否可用。', false, 0, error);
+      diagnosticLog(this.app)?.record('local', 'failure', { step: 'credentials' }, mapped); throw error;
+    }
+  }
+  get(id: string): string | null { return this.access(() => id ? this.app.secretStorage.getSecret(id) : null); }
   set(id: string, value: string): void {
     if (!/^[a-z0-9-]{1,64}$/.test(id)) throw new VaultSailError('credentials-id', '本地密钥标识无效或超过 64 个字符，请更新插件后重新导入。');
-    this.app.secretStorage.setSecret(id, value);
+    this.access(() => this.app.secretStorage.setSecret(id, value));
   }
   remove(id: string): void {
     const storage = this.app.secretStorage as App['secretStorage'] & { deleteSecret?: (key: string) => boolean };
-    if (!id || storage.getSecret(id) === null) return;
-    if (typeof storage.deleteSecret === 'function') storage.deleteSecret(id);
-    else storage.setSecret(id, '');
+    this.access(() => {
+      if (!id || storage.getSecret(id) === null) return;
+      if (typeof storage.deleteSecret === 'function') storage.deleteSecret(id);
+      else storage.setSecret(id, '');
+    });
   }
 }
 export function deviceIdentity(app: App): string {
@@ -77,10 +86,11 @@ export class ObsidianLocalFiles implements LocalFiles {
     const stat = await this.stat(path);
     if (!stat) throw new VaultSailError('changed', '读取期间文件已变化。');
     checkSize(stat.size, this.fileLimit());
-    const data = await localIO('读取待同步文件', () => this.app.vault.readBinary(file)); checkSize(data.byteLength, this.fileLimit()); return data;
+    const data = await vaultIO(this.app, 'read-note', path, '读取待同步文件', () => this.app.vault.readBinary(file)); checkSize(data.byteLength, this.fileLimit()); return data;
   }
   async stage(id: string, data: ArrayBuffer): Promise<void> {
     if (!validId(id)) throw new VaultSailError('state', '暂存标识无效。');
+    const log = diagnosticLog(this.app); log?.record('local', 'checkpoint', { step: 'writeBinary', operationRef: log.ref(id), bytes: data.byteLength, outcome: 'start' });
     checkSize(data.byteLength, this.fileLimit()); const dir = this.internal + '/staging'; await mkdirs(this.app, dir);
     const path = dir + '/' + id + '.bin';
     if (await storageAdapter(this.app).exists(path)) {
@@ -100,7 +110,7 @@ export class ObsidianLocalFiles implements LocalFiles {
     const old = await this.readConflictCopy(path, versionKey);
     if (old) { if (hash(old) !== hash(data)) throw new VaultSailError('integrity', '已有冲突副本被编辑，已保留它并停止覆盖。'); return; }
     await mkdirs(this.app, target.slice(0, target.lastIndexOf('/')));
-    await localIO('保存冲突副本', () => this.app.vault.createBinary(target, data));
+    await vaultIO(this.app, 'conflict-copy', target, '保存冲突副本', () => this.app.vault.createBinary(target, data));
     const actual = await this.readConflictCopy(path, versionKey);
     if (!actual || hash(actual) !== hash(data)) throw new VaultSailError('integrity', '冲突副本校验失败，原笔记未被替换。');
   }
@@ -115,6 +125,7 @@ export class ObsidianLocalFiles implements LocalFiles {
   }
   async preserve(path: string, data: ArrayBuffer, id: string): Promise<string> {
     this.userPath(path); if (!validId(id)) throw new VaultSailError('state', '恢复点标识无效。');
+    const log = diagnosticLog(this.app); log?.record('local', 'checkpoint', { step: 'save-recovery', operationRef: log.ref(id), ...log.file(path), bytes: data.byteLength, outcome: 'start' });
     checkSize(data.byteLength, this.fileLimit());
     const target = this.internal + '/recovery/' + id + '/' + path;
     await mkdirs(this.app, target.slice(0, target.lastIndexOf('/')));
@@ -132,30 +143,30 @@ export class ObsidianLocalFiles implements LocalFiles {
     const latest = await this.read(path);
     if ((latest ? hash(latest) : null) !== expected) throw new VaultSailError('changed', '备份期间目标文件被编辑，停止替换。');
     const file = this.app.vault.getAbstractFileByPath(path);
-    if (data === null) { if (file instanceof TFile) await localIO('将本机文件移入回收站', () => this.app.vault.trash(file, false)); }
+    if (data === null) { if (file instanceof TFile) await vaultIO(this.app, 'trash', path, '将本机文件移入回收站', () => this.app.vault.trash(file, false)); }
     else if (file instanceof TFile && /\.md$/i.test(path)) {
       let text: string;
       try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(data); }
       catch { throw new VaultSailError('encoding', 'Markdown 不是有效 UTF-8，已保留暂存内容并停止替换。'); }
-      await localIO('应用笔记内容', () => this.app.vault.process(file, current => {
+      await vaultIO(this.app, 'apply-note', path, '应用笔记内容', () => this.app.vault.process(file, current => {
         if (hash(new TextEncoder().encode(current).buffer as ArrayBuffer) !== expected) throw new VaultSailError('changed', '笔记已被编辑，停止替换。');
         return text;
       }));
     }
-    else if (file instanceof TFile) await localIO('应用附件内容', () => this.app.vault.modifyBinary(file, data));
+    else if (file instanceof TFile) await vaultIO(this.app, 'apply-attachment', path, '应用附件内容', () => this.app.vault.modifyBinary(file, data));
     else {
       const parts = path.split('/');
       for (let i = 1; i < parts.length; i++) {
         const directory = parts.slice(0, i).join('/');
         if (!this.app.vault.getAbstractFileByPath(directory)) {
-          try { await localIO('创建笔记目录', () => this.app.vault.createFolder(directory)); }
+          try { await vaultIO(this.app, 'create-folder', directory, '创建笔记目录', () => this.app.vault.createFolder(directory)); }
           catch (error) {
             const actual = this.app.vault.getAbstractFileByPath(directory);
             if (!actual || actual instanceof TFile) throw error;
           }
         }
       }
-      await localIO('创建本机文件', () => this.app.vault.createBinary(path, data));
+      await vaultIO(this.app, 'create-note', path, '创建本机文件', () => this.app.vault.createBinary(path, data));
     }
     const actual = await this.read(path);
     if ((actual ? hash(actual) : null) !== (data ? hash(data) : null)) throw new VaultSailError('integrity', '应用后 Hash 不一致，恢复点已保留。');
@@ -178,6 +189,7 @@ export class ObsidianLocalFiles implements LocalFiles {
   }
 }
 export class ObsidianStateStore implements StateStore {
+  private journalStages = new Map<string, string>();
   private app: App; private deviceId: string; private vaultId: string; private path: string;
   constructor(app: App, deviceId: string, vaultId: string, contextId: string) {
     this.app = app; this.deviceId = deviceId; this.vaultId = vaultId;
@@ -195,6 +207,8 @@ export class ObsidianStateStore implements StateStore {
   }
   async save(state: SyncState): Promise<void> {
     validateState(state, this.vaultId, this.deviceId); const adapter = storageAdapter(this.app);
+    const log = diagnosticLog(this.app), context = log?.context();
+    log?.record('local', 'checkpoint', { ...context, step: 'save-state', outcome: 'start', journals: state.journals.length, bases: Object.keys(state.bases).length, knownOps: state.knownOps.length });
     await mkdirs(this.app, this.path.slice(0, this.path.lastIndexOf('/')));
     const data = jsonBytes(state); checkSize(data.byteLength); const temporary = this.path + '.next';
     await adapter.writeBinary(temporary, data);
@@ -204,5 +218,11 @@ export class ObsidianStateStore implements StateStore {
       await adapter.rename(this.path, this.path + '.previous');
     }
     await adapter.rename(temporary, this.path);
+    log?.record('local', 'checkpoint', { ...context, step: 'save-state', outcome: 'success', journals: state.journals.length });
+    for (const journal of state.journals) if (this.journalStages.get(journal.id) !== journal.stage) {
+      log?.record('engine', 'checkpoint', { ...context, step: 'save-state', phase: journal.stage, action: journal.action, operationRef: log.ref(journal.id), ...log.file(journal.path) });
+      this.journalStages.set(journal.id, journal.stage);
+    }
+    while (this.journalStages.size > 512) this.journalStages.delete(this.journalStages.keys().next().value!);
   }
 }

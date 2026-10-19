@@ -83,9 +83,12 @@ export class RemoteVaultStore {
   private readConcurrency: number;
   private onScan: (stats: RevisionScanStats) => void;
   private onPhase: (progress: RevisionScanProgress) => void;
-  constructor(provider: CloudStorageProvider, cache?: RevisionCache, concurrency = DEFAULT_TRANSFER_CONCURRENCY, onScan: (stats: RevisionScanStats) => void = () => {}, onPhase: (progress: RevisionScanProgress) => void = () => {}) {
+  private onCacheError: (step: string, error: unknown) => void;
+  constructor(provider: CloudStorageProvider, cache?: RevisionCache, concurrency = DEFAULT_TRANSFER_CONCURRENCY, onScan: (stats: RevisionScanStats) => void = () => {}, onPhase: (progress: RevisionScanProgress) => void = () => {}, onCacheError: (step: string, error: unknown) => void = () => {}) {
     this.provider = provider; this.disk = cache; this.readConcurrency = concurrency; this.onScan = onScan; this.onPhase = onPhase;
+    this.onCacheError = onCacheError;
   }
+  private cacheError(step: string, error: unknown): void { try { this.onCacheError(step, error); } catch { /* Advisory. */ } }
   setReadConcurrency(value: number): void {
     if (!validConcurrency(value)) throw new VaultSailError('configuration', `读取并发数必须为 1–${MAX_TRANSFER_CONCURRENCY} 之间的整数。`);
     this.readConcurrency = value;
@@ -94,19 +97,20 @@ export class RemoteVaultStore {
     if (this.diskLoaded) return; this.diskLoaded = true;
     if (!this.disk) return;
     try {
-      const value = record(await this.disk.load());
-      if (value.schemaVersion !== 1 || value.vaultId !== id || !Array.isArray(value.entries) || value.entries.length > 10000) return;
+      const raw = await this.disk.load(); if (raw === undefined) return;
+      const value = record(raw);
+      if (value.schemaVersion !== 1 || value.vaultId !== id || !Array.isArray(value.entries) || value.entries.length > 10000) { this.cacheError('load-cache', new VaultSailError('schema', '缓存结构或范围未通过验证。')); return; }
       const loaded = new Map<string, { etag: string; size: number; revision: Revision }>();
       for (const item of value.entries) {
         const row = record(item); const revision = validateRevision(row.revision, id);
         const path = this.base(id) + '/ops/' + revision.deviceId + '/' + revision.opId + '.json';
         if (row.path !== path || typeof row.etag !== 'string' || !row.etag || !Number.isSafeInteger(row.size) || Number(row.size) < 0 || Number(row.size) > 1024 * 1024
-          || row.digest !== hash(jsonBytes(revision)) || loaded.has(path)) return;
+          || row.digest !== hash(jsonBytes(revision)) || loaded.has(path)) { this.cacheError('load-cache', new VaultSailError('integrity', '缓存条目未通过验证。')); return; }
         loaded.set(path, { etag: row.etag, size: Number(row.size), revision });
       }
       for (const [path, cached] of loaded) if (!this.cachedRevisions.has(path)) this.cachedRevisions.set(path, cached);
       this.persisted = new Map([...loaded].map(([path, value]) => [path, { etag: value.etag, size: value.size }])); this.cachePresent = true;
-    } catch { /* Cache is advisory; corrupt/missing cache always falls back to verified remote reads. */ }
+    } catch (error) { this.cacheError('load-cache', error); /* Cache is advisory; corrupt/missing cache always falls back to verified remote reads. */ }
   }
   private async saveCache(id: string, active: Set<string>, stats: ScanDetails): Promise<void> {
     if (!this.disk) return;
@@ -117,9 +121,9 @@ export class RemoteVaultStore {
       return { path, etag: value.etag, size: value.size, revision, digest: hash(jsonBytes(revision)) };
     });
     try { const saved = await this.disk.save({ schemaVersion: 1, vaultId: id, entries });
-      if (saved === false) { stats.cacheSaveFailures++; return; }
+      if (saved === false) { stats.cacheSaveFailures++; this.cacheError('save-cache', new VaultSailError('size', '缓存超过保存容量。')); return; }
       this.persisted = current; this.cachePresent = true; stats.cacheWrites++; }
-    catch { stats.cacheSaveFailures++; /* Transfer safety does not depend on cache persistence. */ }
+    catch (error) { stats.cacheSaveFailures++; this.cacheError('save-cache', error); /* Transfer safety does not depend on cache persistence. */ }
   }
   base(id: string): string {
     if (!validId(id)) throw new VaultSailError('binding', '远端库 ID 未验证，请选择或创建云端库。');
