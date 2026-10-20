@@ -21,6 +21,9 @@ const context = await esbuild.context({
   logLevel: 'info',
 });
 if (production) {
+  // Source checkouts may use CRLF on Windows. Ship identical text assets on
+  // every platform, without changing their content or the normalized build ID.
+  for (const file of ['manifest.json', 'styles.css']) writeFileSync(file, sourceText(file));
   await context.rebuild();
   await context.dispose();
   const debugDirectory = 'dist/debug/' + buildId; mkdirSync(debugDirectory, { recursive: true });
