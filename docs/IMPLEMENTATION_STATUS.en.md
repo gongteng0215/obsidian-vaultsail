@@ -1,6 +1,6 @@
 # Implementation status — 2026-10-20
 
-Current release target: **0.2.22**, authorized for community publication on 2026-10-20. Publication/check results are recorded separately; real-device acceptance remains pending.
+GitHub release: **0.2.22**, published on 2026-10-20. Official preview: Completed; release scan: Pending. See [publication evidence](releases/0.2.22-publication.md). Real-device acceptance remains pending.
 
 | Evidence level | Status |
 | --- | --- |

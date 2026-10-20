@@ -1,6 +1,6 @@
 # VaultSail version roadmap
 
-Current local preview **0.2.22** implements categorized performance evidence, truthful parallel-check states, queue/pause regressions and native acceptance tools. [Evidence](releases/0.2.22.md) · [Native checklist](acceptance/0.2.22.md). Simulation and native validation remain separate. Move to the 0.3.0 candidate after native dual-device acceptance, then observe at least seven days. Keep natural renewal pending if it has not actually occurred.
+Current GitHub release **0.2.22** implements categorized performance evidence, truthful parallel-check states, queue/pause regressions and native acceptance tools. [Evidence](releases/0.2.22.md) · [Native checklist](acceptance/0.2.22.md). Simulation and native validation remain separate. Move to the 0.3.0 candidate after native dual-device acceptance, then observe at least seven days. Keep natural renewal pending if it has not actually occurred.
 
 Local preview **0.2.19** overlaps read-only preflight checks, coalesces in-flight listing pages, and adds numeric local performance reporting. [Validation and remaining native acceptance](releases/0.2.19.md).
 
@@ -8,7 +8,7 @@ Release **0.2.18** adds remote history cache fixes, persistent directory caches 
 
 **English** | [简体中文](ROADMAP.zh-CN.md) · [Feature inventory](../README.md#feature-inventory)
 
-Baseline: **0.2.22 local preview / last recorded public release 0.2.18**, updated **2026-10-20**. Version 0.2.14 adds [stable background UI updates](releases/0.2.14.md). Version 0.2.13 makes [deletion sync a standard opt-in setting](releases/0.2.13.md). Version 0.2.12 adds the [cloud file tree](releases/0.2.12.md). Versions 0.2.6–0.2.8 add the transfer center, parallel slices and compact layouts; 0.2.9 adds scan improvements and local performance summaries. Versions 0.2.10–0.2.11 add immediate click feedback, automatic task notifications and ribbon activity/warning states. See [automatic notifications](releases/0.2.11.md), [click feedback](releases/0.2.10.md) and [scan validation](releases/0.2.9.md). Native dual-device acceptance remains separate; later milestones advance on evidence, not promised dates.
+Baseline: **0.2.22 release; community status in the publication record**, updated **2026-10-20**. Version 0.2.14 adds [stable background UI updates](releases/0.2.14.md). Version 0.2.13 makes [deletion sync a standard opt-in setting](releases/0.2.13.md). Version 0.2.12 adds the [cloud file tree](releases/0.2.12.md). Versions 0.2.6–0.2.8 add the transfer center, parallel slices and compact layouts; 0.2.9 adds scan improvements and local performance summaries. Versions 0.2.10–0.2.11 add immediate click feedback, automatic task notifications and ribbon activity/warning states. See [automatic notifications](releases/0.2.11.md), [click feedback](releases/0.2.10.md) and [scan validation](releases/0.2.9.md). Native dual-device acceptance remains separate; later milestones advance on evidence, not promised dates.
 
 ## Direction and lasting boundaries
 
@@ -25,7 +25,7 @@ Make notes sync reliably between computers and iPad using the user's own cloud a
 
 | Version | Status | Focus | Completion evidence |
 | --- | --- | --- | --- |
-| 0.2.22 | Local preview | Dual-device reliability, categorized metrics and acceptance tooling | Automated/synthetic checks; real Baidu and native acceptance pending |
+| 0.2.22 | GitHub released; community scan pending | Dual-device reliability, categorized metrics and acceptance tooling | Automated/synthetic checks; real Baidu and native acceptance pending |
 | 0.2.6–0.2.9 | Local previews implemented | Transfer center, parallel slices, compact UI, scan performance and local summaries | 207 automated tests in 0.2.9; native dual-device/Baidu performance acceptance pending |
 | 0.2.0 | Released | Automatic sync and merge foundation | README inventory; 158 automated tests, comprehensive native acceptance pending |
 | 0.2.4 | Released | Local sync history, oversized-file isolation, desktop 512 MiB attachments, live upload progress | 186 automated checks; 339/512 MiB simulated integrity checks; native acceptance pending |
