@@ -25,7 +25,7 @@ Make notes sync reliably between computers and iPad using the user's own cloud a
 
 | Version | Status | Focus | Completion evidence |
 | --- | --- | --- | --- |
-| 0.2.22 | GitHub released; community scan pending | Dual-device reliability, categorized metrics and acceptance tooling | Automated/synthetic checks; real Baidu and native acceptance pending |
+| 0.2.22 | Released; community checks Completed | Dual-device reliability, categorized metrics and acceptance tooling | Automated/synthetic checks; real Baidu and native acceptance pending |
 | 0.2.6–0.2.9 | Local previews implemented | Transfer center, parallel slices, compact UI, scan performance and local summaries | 207 automated tests in 0.2.9; native dual-device/Baidu performance acceptance pending |
 | 0.2.0 | Released | Automatic sync and merge foundation | README inventory; 158 automated tests, comprehensive native acceptance pending |
 | 0.2.4 | Released | Local sync history, oversized-file isolation, desktop 512 MiB attachments, live upload progress | 186 automated checks; 339/512 MiB simulated integrity checks; native acceptance pending |

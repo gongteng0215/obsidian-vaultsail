@@ -1,6 +1,6 @@
 # Implementation status — 2026-10-20
 
-GitHub release: **0.2.22**, published on 2026-10-20. Official preview: Completed; release scan: Pending. See [publication evidence](releases/0.2.22-publication.md). Real-device acceptance remains pending.
+GitHub release: **0.2.22**, published on 2026-10-20. Official preview: Completed; release scan: Completed. See [publication evidence](releases/0.2.22-publication.md). Real-device acceptance remains pending.
 
 | Evidence level | Status |
 | --- | --- |
