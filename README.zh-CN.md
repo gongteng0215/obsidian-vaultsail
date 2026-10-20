@@ -4,7 +4,7 @@
 
 [English](README.md) | **简体中文**
 
-**0.2.23 本地预览：** 修复 Obsidian 审核兼容问题，补齐本机记录校验，使用浏览器定时器与 DOM 辅助方法；支持 1.13+ 设置搜索并保留 1.11.4 界面。新增发布前强制检查。[修复与验证](docs/releases/0.2.23.md)。官方分支预检 Completed；尚未正式发布到社区。
+**0.2.23 发布：** 修复 Obsidian 审核兼容问题，补齐本机记录校验，使用浏览器定时器与 DOM 辅助方法；支持 1.13+ 设置搜索并保留 1.11.4 界面。新增发布前强制检查。[修复与验证](docs/releases/0.2.23.md)。[GitHub 正式版已发布](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.23)，社区正式检查 Pending；分支预检 Completed。[发布记录](docs/releases/0.2.23-publication.md)。
 
 **0.2.22 发布：** 文件/目录统计分开，请求分类与任务类型持久保存；并行检查、等待及暂停状态实时显示，阻止过期预检开始传输。新增固定双端测试数据、iPad 只读校验与专项报告。[更新与证据](docs/releases/0.2.22.md) · [Windows/iPad 验收步骤](docs/acceptance/0.2.22.md)。功能已实现、模拟通过；真实百度性能与完整双端真机验收仍待验证，社区可用状态以官方检查为准。
 
@@ -18,7 +18,7 @@
 
 **0.2.19 本地预览：** 文件与目录预检并行，同时发生的相同目录请求合并；任一检查失败后等待已开始的读取结束，再释放任务。新增只导出数字统计的本机性能报告工具。保留授权、绑定及默认设置。[证据与验收](docs/releases/0.2.19.md)。这些更改已包含在 0.2.22 中。
 
-[社区插件页面](https://community.obsidian.md/plugins/vaultsail) · [下载 0.2.22](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.22) · [版本说明](docs/releases/0.2.22.md) · [版本规划](docs/ROADMAP.zh-CN.md) · [反馈问题](https://github.com/gongteng0215/obsidian-vaultsail/issues)
+[社区插件页面](https://community.obsidian.md/plugins/vaultsail) · [下载 0.2.23](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.23) · [版本说明](docs/releases/0.2.22.md) · [版本规划](docs/ROADMAP.zh-CN.md) · [反馈问题](https://github.com/gongteng0215/obsidian-vaultsail/issues)
 
 **目录：** [完整功能清单](#完整功能清单) · [版本规划](#版本规划) · [安装升级](#安装与升级) · [首次连接](#第一次连接) · [设备配对](#电脑ipad-与其他-vault-配对) · [自动同步](#自动同步与队列) · [冲突处理](#版本与冲突处理) · [云端位置](#百度网盘里放在哪里) · [恢复](#文件范围删除与恢复) · [常见问题](#性能与常见问题) · [隐私](#隐私与网络访问)
 

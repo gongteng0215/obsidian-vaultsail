@@ -1,6 +1,6 @@
 # Implementation status — 2026-10-20
 
-Local preview **0.2.23** addresses review compatibility findings: zero local lint errors/warnings, 289 automated checks passing, and byte-identical build output from a source archive with fresh dependencies and no `.git`. See [changes and verification](releases/0.2.23.md). It has not been published or submitted for review; 0.2.22 below remains the public release.
+**0.2.23** addresses review compatibility findings: zero local lint errors/warnings, 289 automated checks passing, and byte-identical build output from a source archive with fresh dependencies and no `.git`. See [changes and verification](releases/0.2.23.md). [0.2.23 is published and queued for official release checks](releases/0.2.23-publication.md), currently Pending. The 0.2.22 entry below is historical.
 
 GitHub release: **0.2.22**, published on 2026-10-20. Official preview: Completed; release scan: Completed. See [publication evidence](releases/0.2.22-publication.md). Real-device acceptance remains pending.
 
