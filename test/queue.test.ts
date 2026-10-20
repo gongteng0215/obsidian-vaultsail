@@ -35,6 +35,14 @@ test('burst edits coalesce by path, stay quiet for two seconds and have a maximu
   for (let i = 0; i < 16; i++) { f.time(4000 + i * 1000); f.queue.request('local', 'note.md'); await f.queue.pump(); }
   assert.equal(f.batches.length, 2);
 });
+
+test('queue reload keeps prototype-like note names as ordinary own pending paths', async () => {
+  const f = fixture(); await f.queue.pump(); f.queue.request('local', '__proto__');
+  f.restart(); await f.queue.pump(); f.batches.length = 0;
+  f.queue.request('local', '__proto__'); f.queue.request('local', 'constructor');
+  f.time(3000); await f.queue.pump();
+  assert.deepEqual(f.batches.at(-1)!.paths.sort(), ['__proto__', 'constructor']); f.queue.dispose();
+});
 test('edits arriving during a task survive acknowledgement; manual requests join the next single task', async () => {
   let release!: () => void, block = false; const f = fixture(async () => { if (block) await new Promise<void>(resolve => { release = resolve; }); });
   await f.queue.pump(); block = true; f.queue.request('manual'); const running = f.queue.pump();

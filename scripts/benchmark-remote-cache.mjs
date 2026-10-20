@@ -1,3 +1,4 @@
+import './node-host.mjs';
 // Synthetic transport only. No accounts, tokens, user notes or live Baidu requests.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

@@ -52,7 +52,7 @@ export class CloudFilesPanel {
     this.search.addEventListener('input', () => this.render());
     const deletedControl = controls.createEl('label', { cls: 'vs-cloud-deleted-toggle' });
     this.showDeleted = deletedControl.createEl('input'); this.showDeleted.type = 'checkbox'; this.showDeleted.checked = false;
-    this.showDeleted.setAttribute('aria-label', '显示已删除'); deletedControl.createEl('span', { text: '显示已删除' });
+    this.showDeleted.setAttribute('aria-label', '显示已删除'); deletedControl.createSpan({ text: '显示已删除' });
     this.showDeleted.addEventListener('change', () => this.render(true));
     for (const [label, expand] of [['全部展开', true], ['全部折叠', false]] as const) {
       controls.createEl('button', { text: label }).addEventListener('click', () => {
@@ -87,15 +87,15 @@ export class CloudFilesPanel {
     if (node.kind === 'file') { this.file(parent, node); return; }
     const row = parent.createEl('details', { cls: 'vs-cloud-folder' }); row.setAttribute('data-cloud-folder', node.path);
     const title = row.createEl('summary', { cls: 'vs-cloud-row' });
-    const icon = title.createEl('span', { cls: 'vs-cloud-icon' }); icon.setAttribute('aria-hidden', 'true'); setIcon(icon, 'folder');
-    title.createEl('span', { text: node.name, cls: 'vs-cloud-name' });
+    const icon = title.createSpan({ cls: 'vs-cloud-icon' }); icon.setAttribute('aria-hidden', 'true'); setIcon(icon, 'folder');
+    title.createSpan({ text: node.name, cls: 'vs-cloud-name' });
     const content = row.createDiv({ cls: 'vs-cloud-children' }); if (depth >= 6) content.classList.add('vs-cloud-deep');
     let rendered = false;
     const populate = () => {
       if (rendered) return; rendered = true;
       for (const child of node.children) this.node(content, child, depth + 1, searching);
     };
-    title.createEl('span', { cls: 'vs-cloud-meta', text: node.children.length ? `${node.files} 个文件` : '空目录' });
+    title.createSpan({ cls: 'vs-cloud-meta', text: node.children.length ? `${node.files} 个文件` : '空目录' });
     row.addEventListener('toggle', () => {
       if (!row.isConnected) return;
       if (row.hasAttribute('open')) populate();
@@ -106,11 +106,11 @@ export class CloudFilesPanel {
   private file(parent: HTMLElement, node: CloudFile): void {
     const row = parent.createDiv({ cls: 'vs-cloud-file' }); row.setAttribute('data-cloud-file', node.path);
     const title = row.createDiv({ cls: 'vs-cloud-row vs-cloud-file-row' });
-    const icon = title.createEl('span', { cls: 'vs-cloud-icon' }); icon.setAttribute('aria-hidden', 'true'); setIcon(icon, 'file');
-    title.createEl('span', { text: node.name, cls: 'vs-cloud-name' });
+    const icon = title.createSpan({ cls: 'vs-cloud-icon' }); icon.setAttribute('aria-hidden', 'true'); setIcon(icon, 'file');
+    title.createSpan({ text: node.name, cls: 'vs-cloud-name' });
     const updates = node.versions.filter(op => op.kind === 'update');
     const state = deleted(node.versions) ? 'deleted' : node.versions.length > 1 ? 'conflict' : 'current'; row.setAttribute('data-state', state);
-    title.createEl('span', { cls: 'vs-cloud-meta', text: state === 'conflict' ? `有冲突 · ${updates.length} 个内容版本` : state === 'deleted' ? '已删除 · 历史保留' : formatBytes(updates[0].size) + ' · 1 个内容版本' });
+    title.createSpan({ cls: 'vs-cloud-meta', text: state === 'conflict' ? `有冲突 · ${updates.length} 个内容版本` : state === 'deleted' ? '已删除 · 历史保留' : formatBytes(updates[0].size) + ' · 1 个内容版本' });
     const button = title.createEl('button', { text: '查看版本', cls: 'vs-cloud-version-button' }); button.type = 'button';
     button.setAttribute('aria-label', '查看版本：' + node.path);
     button.addEventListener('click', () => new CloudFileVersionsModal(this.app, node, this.location).open());

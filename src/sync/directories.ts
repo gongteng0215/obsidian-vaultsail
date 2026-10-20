@@ -21,7 +21,7 @@ export interface DirectoryPlan { mode: 'upload' | 'download' | 'sync'; deletionE
 const ids = (heads: DirectoryRevision[]) => heads.map(op => op.opId).sort();
 const same = (a: string[], b: string[]) => { const right = [...b].sort(); return a.length === b.length && [...a].sort().every((id, i) => id === right[i]); };
 export const directoryPresent = (heads: DirectoryRevision[]) => heads.some(op => op.kind === 'create');
-export function directoryPath(path: string, configDir = '.obsidian'): string {
+export function directoryPath(path: string, configDir = ''): string {
   relativePath(path);
   if (!included(path, configDir) || path === 'VaultSail-conflicts') throw new VaultSailError('path', '目录属于插件或配置排除范围。');
   return path;
@@ -33,7 +33,7 @@ export function validateDirectoryRevision(value: unknown, vaultId: string): Dire
     || !Array.isArray(row.parents) || row.parents.some(id => !validId(id)) || new Set(row.parents).size !== row.parents.length || row.parents.length > 10000)
     throw new VaultSailError('schema', '目录版本格式未知或损坏，已停止目录同步。');
   directoryPath(row.path);
-  return { version: 1, vaultId, opId: row.opId, deviceId: row.deviceId, path: row.path, parents: [...row.parents] as string[], kind: row.kind as DirectoryRevision['kind'], createdAt: Number(row.createdAt) };
+  return { version: 1, vaultId, opId: row.opId, deviceId: row.deviceId, path: row.path, parents: row.parents.filter(validId), kind: row.kind as DirectoryRevision['kind'], createdAt: Number(row.createdAt) };
 }
 export function directoryHeads(ops: DirectoryRevision[]): Map<string, DirectoryRevision[]> {
   const byId = new Map<string, DirectoryRevision>(), children = new Map<string, string[]>(), degree = new Map<string, number>();
@@ -153,14 +153,14 @@ export class RemoteDirectoryStore {
   }
 }
 export function newDirectoryState(vaultId: string, deviceId: string): DirectoryState { return { version: 1, vaultId, deviceId, bases: Object.create(null) as Record<string, DirectoryBase> }; }
-export function validateDirectoryState(value: unknown, vaultId: string, deviceId: string, configDir = '.obsidian'): DirectoryState {
+export function validateDirectoryState(value: unknown, vaultId: string, deviceId: string, configDir = ''): DirectoryState {
   const state = record(value);
   if (state.version !== 1 || state.vaultId !== vaultId || state.deviceId !== deviceId || !validId(deviceId)) throw new VaultSailError('state', '目录基线的身份或版本无效。');
   const bases: Record<string, DirectoryBase> = Object.create(null) as Record<string, DirectoryBase>;
   for (const [path, raw] of Object.entries(record(state.bases))) {
     directoryPath(path, configDir); const base = record(raw);
     if (typeof base.present !== 'boolean' || !Array.isArray(base.heads) || base.heads.some(id => !validId(id)) || new Set(base.heads).size !== base.heads.length) throw new VaultSailError('state', '目录基线损坏。');
-    bases[path] = { present: base.present, heads: [...base.heads] as string[] };
+    bases[path] = { present: base.present, heads: base.heads.filter(validId) };
   }
   if (Object.keys(bases).length > 10000) throw new VaultSailError('size', '目录基线超过上限。');
   const result: DirectoryState = { version: 1, vaultId, deviceId, bases };
@@ -185,7 +185,7 @@ export class DirectorySync {
   private guard: () => void; private onFile: (event: FileHistoryEvent) => void;
   private onFailure: (error: unknown, path: string, action: string) => string | undefined;
   private prepared = new WeakSet<DirectoryPlan>();
-  constructor(remote: RemoteDirectoryStore, local: LocalDirectories, store: DirectoryStateStore, vaultId: string, deviceId: string, configDir = '.obsidian', guard: () => void = () => {}, onFile: (event: FileHistoryEvent) => void = () => {}, onFailure: (error: unknown, path: string, action: string) => string | undefined = () => undefined) {
+  constructor(remote: RemoteDirectoryStore, local: LocalDirectories, store: DirectoryStateStore, vaultId: string, deviceId: string, configDir = '', guard: () => void = () => {}, onFile: (event: FileHistoryEvent) => void = () => {}, onFailure: (error: unknown, path: string, action: string) => string | undefined = () => undefined) {
     this.remote = remote; this.local = local; this.store = store; this.vaultId = vaultId; this.deviceId = deviceId; this.configDir = configDir; this.guard = guard; this.onFile = onFile; this.onFailure = onFailure;
   }
   private async state(): Promise<DirectoryState> { return validateDirectoryState(await this.store.load(), this.vaultId, this.deviceId, this.configDir); }

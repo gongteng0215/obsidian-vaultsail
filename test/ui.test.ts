@@ -38,6 +38,7 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   };
   const vaultEvents = new Map<string, ((file: { path: string }, oldPath?: string) => void)[]>();
   const app = {
+    fileManager: { trashFile: async (file: { path: string }) => { files.delete(file.path); } },
     secretStorage: { getSecret: (key: string) => secretMap.get(key) ?? null, setSecret: (key: string, value: string) => {
       // Match Obsidian's actual SecretStorage.validateId contract, including its length cap.
       if (!/^[a-z0-9-]+$/.test(key) || key.length > 64) throw new Error('Secret ID is invalid. 64 characters max.');
@@ -57,6 +58,17 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   const plugin = new module.Plugin(app); plugin.saved = { providerId: 'baidu', appKey: 'my-app', secretRef: 'own-secret', appDirectory: '/apps/test', remoteVaultId: 'legacy-name', access_token: 'must-be-stripped' };
   t.after(() => plugin.onunload());
   await plugin.onload(); plugin.tabs[0].display();
+  await t.test('declarative settings expose search terms while preserving incremental rendering and old-host fallback', () => {
+    const tab = plugin.tabs[0], definition = tab.getSettingDefinitions()[0];
+    assert.ok(definition.aliases.includes('自动同步')); assert.ok(definition.aliases.includes('SecretKey'));
+    const settingEl = document.createElement('section');
+    const cleanup = definition.render({ settingEl });
+    const input = settingEl.querySelector('input'); assert.ok(input); input.value = 'uncommitted-draft';
+    settingEl.scrollTop = 220; tab.refresh();
+    assert.equal(settingEl.querySelector('input'), input); assert.equal(input.value, 'uncommitted-draft'); assert.equal(settingEl.scrollTop, 220);
+    assert.match(settingEl.textContent!, /连接百度网盘/); cleanup(); tab.display();
+    assert.match(tab.containerEl.textContent!, /连接百度网盘/);
+  });
   const appGuide = plugin.tabs[0].containerEl.querySelector('#vaultsail-baidu-app-guide')!;
   assert.equal(appGuide.hasAttribute('open'), false, 'configured users can keep the onboarding compact');
   assert.equal(appGuide.querySelectorAll('li').length, 6);
@@ -711,4 +723,15 @@ test('plugin UI renders usable Chinese authorization controls; settings contain 
   const diagnosticPath = [...files.keys()].find(path => path.startsWith('VaultSail-配置/vaultsail-diagnostics-'))!;
   assert.equal(JSON.parse(new TextDecoder().decode(files.get(diagnosticPath)!)).format, 'vaultsail-diagnostics');
   diagnosticModal.close(); historyRestart.onunload();
+  await t.test('remote deletions use FileManager trash preference after preserving verified recovery bytes', async () => {
+    const content = new TextEncoder().encode('review deletion recovery'); files.set('review-delete.md', content.buffer);
+    let trashCalls = 0;
+    app.fileManager.trashFile = async file => { trashCalls++; files.delete(file.path); };
+    app.vault.trash = async () => { throw new Error('must use user trash preference'); };
+    const expected = Buffer.from(await crypto.subtle.digest('SHA-256', content)).toString('hex'), id = crypto.randomUUID();
+    await new module.ObsidianLocalFiles(app, plugin.deviceId).apply('review-delete.md', null, expected, id);
+    assert.equal(trashCalls, 1); assert.equal(files.has('review-delete.md'), false);
+    const backup = [...files.entries()].find(([path]) => path.includes('/recovery/' + id + '/review-delete.md'));
+    assert.ok(backup); assert.deepEqual(new Uint8Array(backup[1]), content);
+  });
 });

@@ -30,9 +30,9 @@ export function validateRevision(value: unknown, vaultId: string): Revision {
   if (!included(op.path)) throw new VaultSailError('path', '远端记录试图写入排除目录。');
   if (op.kind === 'update' && (typeof op.hash !== 'string' || !/^[a-f0-9]{64}$/.test(op.hash))) throw new VaultSailError('schema', '内容记录缺少 SHA-256。');
   if (op.kind === 'delete' && (op.hash !== undefined || op.size !== 0)) throw new VaultSailError('schema', '删除记录格式不正确。');
-  return { schemaVersion: 1, vaultId, opId: op.opId as string, deviceId: op.deviceId as string, fileId: op.fileId as string,
-    path: op.path as string, parents: [...op.parents] as string[], kind: op.kind as Revision['kind'], size: op.size as number, createdAt: op.createdAt as number,
-    ...(op.kind === 'update' ? { hash: op.hash as string } : {}), ...(op.previousPath !== undefined ? { previousPath: op.previousPath as string } : {}) };
+  return { schemaVersion: 1, vaultId, opId: op.opId, deviceId: op.deviceId, fileId: op.fileId,
+    path: op.path, parents: op.parents.filter(validId), kind: op.kind as Revision['kind'], size: op.size, createdAt: op.createdAt,
+    ...(op.kind === 'update' ? { hash: op.hash as string } : {}), ...(op.previousPath !== undefined ? { previousPath: op.previousPath } : {}) };
 }
 export function buildHeads(ops: Revision[], allowConcurrentRenames = false): Map<string, Revision[]> {
   const byId = new Map<string, Revision>(); const children = new Map<string, string[]>(); const indegrees = new Map<string, number>();

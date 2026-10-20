@@ -1,7 +1,7 @@
 import { Modal, Notice, Setting, type App } from 'obsidian';
-import { safeMessage } from '../core/safety';
+import { record, safeMessage } from '../core/safety';
 import { copyText } from './config-modals';
-import type { DiagnosticRecord } from '../diagnostics/log';
+import { validateDiagnostic, type DiagnosticRecord } from '../diagnostics/log';
 
 export class DiagnosticModal extends Modal {
   private generation = 0; private closed = false;
@@ -30,8 +30,12 @@ export class DiagnosticModal extends Modal {
       const generation = ++this.generation; loading = true; copy.setDisabled(true); save.setDisabled(true); status.setText('正在异步读取本机日志…');
       try {
         const text = await this.read(); if (this.closed || generation !== this.generation) return;
-        const parsed = JSON.parse(text); report = text; source.value = text; rows = parsed.records; render(); copy.setDisabled(false); save.setDisabled(false);
-        status.setText(`已读取 ${parsed.records.length} 条事件${parsed.storageFailed ? ' · 写盘失败，包含尚未保存的内存记录' : ''}${parsed.dropped ? ` · 缓冲区丢弃 ${parsed.dropped} 条` : ''}${parsed.unreadableSegments ? ` · ${parsed.unreadableSegments} 段记录无法读取` : ''}${parsed.reportTruncated ? ` · 导出容量限制，省略 ${parsed.reportTruncated} 条旧事件` : ''}。`);
+        const parsed = record(JSON.parse(text));
+        rows = (Array.isArray(parsed.records) ? parsed.records as unknown[] : []).map(validateDiagnostic).filter((row): row is DiagnosticRecord => row !== undefined);
+        report = text; source.value = text; render(); copy.setDisabled(false); save.setDisabled(false);
+        const count = (value: unknown): number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : 0;
+        const dropped = count(parsed.dropped), unreadable = count(parsed.unreadableSegments), truncated = count(parsed.reportTruncated);
+        status.setText(`已读取 ${rows.length} 条事件${parsed.storageFailed === true ? ' · 写盘失败，包含尚未保存的内存记录' : ''}${dropped ? ` · 缓冲区丢弃 ${dropped} 条` : ''}${unreadable ? ` · ${unreadable} 段记录无法读取` : ''}${truncated ? ` · 导出容量限制，省略 ${truncated} 条旧事件` : ''}。`);
       } catch (error) { if (!this.closed && generation === this.generation) status.setText(safeMessage(error)); }
       finally { loading = false; }
     };

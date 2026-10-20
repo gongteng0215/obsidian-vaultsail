@@ -23,7 +23,7 @@ interface RowElements { el: HTMLElement; name: HTMLElement; directory: HTMLEleme
 
 /** One persistent DOM row per file. Progress never replaces search inputs, focus, or details. */
 export class TransferCenterPanel {
-  private unsubscribe: () => void; private timer: ReturnType<typeof setInterval>; private closed = false;
+  private unsubscribe: () => void; private timer: number; private closed = false;
   private rows = new Map<string, RowElements>(); private uploads = new Map<string, FileUploadProgress>();
   private filter: Filter = 'all'; private page = 0; private key = ''; private context?: string;
   private title: HTMLElement; private status: HTMLElement; private counts: HTMLElement; private meter: HTMLProgressElement;
@@ -38,19 +38,19 @@ export class TransferCenterPanel {
   constructor(private host: HTMLElement, private source: TransferCenterSource) {
     host.empty(); host.classList.add('vaultsail-transfer-center');
     const heading = host.createDiv({ cls: 'vs-transfer-heading' });
-    const brand = heading.createDiv(); brand.createEl('span', { cls: 'vs-transfer-eyebrow', text: 'VAULTSAIL / TRANSFERS' });
+    const brand = heading.createDiv(); brand.createSpan({ cls: 'vs-transfer-eyebrow', text: 'VAULTSAIL / TRANSFERS' });
     brand.createEl('h2', { text: '传输中心' });
     const actions = heading.createDiv({ cls: 'vs-transfer-actions' });
     this.sync = actions.createEl('button', { text: '开始同步', cls: 'mod-cta' }); this.sync.addEventListener('click', () => { this.forceLatest = true; this.holding = false; source.sync(); });
     this.pause = actions.createEl('button', { text: '暂停任务' }); this.pause.addEventListener('click', () => source.pause());
     this.resume = actions.createEl('button', { text: '继续 / 恢复' }); this.resume.addEventListener('click', () => source.resume());
     this.latestBanner = host.createDiv({ cls: 'vs-transfer-follow-latest' }); this.latestBanner.hidden = true;
-    this.latestBanner.createEl('span', { text: '有新任务，当前保留你正在查看的列表。' });
+    this.latestBanner.createSpan({ text: '有新任务，当前保留你正在查看的列表。' });
     this.latestBanner.createEl('button', { text: '查看最新任务' }).addEventListener('click', () => { this.holding = false; this.forceLatest = true; this.render(); });
     const summary = host.createDiv({ cls: 'vs-transfer-summary' });
     this.title = summary.createEl('strong', { cls: 'vs-transfer-target' });
     this.status = summary.createEl('p', { cls: 'vs-transfer-status' }); this.status.setAttribute('role', 'status');
-    const metrics = summary.createDiv({ cls: 'vs-transfer-metrics' }); this.counts = metrics.createEl('span'); this.speed = metrics.createEl('span');
+    const metrics = summary.createDiv({ cls: 'vs-transfer-metrics' }); this.counts = metrics.createSpan(); this.speed = metrics.createSpan();
     this.meter = summary.createEl('progress', { cls: 'vs-transfer-total' }); this.meter.setAttribute('aria-label', '本轮已完成文件');
     this.queue = summary.createEl('p', { cls: 'vs-transfer-muted' });
     const toolbar = host.createDiv({ cls: 'vs-transfer-toolbar' });
@@ -63,24 +63,24 @@ export class TransferCenterPanel {
     this.empty = host.createEl('p', { cls: 'vs-transfer-empty' });
     const footer = host.createDiv({ cls: 'vs-transfer-footer' });
     this.previous = footer.createEl('button', { text: '上一页' }); this.previous.addEventListener('click', () => { this.page--; this.render(); });
-    this.paging = footer.createEl('span');
+    this.paging = footer.createSpan();
     this.next = footer.createEl('button', { text: '下一页' }); this.next.addEventListener('click', () => { this.page++; this.render(); });
     footer.createEl('button', { text: '历史记录' }).addEventListener('click', () => source.history());
     const details = host.createEl('details', { cls: 'vs-transfer-diagnostics' }); details.createEl('summary', { text: '本轮耗时与请求统计' });
     this.performance = details.createEl('p');
     host.createEl('p', { cls: 'vs-transfer-footnote', text: '内容校验并保存版本后才算完成。关闭面板不会停止同步。' });
     this.unsubscribe = source.subscribe(() => { this.needsRender = true; });
-    this.timer = setInterval(() => { if (this.needsRender || this.running) this.render(); }, 500); this.render();
+    this.timer = window.setInterval(() => { if (this.needsRender || this.running) this.render(); }, 500); this.render();
     void source.refresh().then(() => { if (!this.closed) this.render(); }).catch(() => { if (!this.closed) text(this.warning, '读取上次任务失败；当前任务仍会正常显示。'); });
   }
-  destroy(): void { this.closed = true; this.unsubscribe(); clearInterval(this.timer); this.rows.clear(); this.uploads.clear(); }
+  destroy(): void { this.closed = true; this.unsubscribe(); window.clearInterval(this.timer); this.rows.clear(); this.uploads.clear(); }
   private createRow(id: string): RowElements {
     const el = this.list.createDiv({ cls: 'vs-transfer-file' }); el.setAttribute('role', 'listitem'); el.setAttribute('data-file-id', id);
-    const header = el.createDiv({ cls: 'vs-transfer-file-header' }); header.createEl('span', { cls: 'vs-transfer-file-icon' }).setAttribute('aria-hidden', 'true');
+    const header = el.createDiv({ cls: 'vs-transfer-file-header' }); header.createSpan({ cls: 'vs-transfer-file-icon' }).setAttribute('aria-hidden', 'true');
     const info = header.createDiv({ cls: 'vs-transfer-file-info' });
     const name = info.createEl('strong'); const meta = info.createDiv({ cls: 'vs-transfer-file-meta' });
-    const directory = meta.createEl('span', { cls: 'vs-transfer-directory' }); const action = meta.createEl('span', { cls: 'vs-transfer-action' });
-    const state = header.createEl('span', { cls: 'vs-transfer-state' });
+    const directory = meta.createSpan({ cls: 'vs-transfer-directory' }); const action = meta.createSpan({ cls: 'vs-transfer-action' });
+    const state = header.createSpan({ cls: 'vs-transfer-state' });
     const meter = el.createEl('progress', { cls: 'vs-transfer-file-meter' });
     const note = el.createEl('p', { cls: 'vs-transfer-file-note' });
     const details = el.createEl('details', { cls: 'vs-transfer-file-details' }); details.createEl('summary', { text: '详情' });
@@ -159,12 +159,12 @@ export class TransferCenterPanel {
     const retryNote = retryUntil > 0 ? ` · ${Math.max(0, Math.ceil((retryUntil - Date.now()) / 1000))} 秒后重试${upload?.waitingParts?.length ? `（${upload.waitingParts.length} 片等待）` : ''}` : '';
     const note = active && upload?.requestPending ? '原生请求仍未结束，保留并发与缓冲额度；结果核验前不会提交文件。'
       : active && upload ? (stage === 'uploading'
-      ? `${formatBytes(upload.uploadedBytes)} / ${formatBytes(upload.totalBytes)}${rate ? ` · ${formatBytes(rate)}/s · 上传约剩 ${eta(timing!.uploadRemainingSeconds!)}` : ' · 速度估算中'}${timing && timing.waitingMs >= 2000 ? ` · 等待分片确认 ${seconds(timing.waitingMs)}` : ''}；校验另计`
+      ? `${formatBytes(upload.uploadedBytes)} / ${formatBytes(upload.totalBytes)}${rate ? ` · ${formatBytes(rate)}/s · 上传约剩 ${eta(timing.uploadRemainingSeconds!)}` : ' · 速度估算中'}${timing && timing.waitingMs >= 2000 ? ` · 等待分片确认 ${seconds(timing.waitingMs)}` : ''}；校验另计`
       : stage === 'verifying' ? `正在回读云端内容并校验${timing ? ` · 本阶段 ${seconds(timing.elapsedMs)}` : ''}`
       : `${STAGES[stage!]}${timing ? ` · 本阶段 ${seconds(timing.elapsedMs)}` : ''}`) + retryNote
       : row.state === 'succeeded' ? ['upload', 'download'].includes(row.action) ? '已校验并保存版本' : '已完成并保存结果' : row.state === 'queued' ? '等待本轮任务调度' : row.code ? HISTORY_CODES[row.code] : HISTORY_REASONS[row.reason];
     text(elements.note, note + (row.diagnosticId ? '\n诊断编号：' + row.diagnosticId : ''));
     text(elements.detail, `${row.path}\n${HISTORY_REASONS[row.reason]}${row.code ? '\n' + HISTORY_CODES[row.code] : ''}${upload ? `\n已确认分片 ${upload.completedParts} / ${upload.totalParts}${upload.activeParts?.length ? ` · 正在传第 ${upload.activeParts.join('、')} 片` : upload.currentPart ? ` · 正在传第 ${upload.currentPart} 片` : ''} · 第 ${upload.attempt} 次尝试 · 重试 ${upload.retryCount ?? 0} 次\n进度按服务端确认更新，正在传输的分片尚未计入。` : ''}`);
-    text(elements.timings, timing ? [timing.sourcePreparationMs !== undefined ? `本地核验与恢复准备 ${seconds(timing.sourcePreparationMs)}` : '', ...Object.entries(timing.stages).map(([name, ms]) => `${STAGES[name as keyof typeof STAGES]} ${seconds(ms!)}`)].filter(Boolean).join(' · ') : '');
+    text(elements.timings, timing ? [timing.sourcePreparationMs !== undefined ? `本地核验与恢复准备 ${seconds(timing.sourcePreparationMs)}` : '', ...Object.entries(timing.stages).map(([name, ms]) => `${STAGES[name as keyof typeof STAGES]} ${seconds(ms)}`)].filter(Boolean).join(' · ') : '');
   }
 }

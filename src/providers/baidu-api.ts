@@ -109,7 +109,7 @@ export class BaiduReadOnlyApi {
     }
     const files = response.list.map((raw): BaiduListedFile => {
       if (!isObject(raw) || typeof raw.path !== 'string' || typeof raw.size !== 'number' || !Number.isFinite(raw.size)
-          || typeof raw.isdir !== 'number' || ![0, 1].includes(raw.isdir as number)) {
+          || typeof raw.isdir !== 'number' || ![0, 1].includes(raw.isdir)) {
         throw new BaiduProbeError('response', 'Baidu list contains an invalid file entry.');
       }
       if (!raw.path.startsWith(appDir.replace(/\/$/, '') + '/')) {

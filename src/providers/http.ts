@@ -32,13 +32,13 @@ export async function request(transport: HttpTransport, input: HttpRequest, allo
   });
   const settled = pending.then(() => {}, () => {}).then(() => { release?.(); });
   try { policy.onPending?.(settled); } catch { /* Observers cannot affect the raw request lifetime. */ }
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  let timer: number | undefined;
   let abort: (() => void) | undefined;
   let result: HttpResponse;
   try {
     result = await Promise.race([pending, new Promise<never>((_, reject) => {
       const write = !['GET', 'HEAD'].includes((input.method ?? 'GET').toUpperCase());
-      timer = setTimeout(() => reject(new VaultSailError(write ? 'write-timeout' : 'timeout', write
+      timer = window.setTimeout(() => reject(new VaultSailError(write ? 'write-timeout' : 'timeout', write
         ? '写入请求超时，远端结果尚未确认；任务已保留，请先核验后恢复。'
         : '网络请求超时，请检查网络后重试。', !write)), policy.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS);
       if (policy.signal) {
@@ -48,7 +48,7 @@ export async function request(transport: HttpTransport, input: HttpRequest, allo
       }
     })]);
   } finally {
-    if (timer) clearTimeout(timer);
+    if (timer) window.clearTimeout(timer);
     if (abort) policy.signal?.removeEventListener('abort', abort);
   }
   if (result.status === 429 || result.status >= 500) {

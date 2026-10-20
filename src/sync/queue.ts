@@ -1,19 +1,20 @@
 import { included, relativePath, VaultSailError } from '../core/safety.ts';
 export interface QueueBatch { paths: string[]; remote: boolean; full: boolean; manual: boolean; }
 export interface QueueState { version: 1; sequence: number; dirty: Record<string, number>; remote: number; full: number; manual: number; paused: boolean; retryAt: number; failures: number; blocked: boolean; }
+type QueueTimer = number | ReturnType<typeof setTimeout>;
 export interface QueueOptions {
   load(): unknown; save(state: QueueState): void; run(batch: QueueBatch): Promise<void>; canRun(): boolean; enabled(): boolean; pollMs(): number;
-  change?(): void; now?: () => number; random?: () => number; timer?: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>; clear?: (id: ReturnType<typeof setTimeout>) => void;
+  change?(): void; now?: () => number; random?: () => number; timer?: (fn: () => void, ms: number) => QueueTimer; clear?: (id: QueueTimer) => void;
   onError?: (error: unknown, step: 'queue-save' | 'queue-load') => void;
 }
-const empty = (): QueueState => ({ version: 1, sequence: 0, dirty: Object.create(null), remote: 0, full: 0, manual: 0, paused: false, retryAt: 0, failures: 0, blocked: false });
+const empty = (): QueueState => ({ version: 1, sequence: 0, dirty: Object.create(null) as Record<string, number>, remote: 0, full: 0, manual: 0, paused: false, retryAt: 0, failures: 0, blocked: false });
 export class SyncQueue {
   get activity(): 'idle' | 'queued' | 'running' {
     if (this.disposed) return 'idle';
     if (this.running) return 'running';
     return !this.state.paused && !this.blocked && this.pending() && (this.options.enabled() || this.state.manual > 0) ? 'queued' : 'idle';
   }
-  private options: QueueOptions; private state = empty(); private timer?: ReturnType<typeof setTimeout>;
+  private options: QueueOptions; private state = empty(); private timer?: QueueTimer;
   private running = false; private disposed = false; private suspended = false; private first = 0; private last = 0;
   private remoteDue = 0; private fullDue = 0; private retryAt = 0; private failures = 0; private blocked = false;
   constructor(options: QueueOptions) {
@@ -23,7 +24,7 @@ export class SyncQueue {
       if (raw?.version === 1 && Number.isSafeInteger(raw.sequence) && raw.sequence >= 0 && raw.sequence < 1e12 && typeof raw.dirty === 'object' && raw.dirty && !Array.isArray(raw.dirty)
         && Object.keys(raw.dirty).length <= 2000 && ['remote', 'full', 'manual'].every(key => Number.isSafeInteger(raw[key as 'remote']) && raw[key as 'remote'] >= 0 && raw[key as 'remote'] <= raw.sequence)
         && Object.entries(raw.dirty).every(([path, value]) => relativePath(path) && included(path) && Number.isSafeInteger(value) && value > 0 && value <= raw.sequence))
-        this.state = { ...raw, dirty: Object.assign(Object.create(null), raw.dirty), paused: raw.paused === true,
+        this.state = { ...raw, dirty: Object.assign(Object.create(null) as Record<string, number>, raw.dirty), paused: raw.paused === true,
           retryAt: Number.isSafeInteger(raw.retryAt) && raw.retryAt >= 0 ? raw.retryAt : 0,
           failures: Number.isSafeInteger(raw.failures) && raw.failures >= 0 ? raw.failures : 0, blocked: raw.blocked === true };
       else if (raw !== null && raw !== undefined) { try { options.onError?.(new VaultSailError('state', '本机队列格式无效，已回退到完整核验。'), 'queue-load'); } catch { /* Advisory. */ } }
@@ -51,14 +52,14 @@ export class SyncQueue {
   }
   private pending(): boolean { return !!(this.state.remote || this.state.full || this.state.manual || Object.keys(this.state.dirty).length); }
   private arm(): void {
-    if (this.timer) (this.options.clear ?? clearTimeout)(this.timer); this.timer = undefined;
+    if (this.timer) (this.options.clear ?? window.clearTimeout)(this.timer); this.timer = undefined;
     if (this.disposed || this.running || this.state.paused || this.suspended || this.blocked) return;
     if (!this.options.enabled() && !this.state.manual) return;
     const now = this.now();
     let due = Math.min(this.remoteDue, this.fullDue);
     if (this.pending()) due = this.state.manual || this.state.remote || this.state.full ? now : Math.min(this.last + 2000, this.first + 15000);
     due = Math.max(due, this.retryAt);
-    this.timer = (this.options.timer ?? setTimeout)(() => { this.timer = undefined; void this.pump(); }, Math.max(25, Math.min(60_000, due - now)));
+    this.timer = (this.options.timer ?? window.setTimeout)(() => { this.timer = undefined; void this.pump(); }, Math.max(25, Math.min(60_000, due - now)));
   }
   async pump(): Promise<void> {
     if (this.disposed || this.running || this.state.paused || this.suspended || this.blocked || (!this.options.enabled() && !this.state.manual)) return;
@@ -90,7 +91,7 @@ export class SyncQueue {
   }
   pause(): void { this.state.paused = true; this.notify(); this.arm(); }
   suspend(value: boolean): void { this.suspended = value; if (!value && this.options.enabled()) this.request('full'); this.arm(); }
-  dispose(): void { this.disposed = true; if (this.timer) (this.options.clear ?? clearTimeout)(this.timer); this.timer = undefined; }
+  dispose(): void { this.disposed = true; if (this.timer) (this.options.clear ?? window.clearTimeout)(this.timer); this.timer = undefined; }
   summary(): string {
     return this.state.paused ? '自动任务已暂停，点击立即同步继续。' : this.suspended ? '应用在后台，待办已保留。' : this.blocked ? '自动任务已停止，请查看错误或恢复未完成任务。'
       : this.running ? `队列执行中 · 已记录 ${Object.keys(this.state.dirty).length} 个路径` : this.retryAt > this.now() ? '等待网络或限流重试，待办已保留。'

@@ -21,12 +21,13 @@ export async function traceRequest(log: DiagnosticLog | undefined, transport: Ht
     const digestCounts: LogFields = {};
     if (['list', 'metadata'].includes(endpoint) && Array.isArray(json.list)) {
       digestCounts.digestsStandard = 0; digestCounts.digestsOpaque = 0; digestCounts.digestsMissing = 0; digestCounts.digestsRejected = 0;
-      for (const entry of json.list.slice(0, 1000)) {
+      for (const item of (json.list as unknown[]).slice(0, 1000)) {
+        const entry = item as Record<string, unknown> | null;
         if (!entry || typeof entry !== 'object' || entry.isdir === 1) continue;
         const token = entry.md5;
         if (token === undefined || token === null || token === '') digestCounts.digestsMissing++;
         else if (!baiduDigest(token)) digestCounts.digestsRejected++;
-        else if (/^[a-fA-F0-9]{32}$/.test(token)) digestCounts.digestsStandard++;
+        else if (typeof token === 'string' && /^[a-fA-F0-9]{32}$/.test(token)) digestCounts.digestsStandard++;
         else digestCounts.digestsOpaque++;
       }
     }

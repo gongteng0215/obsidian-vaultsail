@@ -27,20 +27,21 @@ export function storageAdapter(app: App): StorageAdapter {
   const source = app.vault.adapter;
   let wrapped = adapters.get(source);
   if (!wrapped) {
-    wrapped = new Proxy(source, { get(target, key) {
-      const member = Reflect.get(target, key);
-      if (typeof key === 'string' && Object.hasOwn(labels, key) && typeof member === 'function') {
-        return (...args: unknown[]) => {
+    const wrap = <A extends unknown[], R>(key: keyof typeof labels, run: (...args: A) => Promise<R>) =>
+      (...args: A): Promise<R> => {
           const log = diagnosticLog(app), context = log?.context(), started = Date.now();
-          return localIO(labels[key as keyof typeof labels], () => member.apply(target, args), error => log?.record('local', 'failure', {
+          return localIO(labels[key], () => run(...args), error => log?.record('local', 'failure', {
             ...context, step: key, durationMs: Date.now() - started, ...(typeof args[0] === 'string' ? log.file(args[0]) : {}),
             ...(key === 'rename' && typeof args[1] === 'string' ? { targetRef: log.ref(args[1]) } : {}),
             ...(args[1] instanceof ArrayBuffer ? { bytes: args[1].byteLength } : {}),
           }, error));
-        };
-      }
-      return member;
-    } });
+      };
+    wrapped = {
+      stat: wrap('stat', (...args: Parameters<DataAdapter['stat']>) => source.stat(...args)), exists: wrap('exists', (...args: Parameters<DataAdapter['exists']>) => source.exists(...args)),
+      mkdir: wrap('mkdir', (...args: Parameters<DataAdapter['mkdir']>) => source.mkdir(...args)), readBinary: wrap('readBinary', (...args: Parameters<DataAdapter['readBinary']>) => source.readBinary(...args)),
+      writeBinary: wrap('writeBinary', (...args: Parameters<DataAdapter['writeBinary']>) => source.writeBinary(...args)), rename: wrap('rename', (...args: Parameters<DataAdapter['rename']>) => source.rename(...args)),
+      remove: wrap('remove', (...args: Parameters<DataAdapter['remove']>) => source.remove(...args)), list: wrap('list', (...args: Parameters<DataAdapter['list']>) => source.list(...args)), rmdir: wrap('rmdir', (...args: Parameters<DataAdapter['rmdir']>) => source.rmdir(...args)),
+    };
     adapters.set(source, wrapped);
   }
   return wrapped;

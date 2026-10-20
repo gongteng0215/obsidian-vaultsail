@@ -5,7 +5,7 @@ import { validateDiagnostic, type DiagnosticRecord, type DiagnosticStore } from 
 export const DIAGNOSTIC_SEGMENTS = 32, DIAGNOSTIC_SEGMENT_BYTES = 128 * 1024, DIAGNOSTIC_RETENTION_MS = 7 * 24 * 3600_000;
 const name = /^(error|trace)-(\d{1,16})-(\d{1,16})-([a-f0-9-]{36})\.json(?:\.next)?$/;
 const key = Symbol.for('vaultsail.diagnostic-storage');
-const shared = globalThis as typeof globalThis & { [key]?: WeakMap<object, Promise<void>> };
+const shared = window as typeof window & { [key]?: WeakMap<object, Promise<void>> };
 const locks = shared[key] ??= new WeakMap<object, Promise<void>>();
 /** Uses the raw adapter so a logging failure never logs itself. */
 export class ObsidianDiagnosticStore implements DiagnosticStore {

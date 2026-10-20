@@ -143,13 +143,13 @@ export class ObsidianLocalFiles implements LocalFiles {
     const latest = await this.read(path);
     if ((latest ? hash(latest) : null) !== expected) throw new VaultSailError('changed', '备份期间目标文件被编辑，停止替换。');
     const file = this.app.vault.getAbstractFileByPath(path);
-    if (data === null) { if (file instanceof TFile) await vaultIO(this.app, 'trash', path, '将本机文件移入回收站', () => this.app.vault.trash(file, false)); }
+    if (data === null) { if (file instanceof TFile) await vaultIO(this.app, 'trash', path, '将本机文件移入回收站', () => this.app.fileManager.trashFile(file)); }
     else if (file instanceof TFile && /\.md$/i.test(path)) {
       let text: string;
       try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(data); }
       catch { throw new VaultSailError('encoding', 'Markdown 不是有效 UTF-8，已保留暂存内容并停止替换。'); }
       await vaultIO(this.app, 'apply-note', path, '应用笔记内容', () => this.app.vault.process(file, current => {
-        if (hash(new TextEncoder().encode(current).buffer as ArrayBuffer) !== expected) throw new VaultSailError('changed', '笔记已被编辑，停止替换。');
+        if (hash(new TextEncoder().encode(current).buffer) !== expected) throw new VaultSailError('changed', '笔记已被编辑，停止替换。');
         return text;
       }));
     }

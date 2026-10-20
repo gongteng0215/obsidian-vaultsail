@@ -1,4 +1,4 @@
-import { sha256 } from '@noble/hashes/sha256';
+import { sha256 } from '@noble/hashes/sha2';
 import { bytesToHex } from '@noble/hashes/utils';
 
 export const MAX_FILE_SIZE = 20 * 1024 * 1024;
@@ -22,8 +22,9 @@ export function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new VaultSailError('response', '接口或数据格式不完整，已停止操作。');
   return value as Record<string, unknown>;
 }
+export function hasControlCharacters(text: string): boolean { return Array.from(text).some(char => char.charCodeAt(0) < 32); }
 export function relativePath(path: string): string {
-  if (!path || path.length > 1024 || path.startsWith('/') || /[\\\x00-\x1f<>:"|?*]/.test(path)) throw new VaultSailError('path', '路径不安全或不兼容，已停止操作。');
+  if (!path || path.length > 1024 || path.startsWith('/') || (/[\\<>:"|?*]/.test(path) || hasControlCharacters(path))) throw new VaultSailError('path', '路径不安全或不兼容，已停止操作。');
   for (const part of path.split('/')) {
     if (!part || part === '.' || part === '..' || /[. ]$/.test(part) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(part)) throw new VaultSailError('path', '路径包含保留名称或越界部分。');
   }
@@ -34,7 +35,7 @@ export function appRoot(path: string): string {
   if (!root.startsWith('/apps/') || root.split('/').length < 3) throw new VaultSailError('path', '请输入实际获准的 /apps/应用名 目录。');
   relativePath(root.slice(1)); return root;
 }
-export function included(path: string, configDir = '.obsidian'): boolean {
+export function included(path: string, configDir = ''): boolean {
   return !path.split('/').some(part => part.startsWith('.') || ['node_modules', 'Thumbs.db'].includes(part))
     && path !== configDir && !path.startsWith(configDir + '/') && !path.startsWith('VaultSail-conflicts/')
     && path !== 'VaultSail-配置' && !path.startsWith('VaultSail-配置/');
@@ -61,7 +62,7 @@ export function conflictCopyPath(path: string, versionKey: string): string {
   const stem = (extension ? name.slice(0, dot) : name).slice(0, 100).replace(/[. ]+$/, '') || '笔记';
   return `VaultSail-conflicts/${hash(bytes(path)).slice(0, 16)}/${stem} (冲突-${versionKey})${extension}`;
 }
-export function bytes(text: string): ArrayBuffer { return new TextEncoder().encode(text).buffer as ArrayBuffer; }
+export function bytes(text: string): ArrayBuffer { return new TextEncoder().encode(text).buffer; }
 export function jsonBytes(value: unknown): ArrayBuffer { return bytes(JSON.stringify(value)); }
 export function parseJson(data: ArrayBuffer): unknown {
   try { return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(data)); }
@@ -81,6 +82,6 @@ export function checkSize(size: number, limit = MAX_FILE_SIZE): void {
 }
 export const sleep = (ms: number, signal?: AbortSignal): Promise<void> => new Promise(resolve => {
   if (signal?.aborted) { resolve(); return; }
-  const finish = () => { clearTimeout(timer); signal?.removeEventListener('abort', finish); resolve(); };
-  const timer = setTimeout(finish, ms); signal?.addEventListener('abort', finish, { once: true });
+  const finish = () => { window.clearTimeout(timer); signal?.removeEventListener('abort', finish); resolve(); };
+  const timer = window.setTimeout(finish, ms); signal?.addEventListener('abort', finish, { once: true });
 });

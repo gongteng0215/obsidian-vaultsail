@@ -29,7 +29,7 @@ export function failureState(error: unknown): HistoryState {
   return ['paused', 'cancelled'].includes(code) ? 'paused' : ['network', 'timeout', 'write-timeout', 'visibility', 'state', 'integrity', 'unknown'].includes(code) ? 'unconfirmed' : 'failed';
 }
 const time = (value: unknown): value is number => Number.isSafeInteger(value) && Number(value) >= 0;
-export function validateHistory(value: unknown, context: string, deviceId: string, configDir = '.obsidian'): SyncHistoryTask {
+export function validateHistory(value: unknown, context: string, deviceId: string, configDir = ''): SyncHistoryTask {
   const task = value as SyncHistoryTask;
   if (!task || task.version !== 1 || task.context !== context || task.deviceId !== deviceId || !validId(task.id)
     || !time(task.sequence) || !time(task.startedAt) || !time(task.updatedAt) || (task.endedAt !== undefined && !time(task.endedAt))
@@ -64,18 +64,18 @@ export function interruptedHistory(task: SyncHistoryTask): SyncHistoryTask {
 /** Display history is advisory and never used as a baseline or recovery journal. */
 export class SyncHistory {
   private active?: SyncHistoryTask; private recent = new Map<string, SyncHistoryTask>();
-  private rows = new Map<string, FileHistoryRow>(); private timer?: ReturnType<typeof setTimeout>;
+  private rows = new Map<string, FileHistoryRow>(); private timer?: number;
   private saving = Promise.resolve(); private listeners = new Set<() => void>();
   private reservedBytes = 2048;
   private sawPartial = false;
   warning = false;
   readonly store: HistoryStore; readonly context: string; readonly deviceId: string; private configDir: string;
   private onError: (error: unknown, step: string, historyId?: string) => void;
-  constructor(store: HistoryStore, context: string, deviceId: string, configDir = '.obsidian', onError: (error: unknown, step: string, historyId?: string) => void = () => {}) { this.store = store; this.context = context; this.deviceId = deviceId; this.configDir = configDir; this.onError = onError; }
+  constructor(store: HistoryStore, context: string, deviceId: string, configDir = '', onError: (error: unknown, step: string, historyId?: string) => void = () => {}) { this.store = store; this.context = context; this.deviceId = deviceId; this.configDir = configDir; this.onError = onError; }
   private report(error: unknown, step: string, historyId?: string): void { try { this.onError(error, step, historyId); } catch { /* Advisory. */ } }
   subscribe(listener: () => void): () => void { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   private notify(): void { for (const listener of this.listeners) { try { listener(); } catch { /* A view cannot stop sync. */ } } }
-  private schedule(): void { this.notify(); if (!this.timer) this.timer = setTimeout(() => { this.timer = undefined; void this.flush(); }, 1000); }
+  private schedule(): void { this.notify(); if (!this.timer) this.timer = window.setTimeout(() => { this.timer = undefined; void this.flush(); }, 1000); }
   begin(mode: HistoryMode): void {
     if (this.active) throw new Error('History task already active');
     this.rows.clear(); this.reservedBytes = 2048; this.sawPartial = false; this.active = { version: 1, id: uuid(), context: this.context, deviceId: this.deviceId, sequence: 0, mode,
@@ -115,7 +115,7 @@ export class SyncHistory {
     if (this.active && performance) { this.active.performance = performance; this.active.sequence++; }
   }
   async flush(task = this.active): Promise<void> {
-    if (this.timer) { clearTimeout(this.timer); this.timer = undefined; }
+    if (this.timer) { window.clearTimeout(this.timer); this.timer = undefined; }
     if (!task) return this.saving;
     const snapshot = structuredClone(task);
     this.saving = this.saving.then(async () => { try { await this.store.save(snapshot); } catch (error) { this.warning = true; this.report(error, 'save-history', snapshot.id); this.notify(); } });
@@ -135,5 +135,5 @@ export class SyncHistory {
     return task ? structuredClone(task) : undefined;
   }
   snapshots(): SyncHistoryTask[] { return [...this.recent.values(), ...(this.active ? [this.active] : [])].map(task => structuredClone(task)); }
-  dispose(): void { if (this.timer) clearTimeout(this.timer); this.timer = undefined; void this.flush(); this.listeners.clear(); }
+  dispose(): void { if (this.timer) window.clearTimeout(this.timer); this.timer = undefined; void this.flush(); this.listeners.clear(); }
 }

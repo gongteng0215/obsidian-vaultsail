@@ -5,7 +5,7 @@ import { bytes, hash, parseJson, validId } from '../core/safety.ts';
 import { HISTORY_BYTE_LIMIT, HISTORY_TASK_LIMIT, validateHistory, type HistoryStore, type SyncHistoryTask } from '../sync/history.ts';
 
 const key = Symbol.for('vaultsail.history-storage');
-const shared = globalThis as typeof globalThis & { [key]?: WeakMap<object, Promise<void>> };
+const shared = window as typeof window & { [key]?: WeakMap<object, Promise<void>> };
 const locks = shared[key] ??= new WeakMap<object, Promise<void>>();
 async function locked<T>(app: object, run: () => Promise<T>): Promise<T> {
   const operation = (locks.get(app) ?? Promise.resolve()).then(run), settled = operation.then(() => {}, () => {});

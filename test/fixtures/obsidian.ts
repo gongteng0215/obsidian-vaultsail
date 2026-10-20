@@ -61,9 +61,11 @@ class Component {
 }
 export class SecretComponent extends Component { constructor(_app: unknown, parent: HTMLElement) { super(parent); this.inputEl.setAttribute('data-secret-reference', 'true'); } }
 export class Setting {
+  readonly settingEl: HTMLElement;
   private el: HTMLElement; private name: HTMLElement; private description: HTMLElement; private control: HTMLElement;
   constructor(parent: HTMLElement) {
     this.el = element(parent, 'div'); this.el.className = 'setting-item';
+    this.settingEl = this.el;
     const info = element(this.el, 'div'); info.className = 'setting-item-info';
     this.name = element(info, 'div'); this.name.className = 'setting-item-name';
     this.description = element(info, 'div'); this.description.className = 'setting-item-description';

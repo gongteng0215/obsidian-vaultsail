@@ -1,7 +1,7 @@
 import { RequestPool } from '../core/request-pool.ts';
 const key = Symbol.for('vaultsail.request-pools');
 interface Pools { requests: RequestPool; bodies: RequestPool; }
-const shared = globalThis as typeof globalThis & { [key]?: WeakMap<object, Pools> };
+const shared = window as typeof window & { [key]?: WeakMap<object, Pools> };
 const pools = shared[key] ??= new WeakMap<object, Pools>();
 /** Survives plugin reload while old native requests or multipart bodies remain alive. */
 export function requestPools(owner: object): Pools {

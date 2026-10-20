@@ -1,3 +1,4 @@
+import './node-host.mjs';
 // Isolated synthetic benchmark. No account, credentials or user files are read.
 // Keep outside npm test so CI/mobile verification does not allocate this buffer.
 import assert from 'node:assert/strict';

@@ -1,4 +1,4 @@
-import { appRoot, record, validId, VaultSailError } from './core/safety.ts';
+import { hasControlCharacters, appRoot, record, validId, VaultSailError } from './core/safety.ts';
 import type { VaultSailSettings } from './config.ts';
 
 export const CONFIG_EXPORT_DIRECTORY = 'VaultSail-配置';
@@ -23,7 +23,7 @@ export function parsePortableConfig(text: string): PortableConfig {
   if (source.remoteVault !== undefined) {
     let vault: Record<string, unknown>; try { vault = record(source.remoteVault); } catch { throw invalid(); }
     exactKeys(vault, ['id', 'displayName']);
-    if (!validId(vault.id) || typeof vault.displayName !== 'string' || vault.displayName.length > 120 || /[\x00-\x1f]/.test(vault.displayName)) throw invalid();
+    if (!validId(vault.id) || typeof vault.displayName !== 'string' || vault.displayName.length > 120 || hasControlCharacters(vault.displayName)) throw invalid();
     result.remoteVault = { id: vault.id, displayName: vault.displayName };
   }
   return result;

@@ -1,3 +1,4 @@
+import './node-host.mjs';
 /** Run only against a deliberately isolated test app directory. Does not write remotely. */
 import { BaiduReadOnlyApi, BaiduProbeError } from '../src/providers/baidu-api.ts';
 

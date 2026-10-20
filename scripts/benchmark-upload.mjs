@@ -1,3 +1,4 @@
+import './node-host.mjs';
 // Synthetic API benchmark only: never uses credentials, notes, or a real cloud account.
 // node --expose-gc --experimental-strip-types scripts/benchmark-upload.mjs --mib 64 --rounds 3
 import fs from 'node:fs';

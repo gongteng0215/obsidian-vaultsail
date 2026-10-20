@@ -1,4 +1,4 @@
-import { App, Modal, Notice, Platform, PluginSettingTab, Setting } from 'obsidian';
+import { App, Modal, Notice, Platform, PluginSettingTab, Setting, type SettingDefinitionItem } from 'obsidian';
 import type VaultSailPlugin from '../main';
 import { safeMessage, VaultSailError } from '../core/safety';
 import { RemoteVaultStore } from '../sync/remote-vault';
@@ -13,6 +13,18 @@ import { acceptFields, preserveInteraction, rememberFields } from './interaction
 const AUTH_LABELS = { unconfigured: '应用未配置', disconnected: '未授权', pending: '等待授权', connected: '已授权', reauthorize: '需要重新授权' };
 const BAIDU_APP_CONSOLE_URL = 'https://pan.baidu.com/union/console/applist';
 export class VaultSailSettingTab extends PluginSettingTab {
+  private renderRoot?: HTMLElement;
+  private get workspaceEl(): HTMLElement { return this.renderRoot ?? this.containerEl; }
+  // A custom dashboard keeps incremental rendering on 1.13+; display remains
+  // the fallback on 1.11.4. Search aliases cover the controls inside it.
+  getSettingDefinitions(): SettingDefinitionItem[] {
+    return [{ name: '云舟同步设置', aliases: ['VaultSail', '百度网盘', 'AppKey', 'SecretKey', '应用目录', '授权', '云端知识库', '导入', '导出', '配对', '自动同步', '删除传播', '并发', '文件大小', '诊断', '恢复', '传输中心'],
+      render: setting => {
+        const host = setting.settingEl; host.classList.add('vaultsail-settings-host');
+        this.renderRoot = host; this.signature = ''; this.renderWorkspace();
+        return () => { if (this.renderRoot === host) this.renderRoot = undefined; };
+      } }];
+  }
   private plugin: VaultSailPlugin;
   private activeTab = 'connect';
   private signature = ''; private draftContext = '';
@@ -25,9 +37,9 @@ export class VaultSailSettingTab extends PluginSettingTab {
     const update = () => { const disabled = (!editable && this.plugin.busy) || blocked(); if (disabled !== previous) { control.setDisabled(disabled); previous = disabled; } };
     this.controls.push(update); update(); return control;
   }
-  refresh(): void { this.display(); }
+  refresh(): void { this.renderWorkspace(); }
   private acceptDraft(label: string): () => void {
-    for (const row of Array.from(this.containerEl.querySelectorAll<HTMLElement>('.setting-item'))) {
+    for (const row of Array.from(this.workspaceEl.querySelectorAll<HTMLElement>('.setting-item'))) {
       if (row.querySelector('.setting-item-name')?.textContent === label) return acceptFields(row);
     }
     return () => {};
@@ -36,27 +48,27 @@ export class VaultSailSettingTab extends PluginSettingTab {
     for (const update of this.controls) update();
     const p = this.plugin; const progress = p.progress;
     const running = Boolean(progress && progressRunning(progress));
-    const status = this.containerEl.querySelector<HTMLElement>('.vaultsail-status-text');
+    const status = this.workspaceEl.querySelector<HTMLElement>('.vaultsail-status-text');
     const summary = p.statusText === '操作完成。' && progress?.phase === 'failed'
       ? '上次任务未完成：' + (progress.message ?? '请恢复任务或重新同步。') : p.statusText;
     const notice = p.auth.configurationIssue() ?? summary;
     if (status && status.textContent !== notice) status.setText(notice);
-    const card = this.containerEl.querySelector<HTMLElement>('.vaultsail-progress-card');
+    const card = this.workspaceEl.querySelector<HTMLElement>('.vaultsail-progress-card');
     card?.setAttribute('data-phase', progress?.phase ?? 'idle'); card?.setAttribute('aria-busy', String(running));
-    const state = this.containerEl.querySelector<HTMLElement>('.vaultsail-progress-state');
+    const state = this.workspaceEl.querySelector<HTMLElement>('.vaultsail-progress-state');
     const stateLabel = running ? '进行中 · 实时更新' : progress?.phase === 'failed' ? '上次任务 · 已停止' : progress?.phase === 'paused' ? '上次任务 · 已暂停' : progress?.phase === 'completed' && progress.blockedFiles ? '上次任务 · 部分完成' : progress ? '上次任务' : '等待开始';
     if (state && state.textContent !== stateLabel) state.setText(stateLabel);
-    const text = this.containerEl.querySelector<HTMLElement>('.vaultsail-progress-text');
-    const meter = this.containerEl.querySelector<HTMLProgressElement>('.vaultsail-progress-meter');
+    const text = this.workspaceEl.querySelector<HTMLElement>('.vaultsail-progress-text');
+    const meter = this.workspaceEl.querySelector<HTMLProgressElement>('.vaultsail-progress-meter');
     const detail = progress ? [formatProgress(progress), p.networkWaitText()].filter(Boolean).join('\n') : '点击开始同步，或先预览文件变化。';
     if (text && text.textContent !== detail) text.setText(detail);
-    const uploads = this.containerEl.querySelector<HTMLElement>('.vaultsail-upload-progress');
+    const uploads = this.workspaceEl.querySelector<HTMLElement>('.vaultsail-upload-progress');
     if (uploads) renderUploads(uploads, progress);
-    const queue = this.containerEl.querySelector<HTMLElement>('.vaultsail-queue-status');
+    const queue = this.workspaceEl.querySelector<HTMLElement>('.vaultsail-queue-status');
     if (queue && queue.textContent !== p.queueSummary()) queue.setText(p.queueSummary());
-    const blocked = this.containerEl.querySelector<HTMLElement>('.vaultsail-blocked-summary');
+    const blocked = this.workspaceEl.querySelector<HTMLElement>('.vaultsail-blocked-summary');
     if (blocked && blocked.textContent !== p.blockedSummary()) blocked.setText(p.blockedSummary());
-    const timing = this.containerEl.querySelector<HTMLElement>('.vaultsail-performance-text');
+    const timing = this.workspaceEl.querySelector<HTMLElement>('.vaultsail-performance-text');
     const timingText = p.performanceText();
     if (timing) { timing.hidden = !timingText; if (timing.textContent !== timingText) timing.setText(timingText); }
     if (meter) {
@@ -64,43 +76,44 @@ export class VaultSailSettingTab extends PluginSettingTab {
       if (running && !progress!.totalFiles) meter.removeAttribute('value');
       else meter.value = progress?.doneFiles ?? 0;
     }
-    const actions = this.containerEl.querySelector<HTMLElement>('.vaultsail-progress-actions');
+    const actions = this.workspaceEl.querySelector<HTMLElement>('.vaultsail-progress-actions');
     if (actions) { actions.hidden = !progress || !['failed', 'paused'].includes(progress.phase); actions.querySelectorAll('button').forEach(button => { button.disabled = p.busy; }); }
   }
-  display(): void {
+  display(): void { this.renderWorkspace(); }
+  private renderWorkspace(): void {
     const p = this.plugin;
     const signature = JSON.stringify([p.settings, p.auth.status(), p.auth.configurationIssue(), p.authPhase, p.deviceSession, p.auth.fallbackAllowed, Platform.isMobile, p.manifest.version]);
-    if (this.containerEl.firstElementChild && signature === this.signature) { this.updateProgress(); return; }
+    if (this.workspaceEl.firstElementChild && signature === this.signature) { this.updateProgress(); return; }
     const context = JSON.stringify([p.settings.appKey, p.settings.appDirectory, p.settings.secretRef, p.settings.binding]);
     const preserveDrafts = context === this.draftContext;
     this.signature = signature; this.draftContext = context;
-    preserveInteraction(this.containerEl, () => { this.controls = []; this.build(); rememberFields(this.containerEl); }, preserveDrafts);
+    preserveInteraction(this.workspaceEl, () => { this.controls = []; this.build(); rememberFields(this.workspaceEl); }, preserveDrafts);
   }
   private build(): void {
-    const el = this.containerEl; const p = this.plugin; el.empty();
+    const el = this.workspaceEl; const p = this.plugin; el.empty();
     el.classList.add('vaultsail-workspace');
     const hero = el.createDiv({ cls: 'vaultsail-hero' });
     const brand = hero.createDiv({ cls: 'vaultsail-brand' });
     const mark = brand.createDiv({ cls: 'vaultsail-mark' }); mark.setAttribute('aria-hidden', 'true');
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('viewBox', '0 0 40 40');
+    const svg = createSvg('svg'); svg.setAttribute('viewBox', '0 0 40 40');
     for (const shape of [{ d: 'M19 6v21H5L19 6Z', fill: 'currentColor' }, { d: 'M23 10v17h11L23 10Z', fill: 'currentColor', opacity: '0.55' }, { d: 'M5 30h30l-6 6H11l-6-6Z', fill: 'currentColor' }]) {
-      const path = document.createElementNS(svg.namespaceURI, 'path'); for (const [key, value] of Object.entries(shape)) path.setAttribute(key, value); svg.appendChild(path);
+      const path = svg.createSvg('path'); for (const [key, value] of Object.entries(shape)) if (typeof value === 'string') path.setAttribute(key, value);
     }
     mark.appendChild(svg);
-    const title = brand.createDiv({ cls: 'vaultsail-brand-copy' }); title.createEl('span', { text: 'YOUR VAULT, EVERY CLOUD', cls: 'vaultsail-eyebrow' });
-    title.createEl('span', { text: 'VaultSail · 云舟', cls: 'vaultsail-brand-name' });
-    const badge = hero.createEl('span', { cls: 'vaultsail-badge', text: AUTH_LABELS[p.auth.status()] }); badge.setAttribute('data-status', p.auth.status());
+    const title = brand.createDiv({ cls: 'vaultsail-brand-copy' }); title.createSpan({ text: 'YOUR VAULT, EVERY CLOUD', cls: 'vaultsail-eyebrow' });
+    title.createSpan({ text: 'VaultSail · 云舟', cls: 'vaultsail-brand-name' });
+    const badge = hero.createSpan({ cls: 'vaultsail-badge', text: AUTH_LABELS[p.auth.status()] }); badge.setAttribute('data-status', p.auth.status());
     const route = hero.createDiv({ cls: 'vaultsail-route' });
-    route.createEl('span', { text: this.app.vault.getName(), cls: 'vaultsail-route-local' }); route.createEl('span', { text: '→', cls: 'vaultsail-route-arrow' });
-    route.createEl('span', { text: p.settings.binding?.displayName ?? '等待连接云端', cls: 'vaultsail-route-cloud' });
+    route.createSpan({ text: this.app.vault.getName(), cls: 'vaultsail-route-local' }); route.createSpan({ text: '→', cls: 'vaultsail-route-arrow' });
+    route.createSpan({ text: p.settings.binding?.displayName ?? '等待连接云端', cls: 'vaultsail-route-cloud' });
     const metrics = el.createDiv({ cls: 'vaultsail-metrics' });
     for (const [label, value] of [['本地知识库', this.app.vault.getName()], ['云端目标', p.settings.binding ? '已绑定 · 百度网盘' : '尚未绑定'], ['当前版本', p.manifest.version]]) {
-      const metric = metrics.createDiv({ cls: 'vaultsail-metric' }); metric.createEl('span', { text: label }); metric.createEl('strong', { text: value });
+      const metric = metrics.createDiv({ cls: 'vaultsail-metric' }); metric.createSpan({ text: label }); metric.createEl('strong', { text: value });
     }
     const status = el.createDiv({ cls: 'vaultsail-notice' }); status.setAttribute('role', 'status');
-    status.createEl('span', { cls: 'vaultsail-status-text' });
+    status.createSpan({ cls: 'vaultsail-status-text' });
     const progressCard = el.createDiv({ cls: 'vaultsail-progress-card' });
-    progressCard.createEl('span', { cls: 'vaultsail-progress-state' });
+    progressCard.createSpan({ cls: 'vaultsail-progress-state' });
     progressCard.createEl('p', { cls: 'vaultsail-progress-text' }); progressCard.createEl('progress', { cls: 'vaultsail-progress-meter' }).setAttribute('aria-label', '文件处理进度');
     const progressTools = progressCard.createDiv({ cls: 'vaultsail-progress-tools' });
     new Setting(progressTools).setClass('vaultsail-progress-open').addButton(button => button.setButtonText('打开传输中心').onClick(() => { void p.openTransferCenter(); }));
@@ -123,7 +136,7 @@ export class VaultSailSettingTab extends PluginSettingTab {
     };
     for (const [id, number, label] of views) {
       const button = nav.createEl('button', { cls: 'vaultsail-tab' }); button.setAttribute('role', 'tab'); button.id = 'vaultsail-tab-' + id;
-      button.setAttribute('aria-controls', 'vaultsail-panel-' + id); button.createEl('span', { text: number }); button.createEl('strong', { text: label }); tabs.set(id, button);
+      button.setAttribute('aria-controls', 'vaultsail-panel-' + id); button.createSpan({ text: number }); button.createEl('strong', { text: label }); tabs.set(id, button);
       button.addEventListener('click', () => selectTab(id));
       button.addEventListener('keydown', event => {
         if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -134,7 +147,7 @@ export class VaultSailSettingTab extends PluginSettingTab {
       const panel = el.createDiv({ cls: 'vaultsail-panel' }); panel.id = 'vaultsail-panel-' + id; panel.setAttribute('role', 'tabpanel'); panel.setAttribute('aria-labelledby', button.id); panels.set(id, panel);
     }
     const card = (parent: HTMLElement, label: string, heading: string, description: string) => {
-      const result = parent.createDiv({ cls: 'vaultsail-card' }); result.createEl('span', { text: label, cls: 'vaultsail-eyebrow' });
+      const result = parent.createDiv({ cls: 'vaultsail-card' }); result.createSpan({ text: label, cls: 'vaultsail-eyebrow' });
       new Setting(result).setName(heading).setHeading().setClass('vaultsail-card-heading');
       result.createEl('p', { text: description, cls: 'vaultsail-card-intro' }); return result;
     };
@@ -169,7 +182,7 @@ export class VaultSailSettingTab extends PluginSettingTab {
       ['连接百度账号', '点击「连接百度网盘」，在打开的百度官方页面登录并同意授权；如提示验证码，使用插件显示的设备验证码。创建应用和账号授权是两个步骤。'],
       ['验证并选择云端库', '授权完成后验证文件传输，再到「云端知识库」创建新库或选择已有库，即可开始同步。应用目录以实际获准路径为准。'],
     ]) {
-      const item = steps.createEl('li'); item.createEl('strong', { text: title }); item.createEl('span', { text });
+      const item = steps.createEl('li'); item.createEl('strong', { text: title }); item.createSpan({ text });
     }
     const saveField = (name: string, key: 'appKey' | 'appDirectory', placeholder: string, description: string) => {
       let draft = p.settings[key];

@@ -5,7 +5,7 @@
 .vaultsail-workspace { --vs-accent: #38b5aa; --vs-ink: #102e36; width: 100%; min-width: 0; max-width: 1280px; box-sizing: border-box; margin: 0 auto; padding-inline: clamp(10px, 2%, 20px); padding-block: 12px 16px; overflow-wrap: anywhere; container: vaultsail / inline-size; }
 /* Keep host settings centering from consuming the plugin width in maximized windows. */
 .modal.mod-settings .vertical-tab-content.vaultsail-workspace { padding-inline: clamp(10px, 2%, 20px); padding-block: 12px 16px; }
-.vaultsail-workspace [hidden] { display: none !important; }
+.vaultsail-workspace [hidden][hidden] { display: none; }
 .vaultsail-hero { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 8px; padding: 12px 14px; border-radius: 12px; background: linear-gradient(125deg, #122d3a, #164851); color: #effbfb; overflow: hidden; }
 .vaultsail-hero::after { content: ''; position: absolute; right: -40px; bottom: -115px; width: 310px; height: 250px; border: 1px solid #a9e4df26; border-radius: 50%; box-shadow: 0 0 0 32px #a9e4df08, 0 0 0 65px #a9e4df06; pointer-events: none; }
 .vaultsail-brand { display: flex; flex-wrap: wrap; min-width: 0; align-items: center; gap: 10px; position: relative; z-index: 1; }
@@ -34,7 +34,7 @@
 .vaultsail-tabs .vaultsail-tab { display: flex; min-width: 0; max-width: 100%; align-items: center; justify-content: center; gap: 8px; height: auto; padding: 7px; white-space: normal; overflow-wrap: anywhere; border: 0; border-radius: 6px; box-shadow: none; background: transparent; color: var(--text-muted); }
 .vaultsail-tab span { font-size: 10px; opacity: 0.65; }
 .vaultsail-tab strong { min-width: 0; font-size: 12px; font-weight: 600; }
-.vaultsail-tab[aria-selected=true] { background: var(--background-primary) !important; color: var(--text-normal) !important; box-shadow: 0 2px 5px #00000012 !important; }
+.vaultsail-workspace .vaultsail-tabs .vaultsail-tab[aria-selected=true] { background: var(--background-primary); color: var(--text-normal); box-shadow: 0 2px 5px #00000012; }
 .vaultsail-tab[aria-selected=true] span { color: var(--vs-accent); opacity: 1; }
 .vaultsail-connect-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 10px; align-items: start; }
 .vaultsail-card { min-width: 0; padding: 12px 14px; border: 1px solid var(--background-modifier-border); border-radius: 10px; background: var(--background-primary); margin-bottom: 10px; container: vs-card / inline-size; }
@@ -178,7 +178,7 @@
 .vs-transfer-diagnostics { padding-top: 8px; border-top: 1px solid var(--background-modifier-border); color: var(--text-muted); font-size: var(--font-ui-smaller); line-height: 1.5; }
 .vs-transfer-empty { padding: 28px 4px; color: var(--text-muted); line-height: 1.8; font-size: var(--font-ui-small); }
 .vs-transfer-footnote { margin: 8px 0 0; color: var(--text-faint); font-size: var(--font-ui-smaller); line-height: 1.5; }
-.vaultsail-transfer-center [hidden] { display: none !important; }
+.vaultsail-transfer-center [hidden][hidden] { display: none; }
 .vaultsail-transfer-center :is(button, input, summary):focus-visible { outline: 2px solid var(--vs-transfer-accent); outline-offset: 2px; }
 @container vs-transfer (max-width: 450px) {
   .vs-transfer-heading { gap: 6px; } .vs-transfer-actions { width: 100%; }
@@ -233,3 +233,5 @@
 @media (pointer: coarse) { .vs-cloud-row { padding-block: 10px; } .vs-cloud-controls :is(input, button), .vs-cloud-version-button { min-height: 44px; } }
 @keyframes vaultsail-sync-pulse { 50% { opacity: .4; } }
 @media (prefers-reduced-motion: reduce) { [data-vaultsail-sync-state=running] svg { animation: none; } }
+
+.vaultsail-settings-host.setting-item { display: block; padding: 0; border: 0; }

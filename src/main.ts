@@ -1,5 +1,6 @@
 import { Modal, Notice, Plugin, Setting, Platform, requireApiVersion, apiVersion } from 'obsidian';
 import { VaultSailSettingTab } from './ui/settings-tab';
+import { readLastSuccess, readLocalValidation } from './platform/local-records';
 import { DEFAULT_SETTINGS, effectiveFileLimit, validFileMiB, validChunkConcurrency, migrateSettings, type VaultSailSettings } from './config';
 import { AuthManager, type DeviceSession } from './auth/auth-manager';
 import { ownsCredentialReference, pairingCredentialReferences } from './auth/credential-references';
@@ -72,7 +73,7 @@ export default class VaultSailPlugin extends Plugin {
     },
   });
   private progressListeners = new Set<(progress: SyncProgress) => void>();
-  private progressTimer?: ReturnType<typeof setInterval>;
+  private progressTimer?: number;
   private transferStartedAt?: number;
   private transferPauseRequested = false;
   private preflightStatus?: PreflightStatus;
@@ -165,7 +166,7 @@ export default class VaultSailPlugin extends Plugin {
     await this.auditLocalRecovery();
   }
 
-  onunload(): void { this.alive = false; this.automaticToast?.hide(); this.queue?.dispose(); this.performance.finish(); this.connectionRequests.abort(); this.pause(false); this.auth?.cancel(); if (this.progressTimer) clearInterval(this.progressTimer); this.progressTimer = undefined; this.progressListeners.clear(); this.transferListeners.clear(); for (const history of this.histories.values()) history.dispose(); this.diagnostic?.close(); for (const leaf of this.app.workspace?.getLeavesOfType?.(TRANSFER_CENTER_VIEW) ?? []) leaf.detach(); }
+  onunload(): void { this.alive = false; this.automaticToast?.hide(); this.queue?.dispose(); this.performance.finish(); this.connectionRequests.abort(); this.pause(false); this.auth?.cancel(); if (this.progressTimer) window.clearInterval(this.progressTimer); this.progressTimer = undefined; this.progressListeners.clear(); this.transferListeners.clear(); for (const history of this.histories.values()) history.dispose(); this.diagnostic?.close(); for (const leaf of this.app.workspace?.getLeavesOfType?.(TRANSFER_CENTER_VIEW) ?? []) leaf.detach(); }
   private invalidateConnection(): void {
     this.preflightStatus = undefined; this.preflightToken = undefined;
     this.performanceTaskType = undefined;
@@ -212,8 +213,8 @@ export default class VaultSailPlugin extends Plugin {
       for (const listener of this.progressListeners) { try { listener(this.progress!); } catch { /* UI observers cannot affect writes. */ } }
     };
     notify();
-    if (!progressRunning(progress)) { if (this.progressTimer) clearInterval(this.progressTimer); this.progressTimer = undefined; }
-    else if (!this.progressTimer) this.progressTimer = setInterval(notify, 500);
+    if (!progressRunning(progress)) { if (this.progressTimer) window.clearInterval(this.progressTimer); this.progressTimer = undefined; }
+    else if (!this.progressTimer) this.progressTimer = window.setInterval(notify, 500);
   }
   private beginTransfer(): void {
     this.preflightStatus = undefined; this.preflightToken = undefined;
@@ -260,10 +261,10 @@ export default class VaultSailPlugin extends Plugin {
     const key = 'vaultsail-queue-' + this.deviceId + '-' + context;
     if (this.queueContext === key && this.queue) return;
     this.queue?.dispose(); this.queueContext = key;
-    this.queue = new SyncQueue({ load: () => this.app.loadLocalStorage(key), save: state => this.app.saveLocalStorage(key, state),
+    this.queue = new SyncQueue({ load: (): unknown => this.app.loadLocalStorage(key), save: state => this.app.saveLocalStorage(key, state),
       onError: (error, step) => { this.diagnostic?.record('queue', 'failure', { step }, error); },
       enabled: () => this.settings.autoSyncEnabled, pollMs: () => this.settings.remotePollSeconds * 1000,
-      canRun: () => this.alive && !this.busy && !document.hidden && globalThis.navigator?.onLine !== false,
+      canRun: () => this.alive && !this.busy && !document.hidden && window.navigator?.onLine !== false,
       run: async batch => {
         const generation = this.generation; this.automaticRun = !batch.manual;
         try { await this.run(batch.manual ? '正在同步…' : '自动检查与同步…', () => this.startSync(batch), true, !batch.manual); }
@@ -287,7 +288,7 @@ export default class VaultSailPlugin extends Plugin {
       const running = this.queue.activity === 'running' || this.busy;
       this.queue.request('manual');
       if (feedback) new Notice(running ? '已有任务正在进行，已加入同步队列；完成后继续检查。'
-        : globalThis.navigator?.onLine === false ? '已加入同步队列，等待网络恢复。'
+        : window.navigator?.onLine === false ? '已加入同步队列，等待网络恢复。'
         : document.hidden ? '已加入同步队列，返回 Obsidian 后继续。' : '已加入同步队列，正在准备检查…', 4000);
     } else {
       if (feedback && !this.busy) new Notice('正在检查同步配置…', 4000);
@@ -354,7 +355,7 @@ export default class VaultSailPlugin extends Plugin {
     if (!task || loaded && loaded.startedAt > task.startedAt) task = loaded;
     const progress = context && this.progressContext === context ? this.progress : undefined;
     if (this.busy && progress && progressRunning(progress) && task?.status !== 'running') task = undefined;
-    const now = Date.now(), timings: TransferCenterSnapshot['timings'] = Object.create(null);
+    const now = Date.now(), timings = Object.create(null) as TransferCenterSnapshot['timings'];
     for (const row of task?.files ?? []) { const timing = this.uploadTelemetry.timing(row.path, now); if (timing) timings[row.path] = timing; }
     return { context, target: this.settings.binding ? `${this.app.vault.getName()} → ${this.settings.binding.displayName} · 百度网盘` : '尚未绑定云端库', busy: this.busy, pauseRequested: this.pauseRequested,
       queue: this.queueSummary(), task, progress, performance: progress ? this.performance.snapshot() : undefined,
@@ -381,7 +382,7 @@ export default class VaultSailPlugin extends Plugin {
     if (this.busy) throw new VaultSailError('busy', '请等待当前任务结束。');
     if (!Number.isInteger(pollSeconds) || pollSeconds < 30 || pollSeconds > 300) throw new VaultSailError('configuration', '远端检查间隔必须为 30–300 秒的整数。');
     if (enabled && (!this.settings.binding || this.auth.status() !== 'connected')) throw new VaultSailError('binding', '请先完成授权、绑定和文件权限验证。');
-    if (enabled && !this.app.loadLocalStorage(this.validationKey(this.settings.binding!.accountHash))?.passed) throw new VaultSailError('permission', '请先运行本设备的文件传输权限验证。');
+    if (enabled && !this.localValidation(this.settings.binding!.accountHash)?.passed) throw new VaultSailError('permission', '请先运行本设备的文件传输权限验证。');
     const previous = { enabled: this.settings.autoSyncEnabled, interval: this.settings.remotePollSeconds }; this.busy = true; this.refreshUI();
     try { this.settings.autoSyncEnabled = enabled; this.settings.remotePollSeconds = pollSeconds; await this.saveSettings(); }
     catch (error) { this.settings.autoSyncEnabled = previous.enabled; this.settings.remotePollSeconds = previous.interval; throw error; }
@@ -529,6 +530,9 @@ export default class VaultSailPlugin extends Plugin {
     const provider = this.provider(); const profile = await provider.profile(); await provider.listAll('');
     new Notice(profile.label + '：身份与目录列表通过；上传下载需运行往返校验。', 9000);
   }
+  private localValidation(accountHash: string) {
+    return readLocalValidation(this.app.loadLocalStorage(this.validationKey(accountHash)));
+  }
   private validationKey(accountHash: string): string { return 'vaultsail-validation-' + hash(bytes(this.settings.appKey + '|' + this.settings.appDirectory + '|' + accountHash)); }
   async roundtrip(): Promise<void> {
     const provider = this.provider(); const profile = await provider.profile(); const accountHash = hash(bytes(profile.accountId));
@@ -583,7 +587,7 @@ export default class VaultSailPlugin extends Plugin {
     try {
       const { provider, binding: b, accountHash } = await this.boundProvider();
       if (this.pauseRequested) throw new VaultSailError('paused', '任务已暂停，请重新开始或恢复任务。');
-      const validation = this.app.loadLocalStorage(this.validationKey(accountHash));
+      const validation = this.localValidation(accountHash);
       if (!validation?.passed) throw new VaultSailError('permission', '请先运行本设备的文件传输权限验证，确认上传下载权限。');
       if (this.engine) return this.engine;
       const context = hash(bytes(b.appKey + '|' + b.root + '|' + accountHash + '|' + b.vaultId));
@@ -696,9 +700,7 @@ export default class VaultSailPlugin extends Plugin {
     return b ? 'vaultsail-success-' + hash(bytes(b.appKey + '|' + b.root + '|' + b.accountHash + '|' + b.vaultId)) : undefined;
   }
   lastSuccess(): { completedAt: number; files: number; bytes: number; elapsedMs: number; blockedFiles?: number } | undefined {
-    const key = this.successKey(); const value = key ? this.app.loadLocalStorage(key) : null;
-    return value && ['completedAt', 'files', 'bytes', 'elapsedMs'].every(field => typeof value[field] === 'number' && Number.isFinite(value[field]) && value[field] >= 0)
-      ? { completedAt: value.completedAt, files: value.files, bytes: value.bytes, elapsedMs: value.elapsedMs, blockedFiles: Number.isSafeInteger(value.blockedFiles) && value.blockedFiles >= 0 ? value.blockedFiles : 0 } : undefined;
+    const key = this.successKey(); return readLastSuccess(key ? this.app.loadLocalStorage(key) : null);
   }
   async showCloudFiles(): Promise<void> {
     const generation = this.generation;
@@ -884,7 +886,7 @@ export default class VaultSailPlugin extends Plugin {
   }
   diagnostics(): string {
     const b = this.settings.binding;
-    const checked = b ? this.app.loadLocalStorage(this.validationKey(b.accountHash)) : null;
+    const checked = b ? this.localValidation(b.accountHash) : undefined;
     return JSON.stringify({ pluginVersion: this.manifest.version, authorized: this.auth.status() === 'connected', bound: Boolean(this.settings.binding),
       deletionEnabled: this.settings.deletionEnabled,
       lastErrorCode: this.lastErrorCode ?? null, lastDiagnosticId: this.diagnostic?.lastErrorId ?? null, diagnosticStorageFailed: this.diagnostic?.storageFailed ?? false,

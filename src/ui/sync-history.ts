@@ -9,7 +9,7 @@ const TASK_STATES = { running: '进行中', completed: '已完成', partial: '�
 const PAGE_SIZE = 50;
 export class SyncHistoryModal extends Modal {
   private tasks = new Map<string, SyncHistoryTask>(); private selected = ''; private page = 0;
-  private closed = false; private unsubscribe?: () => void; private timer?: ReturnType<typeof setInterval>;
+  private closed = false; private unsubscribe?: () => void; private timer?: number;
   private select!: HTMLSelectElement; private search!: HTMLInputElement; private state!: HTMLSelectElement; private action!: HTMLSelectElement;
   private summary!: HTMLElement; private list!: HTMLElement; private paging!: HTMLElement; private warning!: HTMLElement;
   private previous!: HTMLButtonElement; private next!: HTMLButtonElement; private signature = '';
@@ -17,7 +17,7 @@ export class SyncHistoryModal extends Modal {
   private rows = new Map<string, { el: HTMLElement; path: HTMLElement; status: HTMLElement; reason: HTMLElement }>();
   private empty?: HTMLElement; private loadGeneration = 0;
   constructor(app: App, private history: SyncHistory) { super(app); }
-  onClose(): void { this.closed = true; this.loadGeneration++; this.unsubscribe?.(); if (this.timer) clearInterval(this.timer); }
+  onClose(): void { this.closed = true; this.loadGeneration++; this.unsubscribe?.(); if (this.timer) window.clearInterval(this.timer); }
   onOpen(): void {
     this.titleEl.setText('同步记录 · 当前云端库 / 本设备'); this.contentEl.classList.add('vaultsail-history');
     this.contentEl.createEl('p', { text: '保留最近 30 次任务，每次最多 1000 条文件记录或 2 MiB。路径仅保存在本机，不含正文或凭据，不进入同步、配对和脱敏报告。记录是显示依据，实际恢复以同步日志核验为准。' });
@@ -39,11 +39,11 @@ export class SyncHistoryModal extends Modal {
     this.list = this.contentEl.createDiv({ cls: 'vaultsail-history-list' });
     const footer = this.contentEl.createDiv({ cls: 'vaultsail-history-controls' });
     this.previous = footer.createEl('button', { text: '上一页' }); this.previous.addEventListener('click', () => { this.page--; this.render(); });
-    this.paging = footer.createEl('span');
+    this.paging = footer.createSpan();
     this.next = footer.createEl('button', { text: '下一页' }); this.next.addEventListener('click', () => { this.page++; this.render(); });
     footer.createEl('button', { text: '关闭' }).addEventListener('click', () => this.close());
     this.unsubscribe = this.history.subscribe(() => this.signature = '');
-    this.timer = setInterval(() => { if (!this.closed) this.render(); }, 500);
+    this.timer = window.setInterval(() => { if (!this.closed) this.render(); }, 500);
     this.render(); void this.load();
   }
   private options(select: HTMLSelectElement, options: string[][]): void { select.empty(); for (const [value, text] of options) { const option = select.createEl('option', { text }); option.value = value; } }

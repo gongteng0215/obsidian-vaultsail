@@ -47,7 +47,9 @@ export class BaiduProvider implements CloudStorageProvider {
   }
   private etag(value: Record<string, unknown>, size: number): string | undefined {
     const digest = baiduDigest(value.md5); if (!digest) return undefined;
-    return `${String(value.fs_id ?? '')}:${digest}:${String(value.server_mtime ?? value.mtime ?? '')}:${size}`;
+    const scalar = (v: unknown) => typeof v === 'string' || typeof v === 'number' && Number.isFinite(v) ? String(v) : '';
+    const id = scalar(value.fs_id), modified = scalar(value.server_mtime ?? value.mtime);
+    return id && modified ? `${id}:${digest}:${modified}:${size}` : undefined;
   }
   private fingerprint(object: RemoteObject): string | undefined {
     return object.id && object.etag ? `${object.id}:${object.etag}:${object.size}` : undefined;
@@ -341,7 +343,7 @@ export class BaiduProvider implements CloudStorageProvider {
         for (let index = 0; index < blocks.length; index++) if (!requested.has(index)) { acknowledged.add(index); acknowledgedBytes += Math.max(0, Math.min(CHUNK, data.byteLength - index * CHUNK)); }
         report({ stage: 'uploading', uploadedBytes: acknowledgedBytes, completedParts: acknowledged.size });
         const activeParts = new Set<number>(), queuedParts = new Set<number>(), pendingParts = new Set<number>();
-        const waiting = new Map<number, { part: number; until: number; attempt: number }>(); let retries = 0; let batchFailure: unknown;
+        const waiting = new Map<number, { part: number; until: number; attempt: number }>(); let retries = 0; let batchFailure: Error | undefined;
         const detail = () => { const active = [...activeParts].sort((a, b) => a - b); report({ activeParts: active, currentPart: active[0],
           waitingParts: [...waiting.values()], waitingForSlot: queuedParts.size > 0, requestPending: pendingParts.size > 0, retryCount: retries }); };
         const check = () => { this.guard(); if (batchFailure) throw batchFailure; };
@@ -374,7 +376,7 @@ export class BaiduProvider implements CloudStorageProvider {
               } catch (error) {
                 // Stop sibling workers before draining an uncertain native write.
                 // A timed-out request may otherwise hold this worker while siblings start more slices.
-                if (!(error instanceof VaultSailError) || !error.retryable) batchFailure ??= error;
+                if (!(error instanceof VaultSailError) || !error.retryable) batchFailure ??= error instanceof Error ? error : new VaultSailError('network', '分片传输失败，任务已保留。', false, 0, error);
                 throw error;
               } finally {
                 if (nativeCount) { pendingParts.add(part); detail(); }
@@ -383,7 +385,7 @@ export class BaiduProvider implements CloudStorageProvider {
               }
             }, { guard: check, onWait: (until, nextAttempt) => { retries++; waiting.set(part, { part, until, attempt: nextAttempt }); detail(); } });
           } catch (error) {
-            const failure = error instanceof VaultSailError && error.retryable ? new VaultSailError(error.code, error.message, false, error.retryAfter) : error;
+            const failure = error instanceof VaultSailError && error.retryable ? new VaultSailError(error.code, error.message, false, error.retryAfter) : error instanceof Error ? error : new VaultSailError('network', '分片传输失败，任务已保留。', false, 0, error);
             batchFailure ??= failure; waiting.delete(part); detail(); throw failure;
           }
         });

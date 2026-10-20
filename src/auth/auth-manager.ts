@@ -7,7 +7,7 @@ export interface AuthSession { accessToken: string; refreshToken: string; expire
 export function validateAuthSession(value: unknown): AuthSession {
   const v = record(value);
   if (Object.keys(v).some(key => !['accessToken', 'refreshToken', 'expiresAt'].includes(key))
-    || !['accessToken', 'refreshToken'].every(key => typeof v[key] === 'string' && (v[key] as string).length > 0 && (v[key] as string).length <= 4096 && !/\s/.test(v[key] as string))
+    || !['accessToken', 'refreshToken'].every(key => typeof v[key] === 'string' && (v[key]).length > 0 && (v[key]).length <= 4096 && !/\s/.test(v[key]))
     || !Number.isSafeInteger(v.expiresAt) || (v.expiresAt as number) <= 0) throw new VaultSailError('configuration', '迁移授权信息无效，请重新导出。');
   return { accessToken: v.accessToken as string, refreshToken: v.refreshToken as string, expiresAt: v.expiresAt as number };
 }

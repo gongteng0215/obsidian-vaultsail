@@ -84,7 +84,7 @@ export class SyncEngine {
   private sourcePreparations = new Map<string, number>();
   private onFailure: (error: unknown, path: string, action: HistoryAction, phase: ProgressPhase) => string | undefined;
   blockedFiles(): BlockedFile[] { return [...this.blocked.values()].map(file => ({ ...file })); }
-  constructor(remote: RemoteVaultStore, local: LocalFiles, store: StateStore, vaultId: string, configDir = '.obsidian', report: (progress: SyncProgress) => void = () => {}, concurrency = DEFAULT_TRANSFER_CONCURRENCY,
+  constructor(remote: RemoteVaultStore, local: LocalFiles, store: StateStore, vaultId: string, configDir = '', report: (progress: SyncProgress) => void = () => {}, concurrency = DEFAULT_TRANSFER_CONCURRENCY,
     onFile: (event: FileHistoryEvent) => void = () => {}, fileLimit = MAX_FILE_SIZE,
     onFailure: (error: unknown, path: string, action: HistoryAction, phase: ProgressPhase) => string | undefined = () => undefined) {
     checkSize(0, fileLimit); this.fileLimit = fileLimit;
@@ -173,7 +173,7 @@ export class SyncEngine {
   private conflictHeads(snapshot: Pick<Snapshot, 'heads'>, path: string): Revision[] {
     let groups = this.headGroups.get(snapshot);
     if (!groups) { groups = new Map(); for (const heads of snapshot.heads.values()) for (const head of heads) if (head.kind === 'update') groups.set(head.fileId, [...groups.get(head.fileId) ?? [], head]); this.headGroups.set(snapshot, groups); }
-    const own = snapshot.heads.get(path) ?? [], related = own.filter(head => head.kind === 'update').flatMap(head => groups!.get(head.fileId) ?? []);
+    const own = snapshot.heads.get(path) ?? [], related = own.filter(head => head.kind === 'update').flatMap(head => groups.get(head.fileId) ?? []);
     return related.some(head => head.path !== path) ? [...new Map([...related, ...own].map(head => [head.opId, head])).values()] : own;
   }
   private retiredSource(snapshot: Snapshot, path: string, heads: Revision[]): boolean {
@@ -577,7 +577,7 @@ export class SyncEngine {
     let existing = await this.local.readConflictCopy(path, key);
     if (existing && hash(existing) !== expected) {
       // A user may edit a visible copy. Keep that edit and store the original under another key.
-      key = 'preserved-' + hash(new TextEncoder().encode(key + '|' + expected).buffer as ArrayBuffer);
+      key = 'preserved-' + hash(new TextEncoder().encode(key + '|' + expected).buffer);
       existing = await this.local.readConflictCopy(path, key);
       if (existing && hash(existing) !== expected) { key = uuid(); existing = null; }
     }
@@ -610,7 +610,7 @@ export class SyncEngine {
         const journal: Journal = { id: chosen.opId, path: row.path, action: 'apply', stage: 'prepared', revision: chosen, expectedLocal: localHash };
         state.journals.push(journal); await this.store.save(state); this.guard(); this.emit('applying');
         await this.applyLocal(row.path, data, localHash, chosen.opId); journal.stage = 'applied'; await this.store.save(state); this.guard();
-        state.bases[row.path] = { hash: chosen.hash!, heads: [chosen.opId], fileId: chosen.fileId }; state.journals = []; await this.store.save(state);
+        state.bases[row.path] = { hash: chosen.hash, heads: [chosen.opId], fileId: chosen.fileId }; state.journals = []; await this.store.save(state);
       }
       return undefined;
     }
@@ -675,7 +675,7 @@ export class SyncEngine {
       state.journals = []; state.knownOps = [...new Set([...state.knownOps, ...found])]; await this.store.save(state);
     });
   }
-  async resolve(path: string, choice: 'local' | string, expectedRow?: PlanRow, mergedData?: ArrayBuffer): Promise<void> {
+  async resolve(path: string, choice: string, expectedRow?: PlanRow, mergedData?: ArrayBuffer): Promise<void> {
     return this.exclusive(async () => {
       this.recordFile(path, 'resolve', expectedRow?.size ?? 0, 'running', 'resolved');
       const state = await this.state(); if (state.journals.length) throw new VaultSailError('recovery', '请先恢复未完成任务。');

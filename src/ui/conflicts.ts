@@ -39,15 +39,15 @@ export class ConflictInbox extends Modal {
 }
 class ConflictEditor extends Modal {
   private details: ConflictDetails; private actions: ConflictActions; private done: () => void;
-  private draft!: ConflictDraft; private saveTask: Promise<void> = Promise.resolve(); private saving?: ReturnType<typeof setTimeout>; private closed = false;
+  private draft!: ConflictDraft; private saveTask: Promise<void> = Promise.resolve(); private saving?: number; private closed = false;
   private committing = false;
   constructor(app: App, details: ConflictDetails, actions: ConflictActions, done: () => void) { super(app); this.details = details; this.actions = actions; this.done = done; }
   onOpen(): void { this.titleEl.setText('解决冲突 · ' + this.details.row.path); void this.render().catch(error => { if (!this.closed) this.contentEl.createEl('p', { text: safeMessage(error) }); }); }
   close(): void { if (!this.committing) super.close(); }
-  onClose(): void { this.closed = true; if (this.saving) clearTimeout(this.saving); if (this.draft) void this.save().catch(error => new Notice(safeMessage(error))); }
+  onClose(): void { this.closed = true; if (this.saving) window.clearTimeout(this.saving); if (this.draft) void this.save().catch(error => new Notice(safeMessage(error))); }
   private fingerprint(): string { return hash(bytes(JSON.stringify([this.details.row.localHash, this.details.row.heads.map(head => head.opId).sort()]))); }
   private async save(): Promise<void> { if (this.draft) this.saveTask = this.actions.drafts.save(this.details.row.path, structuredClone(this.draft)); await this.saveTask; }
-  private changed(): void { if (this.saving) clearTimeout(this.saving); this.saving = setTimeout(() => { void this.save().catch(error => new Notice(safeMessage(error))); }, 300); }
+  private changed(): void { if (this.saving) window.clearTimeout(this.saving); this.saving = window.setTimeout(() => { void this.save().catch(error => new Notice(safeMessage(error))); }, 300); }
   private async render(): Promise<void> {
     const d = this.details, old = await this.actions.drafts.load(d.row.path); if (this.closed) return;
     this.draft = old?.fingerprint === this.fingerprint() ? old : { version: 1, fingerprint: this.fingerprint(), text: d.merge?.text ?? d.local ?? d.versions.find(version => version.text !== undefined)?.text ?? '', blocks: {} };

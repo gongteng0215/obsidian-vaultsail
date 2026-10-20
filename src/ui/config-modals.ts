@@ -20,7 +20,7 @@ export class ConfigExportModal extends Modal {
   onOpen(): void {
     this.titleEl.setText('导出账号连接');
     this.contentEl.classList.add('vaultsail-pairing');
-    this.contentEl.createEl('p', { text: '默认只加密应用配置和百度授权，不包含云端库绑定或笔记。其他 Vault 导入后可单独创建或选择云端库，无需重复网页登录。配对码 24 小时内可用。' });
+    this.contentEl.createEl('p', { text: '默认只加密应用配置和百度授权，不包含云端库绑定或笔记。其他知识库 导入后可单独创建或选择云端库，无需重复网页登录。配对码 24 小时内可用。' });
     const label = this.contentEl.createEl('label', { text: '设置配对密码（至少 10 个字符）' });
     const password = this.contentEl.createEl('input'); password.type = 'password'; password.autocomplete = 'new-password'; password.setAttribute('aria-label', '设置配对密码'); label.appendChild(password);
     const repeatLabel = this.contentEl.createEl('label', { text: '再次输入密码' });
@@ -32,7 +32,7 @@ export class ConfigExportModal extends Modal {
     const result = this.contentEl.createEl('p'); result.setAttribute('role', 'status');
     let code = ''; let pending = false; let includeVault = false; let copy!: { setDisabled(value: boolean): unknown }; let save!: { setDisabled(value: boolean): unknown };
     const invalidate = () => { this.generation++; code = ''; input.value = ''; copy.setDisabled(true); save.setDisabled(true); result.setText('导出选项或密码已更改，请重新生成配对码。'); };
-    new Setting(this.contentEl).setName('同时导出当前云端库').setDesc(this.canIncludeVault ? '仅在另一台设备也要同步同一个 Vault 时开启。默认关闭，其他 Vault 可使用独立云端库。' : '当前未绑定云端库，仍可导出账号连接。')
+    new Setting(this.contentEl).setName('同时导出当前云端库').setDesc(this.canIncludeVault ? '仅在另一台设备也要同步同一个知识库 时开启。默认关闭，其他知识库 可使用独立云端库。' : '当前未绑定云端库，仍可导出账号连接。')
       .addToggle(toggle => toggle.setValue(false).setDisabled(!this.canIncludeVault).onChange(value => { includeVault = value; invalidate(); }));
     password.addEventListener('input', invalidate); repeat.addEventListener('input', invalidate);
     new Setting(this.contentEl).addButton(button => button.setButtonText('生成加密配对码').setCta().onClick(async () => {
@@ -67,7 +67,7 @@ export class ConfigImportModal extends Modal {
   onOpen(): void {
     this.titleEl.setText('导入账号连接');
     this.contentEl.classList.add('vaultsail-pairing');
-    this.contentEl.createEl('p', { text: '选择加密文件或粘贴配对码，输入导出时设置的密码。默认只导入账号连接，之后为当前 Vault 单独创建或选择云端库。' });
+    this.contentEl.createEl('p', { text: '选择加密文件或粘贴配对码，输入导出时设置的密码。默认只导入账号连接，之后为当前知识库 单独创建或选择云端库。' });
     const file = this.contentEl.createEl('input'); file.type = 'file'; file.accept = '.vaultsail,.txt,.json,text/plain,application/json'; file.setAttribute('aria-label', '选择配对配置文件');
     const input = this.contentEl.createEl('textarea', { cls: 'vaultsail-config-text' }); input.rows = 6; input.placeholder = 'VSAIL:1:…（也支持旧版 JSON 配对配置）'; input.setAttribute('aria-label', '粘贴配对配置');
     const password = this.contentEl.createEl('input'); password.type = 'password'; password.autocomplete = 'off'; password.placeholder = '导出时的配对密码'; password.setAttribute('aria-label', '输入配对密码');
@@ -84,7 +84,7 @@ export class ConfigImportModal extends Modal {
         }
       } catch (error) { password.disabled = false; summary.setText(input.value ? safeMessage(error) : '请先选择文件或粘贴配对码。'); button.setDisabled(true); }
     };
-    new Setting(this.contentEl).setName('绑定配对码中的同一个云端库').setDesc('仅在两台设备要同步同一个 Vault 时开启。默认关闭，即使旧码包含云端库，也不会自动绑定。')
+    new Setting(this.contentEl).setName('绑定配对码中的同一个云端库').setDesc('仅在两台设备要同步同一个知识库 时开启。默认关闭，即使旧码包含云端库，也不会自动绑定。')
       .addToggle(toggle => toggle.setValue(false).onChange(value => { bindRemoteVault = value; update(); }));
     file.addEventListener('change', () => {
       const generation = ++this.generation; const selected = file.files?.[0]; if (!selected) return; button.setDisabled(true);
@@ -104,14 +104,14 @@ export class ConfigImportModal extends Modal {
         try {
           const encrypted = isEncryptedPairing(text);
           const config = encrypted ? (await decryptPairing(text, pass)).config : parsePortableConfig(text);
-          if (requestedBinding && !config.remoteVault) throw new VaultSailError('configuration', '此配置只包含账号连接。请关闭云端库绑定选项，导入后为当前 Vault 创建或选择云端库。');
+          if (requestedBinding && !config.remoteVault) throw new VaultSailError('configuration', '此配置只包含账号连接。请关闭云端库绑定选项，导入后为当前知识库 创建或选择云端库。');
           if (generation !== this.generation) return;
           summary.setText(requestedBinding ? `云端库：${config.remoteVault!.displayName}` : '仅导入账号连接，不绑定导出设备的云端库。');
           this.confirmation = new ConfirmModal(this.app, '确认导入连接', encrypted
             ? requestedBinding
               ? `连接到「${config.remoteVault!.displayName}」。将自动验证账号、云端库并上传下载 1 KB 隔离校验文件；通过后替换原连接，可直接同步。现有笔记保留，删除同步关闭。`
-              : '仅导入应用配置和百度授权，将验证账号、应用目录并上传下载 1 KB 隔离校验文件。通过后替换当前账号连接，清除当前云端目标设置；本地笔记保留。之后请为当前 Vault 单独创建或选择云端库。'
-            : '将替换当前应用配置并清除原云端目标设置。旧版文件未包含授权，需在本设备重新登录。' + (requestedBinding ? `将待验证的目标设置为「${config.remoteVault!.displayName}」。` : '之后为当前 Vault 创建或选择云端库。'),
+              : '仅导入应用配置和百度授权，将验证账号、应用目录并上传下载 1 KB 隔离校验文件。通过后替换当前账号连接，清除当前云端目标设置；本地笔记保留。之后请为当前知识库 单独创建或选择云端库。'
+            : '将替换当前应用配置并清除原云端目标设置。旧版文件未包含授权，需在本设备重新登录。' + (requestedBinding ? `将待验证的目标设置为「${config.remoteVault!.displayName}」。` : '之后为当前知识库 创建或选择云端库。'),
           async (report, control) => {
             if (generation !== this.generation) throw new VaultSailError('cancelled', '输入已更改，请重新检查后导入。');
             await this.apply(text, encrypted ? pass : undefined, { report, bindRemoteVault: requestedBinding, signal: control.signal, onCommit: control.beginCommit });

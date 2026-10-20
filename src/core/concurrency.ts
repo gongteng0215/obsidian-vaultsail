@@ -8,7 +8,7 @@ export function validConcurrency(value: unknown): value is number {
 // worker can still publish an object or mutate a cache in the background.
 export async function mapConcurrent<T, R>(items: readonly T[], limit: number, action: (item: T, index: number) => Promise<R>): Promise<R[]> {
   if (!validConcurrency(limit)) throw new RangeError('Invalid transfer concurrency');
-  const results: R[] = new Array(items.length); let next = 0; let failed = false; let failure: unknown;
+  const results: R[] = new Array<R>(items.length); let next = 0; let failed = false; let failure: unknown;
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
     while (!failed && next < items.length) {
       const index = next++;

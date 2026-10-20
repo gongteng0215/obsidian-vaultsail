@@ -4,6 +4,8 @@ Sync Obsidian notes and attachments through your own Baidu Netdisk account, with
 
 **English** | [简体中文](README.zh-CN.md)
 
+**0.2.23 local preview:** Obsidian review compatibility fixes, validated local status records, browser-owned timers and DOM helpers, searchable settings on 1.13+ with the 1.11.4 fallback, and a required pre-release lint check. [Changes and verification](docs/releases/0.2.23.md). Not submitted to the community directory yet.
+
 **Release 0.2.22:** separate file/directory metrics and persisted request categories/task types; live parallel-check and wait states; pause/invalidation guards; deterministic dual-device fixtures, read-only iPad verification and permanent special reports. [Release evidence](docs/releases/0.2.22.md) · [Windows/iPad acceptance steps](docs/acceptance/0.2.22.md) · [Implementation status](docs/IMPLEMENTATION_STATUS.en.md). Implemented and simulation-tested; real Baidu performance and complete native dual-device acceptance remain pending. Community availability is subject to official checks.
 
 Command palette: **保存专项性能报告（不随任务轮转）** saves permanent performance reports; **双端测试数据校验（只读）** validates dedicated synthetic fixtures on either device. The last 30 task summaries survive restart. New fields remain optional in version-1 summaries; old records display “not recorded”. Existing authorization and bindings need no changes.

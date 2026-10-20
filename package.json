@@ -1,6 +1,6 @@
 {
   "name": "obsidian-vaultsail",
-  "version": "0.2.22",
+  "version": "0.2.23",
   "private": true,
   "description": "VaultSail: an extensible, safety-first multi-cloud sync plugin for Obsidian",
   "license": "MIT",
@@ -8,12 +8,15 @@
     "dev": "node esbuild.config.mjs",
     "build": "tsc --noEmit && node esbuild.config.mjs production",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test test/*.test.ts",
-    "probe:baidu": "node --experimental-strip-types scripts/baidu-smoke.mjs"
+    "test": "node --import ./test/fixtures/browser-host.mjs --experimental-strip-types --test test/*.test.ts",
+    "probe:baidu": "node --experimental-strip-types scripts/baidu-smoke.mjs",
+    "lint": "eslint src --max-warnings 0"
   },
   "devDependencies": {
     "@types/node": "^22.15.17",
     "esbuild": "^0.25.5",
+    "eslint": "10.13.0",
+    "eslint-plugin-obsidianmd": "0.4.2",
     "linkedom": "0.18.12",
     "obsidian": "1.14.4",
     "typescript": "^5.8.3"
@@ -21,5 +24,10 @@
   "type": "module",
   "dependencies": {
     "@noble/hashes": "1.8.0"
+  },
+  "overrides": {
+    "eslint-plugin-obsidianmd": {
+      "obsidian": "$obsidian"
+    }
   }
 }

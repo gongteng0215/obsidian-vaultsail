@@ -1,3 +1,4 @@
+import './node-host.mjs';
 // Synthetic benchmark: no credentials, user notes, or real cloud access.
 // --side baseline records the frozen 0.2.8 implementation before changes.
 import assert from 'node:assert/strict';

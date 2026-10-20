@@ -54,9 +54,9 @@ function fields(value: LogFields): LogFields {
   for (const key of ['automaticEnabled', 'deletionEnabled', 'incremental', 'remoteCheck', 'fullCheck'] as const) if (typeof value[key] === 'boolean') out[key] = value[key];
   if (typeof value.serviceRequestId === 'string' && /^\d{1,32}$/.test(value.serviceRequestId)) out.serviceRequestId = value.serviceRequestId;
   for (const key of numbers) if (Number.isSafeInteger(value[key]) && Math.abs(value[key]!) <= Number.MAX_SAFE_INTEGER) out[key] = value[key];
-  for (const key of tagFields) if (typeof value[key] === 'string' && tags.has(value[key]!)) out[key] = value[key];
+  for (const key of tagFields) if (typeof value[key] === 'string' && tags.has(value[key])) out[key] = value[key];
   for (const key of idFields) if (validId(value[key])) out[key] = value[key];
-  for (const key of refFields) if (typeof value[key] === 'string' && /^[a-f0-9]{32}$/.test(value[key]!)) out[key] = value[key];
+  for (const key of refFields) if (typeof value[key] === 'string' && /^[a-f0-9]{32}$/.test(value[key])) out[key] = value[key];
   return out;
 }
 function property(value: unknown, key: string): unknown {
@@ -105,7 +105,7 @@ export class DiagnosticLog {
   readonly session = uuid(); private salt: string; private store: DiagnosticStore; private now: () => number;
   private recent: DiagnosticRecord[] = []; private pending: DiagnosticRecord[] = []; private currentTask?: string; private sequence = 0;
   private tasks = new Map<string, LogFields>();
-  private timer?: ReturnType<typeof setTimeout>; private saving?: Promise<void>; private closed = false;
+  private timer?: number; private saving?: Promise<void>; private closed = false;
   private env?: LogEnvironment;
   storageFailed = false; dropped = 0; lastErrorId?: string;
   private storageError?: ErrorDetail[];
@@ -137,12 +137,12 @@ export class DiagnosticLog {
       this.recent.push(item); if (this.recent.length > LOG_MEMORY_LIMIT) this.recent.shift();
       this.pending.push(item); if (this.pending.length > LOG_PENDING_LIMIT) { this.pending.shift(); this.dropped++; }
       if (event === 'failure') { this.lastErrorId = item.id; void this.flush(); }
-      else if (!this.timer) this.timer = setTimeout(() => { this.timer = undefined; void this.flush(); }, 2000);
+      else if (!this.timer) this.timer = window.setTimeout(() => { this.timer = undefined; void this.flush(); }, 2000);
       return item.id;
     } catch { this.dropped++; return undefined; }
   }
   async flush(): Promise<void> {
-    if (this.timer) { clearTimeout(this.timer); this.timer = undefined; }
+    if (this.timer) { window.clearTimeout(this.timer); this.timer = undefined; }
     if (this.saving) return this.saving;
     this.saving = (async () => {
       while (this.pending.length) {
