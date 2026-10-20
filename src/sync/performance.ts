@@ -10,12 +10,13 @@ const REQUESTS = {
   metadata: '下载信息', download: '下载与回读', refresh: '令牌刷新', authorize: '授权', other: '其他请求',
 } as const;
 type Stage = keyof typeof STAGES;
-type RequestKind = keyof typeof REQUESTS;
-interface RequestStats { count: number; failed: number; elapsedMs: number; maxMs: number; pending: number; }
+export type RequestKind = keyof typeof REQUESTS;
+export interface RequestStats { count: number; failed: number; elapsedMs: number; maxMs: number; pending: number; }
 export interface PerformanceSnapshot {
   elapsedMs: number; stages: Record<Stage, number>; requests: Partial<Record<RequestKind, RequestStats>>;
   requestCount: number; refreshCount: number; retryCount: number; retryWaitMs: number;
   scans: number; versions: RevisionScanStats;
+  directoryScans?: number; directories?: RevisionScanStats;
 }
 // Only fixed categories and numbers enter the report. No URL, path, response,
 // token, error text or request body is retained, even for failed requests.
@@ -36,13 +37,14 @@ export function requestKind(input: HttpRequest): RequestKind {
 export class TransferPerformance {
   private state?: { started: number; ended?: number; stage?: Stage; since: number; stages: Record<Stage, number>;
     requests: Partial<Record<RequestKind, RequestStats>>; pending: Map<object, { kind: RequestKind; started: number }>; retryCount: number; retryWaitMs: number;
-    scans: number; versions: RevisionScanStats };
+    scans: number; versions: RevisionScanStats; directoryScans: number; directories: RevisionScanStats };
   private now: () => number;
   constructor(now = () => Date.now()) { this.now = now; }
   begin(): void {
     const now = this.now();
     this.state = { started: now, since: now, stages: { connecting: 0, remote: 0, local: 0, transfer: 0 }, requests: {}, pending: new Map(), retryCount: 0, retryWaitMs: 0,
-      scans: 0, versions: { listed: 0, cacheHits: 0, read: 0, missingFingerprints: 0 } };
+      scans: 0, versions: { listed: 0, cacheHits: 0, read: 0, missingFingerprints: 0 },
+      directoryScans: 0, directories: { listed: 0, cacheHits: 0, read: 0, missingFingerprints: 0 } };
   }
   phase(phase: ProgressPhase): void {
     const state = this.state; if (!state || state.ended !== undefined) return;
@@ -60,12 +62,13 @@ export class TransferPerformance {
     const state = this.state; if (!state || state.ended !== undefined) return;
     state.retryCount++; state.retryWaitMs += Math.max(0, waitedMs);
   }
-  scan(stats: RevisionScanStats): void {
+  scan(stats: RevisionScanStats, directory = false): void {
     const state = this.state; if (!state || state.ended !== undefined) return;
-    state.scans++;
-    for (const key of ['listed', 'cacheHits', 'read', 'missingFingerprints'] as const) state.versions[key] += stats[key];
+    if (directory) state.directoryScans++; else state.scans++;
+    const target = directory ? state.directories : state.versions;
+    for (const key of ['listed', 'cacheHits', 'read', 'missingFingerprints'] as const) target[key] += stats[key];
     if (stats.details) {
-      const detail = state.versions.details ??= Object.fromEntries(SCAN_DETAIL_KEYS.map(key => [key, 0])) as unknown as ScanDetails;
+      const detail = target.details ??= Object.fromEntries(SCAN_DETAIL_KEYS.map(key => [key, 0])) as unknown as ScanDetails;
       for (const key of SCAN_DETAIL_KEYS) detail[key] += stats.details[key];
     }
   }
@@ -76,7 +79,16 @@ export class TransferPerformance {
     const stats = state.requests[category] ??= { count: 0, failed: 0, elapsedMs: 0, maxMs: 0, pending: 0 };
     stats.count++; state.pending.set(id, { kind: category, started });
     let failed = false;
-    try { const response = await transport(input); failed = response.status >= 400; return response; }
+    try {
+      const response = await transport(input); failed = response.status >= 400;
+      // Baidu also returns API errors with HTTP 200. Inspect only fixed codes;
+      // never retain a response or attempt to parse downloaded note content.
+      if (!failed && !['download', 'other'].includes(category)) {
+        const body = response.json as Record<string, unknown> | undefined;
+        failed = Boolean(body && (typeof body.errno === 'number' && body.errno !== 0 || typeof body.error_code === 'number' && body.error_code !== 0 || typeof body.error === 'string'));
+      }
+      return response;
+    }
     catch (error) { failed = true; throw error; }
     finally {
       // Native requests may finish after timeout, unload or a subsequent task.
@@ -99,7 +111,8 @@ export class TransferPerformance {
     }
     return { elapsedMs: Math.max(0, now - state.started), stages, requests,
       requestCount: Object.values(requests).reduce((sum, stat) => sum + stat.count, 0), refreshCount: requests.refresh?.count ?? 0,
-      retryCount: state.retryCount, retryWaitMs: state.retryWaitMs, scans: state.scans, versions: { ...state.versions, ...(state.versions.details ? { details: { ...state.versions.details } } : {}) } };
+      retryCount: state.retryCount, retryWaitMs: state.retryWaitMs, scans: state.scans, versions: structuredClone(state.versions),
+      directoryScans: state.directoryScans, directories: structuredClone(state.directories) };
   }
 }
 export function formatPerformance(value?: PerformanceSnapshot): string {
@@ -110,7 +123,16 @@ export function formatPerformance(value?: PerformanceSnapshot): string {
     + `\n网络请求 ${value.requestCount} 次 · 令牌刷新 ${value.refreshCount} 次`
     + (value.retryCount ? ` · 失败/限流等待 ${value.retryCount} 次（累计 ${(value.retryWaitMs / 1000).toFixed(1)} 秒）` : '')
     + `\n云端扫描 ${value.scans} 轮 · 版本缓存命中 ${value.versions.cacheHits}/${value.versions.listed} 条 · 实际读取 ${value.versions.read} 条`
-    + (value.versions.missingFingerprints ? `（${value.versions.missingFingerprints} 条缺少云端指纹）` : '');
+    + (value.versions.missingFingerprints ? `（${value.versions.missingFingerprints} 条缺少云端指纹，已回退正文核验）` : '')
+    + `\n目录记录：${value.directories ? `扫描 ${value.directoryScans} 轮 · 缓存命中 ${value.directories.cacheHits}/${value.directories.listed} 条 · 实际读取 ${value.directories.read} 条` : '未记录'}`
+    + (value.directories?.missingFingerprints ? `（${value.directories.missingFingerprints} 条缺少云端指纹，已回退正文核验）` : '')
+    + '\n' + formatRequestStats(value.requests);
+}
+export function formatRequestStats(requests: PerformanceSnapshot['requests']): string {
+  return Object.entries(REQUESTS).flatMap(([key, label]) => {
+    const value = requests[key as RequestKind];
+    return value ? [`${label} ${value.count} 次 / 失败 ${value.failed} / ${(value.elapsedMs / 1000).toFixed(2)} 秒`] : [];
+  }).join(' · ') + '（请求耗时为并发累计，不等于任务总耗时）';
 }
 export const REQUEST_LABELS = REQUESTS;
 export function formatScanDetails(value?: ScanDetails): string {

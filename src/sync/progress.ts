@@ -1,5 +1,6 @@
 import type { ObjectTransferProgress } from '../providers/cloud-storage-provider';
 import type { RevisionScanProgress } from './remote-vault';
+import { formatPreflight, type PreflightStatus } from './preflight.ts';
 export type FileUploadProgress = Omit<ObjectTransferProgress, 'stage'> & { path: string; contentHash?: string; sourcePreparationMs?: number; stage: ObjectTransferProgress['stage'] | 'publishing' };
 export type ProgressPhase = 'connecting' | 'scanning-remote' | 'checking-remote' | 'scanning-local' | 'checking' | 'preparing-upload' | 'uploading' | 'verifying' | 'publishing' | 'downloading' | 'applying' | 'preview-ready' | 'completed' | 'paused' | 'failed';
 export interface SyncProgress {
@@ -9,6 +10,7 @@ export interface SyncProgress {
   blockedFiles?: number;
   uploads?: FileUploadProgress[];
   scan?: RevisionScanProgress;
+  preflight?: PreflightStatus;
 }
 export function formatScan(scan?: RevisionScanProgress): string {
   if (!scan) return '';
@@ -47,7 +49,7 @@ export function formatProgress(progress: SyncProgress, now = Date.now()): string
   const stopped = progress.phase === 'failed' ? '\n任务已停止，请根据错误恢复任务或重新同步。' : '';
   const parallel = progress.concurrency && !scanning ? `\n同时传输 ${progress.activeFiles ?? 0}/${progress.concurrency} 个文件` : '';
   const blocked = progress.blockedFiles ? `\n跳过 ${progress.blockedFiles} 项（超限或关联保护，未传输；可查看跳过文件）` : '';
-  const label = progress.phase === 'completed' && progress.blockedFiles ? '部分完成 · 有跳过项' : PROGRESS_LABELS[progress.phase];
+  const label = formatPreflight(progress.preflight) || (progress.phase === 'completed' && progress.blockedFiles ? '部分完成 · 有跳过项' : PROGRESS_LABELS[progress.phase]);
   const scan = ['scanning-remote', 'checking-remote'].includes(progress.phase) && progress.scan ? '\n' + formatScan(progress.scan) : '';
   return `${label}${progress.path ? ' · ' + progress.path : ''}\n${count}${size} · 耗时 ${elapsed} 秒${scan}${parallel}${blocked}${waiting}${result}${stopped}`;
 }

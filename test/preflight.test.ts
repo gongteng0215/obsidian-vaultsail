@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { scanInventories } from '../src/sync/preflight.ts';
+import { scanInventories, formatPreflight, type PreflightStatus } from '../src/sync/preflight.ts';
 import { baiduHarness } from './fixtures/baidu.ts';
 import { BaiduProvider } from '../src/providers/baidu-provider.ts';
 import { bytes, hash, VaultSailError } from '../src/core/safety.ts';
@@ -10,6 +10,19 @@ import { RemoteVaultStore } from '../src/sync/remote-vault.ts';
 import { RemoteDirectoryStore } from '../src/sync/directories.ts';
 
 const deferred = () => { let resolve!: () => void; const promise = new Promise<void>(r => { resolve = r; }); return { promise, resolve }; };
+
+test('preflight publishes independent stages immediately and ignores throwing or mutating observers', async () => {
+  for (const fast of ['files', 'directories'] as const) {
+    const release = deferred(), ready = deferred(), states: PreflightStatus[] = [];
+    const short = async () => { ready.resolve(); return 1; }, long = async () => { await release.promise; return 2; };
+    const result = scanInventories(fast === 'files' ? short : long, fast === 'directories' ? short : long, status => { states.push({ ...status }); status.files = 'failed'; throw Error('observer'); });
+    assert.equal(formatPreflight(states[0]), '正在检查文件与目录');
+    await ready.promise; await Promise.resolve(); await Promise.resolve();
+    assert.equal(states.at(-1)![fast], 'completed'); assert.match(formatPreflight(states.at(-1)), /等待.*检查/);
+    release.resolve(); await result; assert.equal(formatPreflight(states.at(-1)), '检查完成，准备处理变更');
+    assert.deepEqual(states[0], { files: 'running', directories: 'running' });
+  }
+});
 
 test('parallel file and directory inventories still respect a one-request shared budget', async () => {
   const h = baiduHarness(), vault = await new RemoteVaultStore(h.provider).create('synthetic');

@@ -166,3 +166,36 @@ test('pausing the connection check stops before scanning and does not poison sub
   assert.equal(plugin.progress.phase, 'paused'); assert.equal(plugin.pauseRequested, false); assert.equal(plugin.progressTimer, undefined);
   plugin.onunload();
 });
+
+test('plugin holds running progress until both preflights settle and prevents transfer after pause or connection change', async () => {
+  for (const stop of ['none', 'pause', 'connection', 'failure']) {
+    const { plugin } = fixture(); plugin.busy = true; plugin.beginTransfer(); const entered = deferred(), release = deferred();
+    const checks = plugin.scanPreflight(async () => {
+      plugin.publishProgress({ ...plugin.progress, phase: 'completed' });
+      return 1;
+    }, async () => { entered.resolve(); await release.promise; if (stop === 'failure') throw new runtime.VaultSailError('network', 'safe'); return 2; });
+    const caught = checks.then((value: unknown) => value, (error: any) => error);
+    await entered.promise; await tick();
+    assert.equal(plugin.progress.phase, 'scanning-remote'); assert.match(plugin.statusText, /文件检查完成，等待目录检查/); assert.ok(plugin.progressTimer);
+    if (stop === 'pause') plugin.pause();
+    if (stop === 'connection') { plugin.invalidateConnection(); plugin.beginTransfer(); }
+    release.resolve(); const outcome = await caught;
+    if (stop === 'none') { assert.deepEqual(outcome, [1, 2]); plugin.publishProgress({ ...plugin.progress, phase: 'completed' }); }
+    else if (stop === 'pause') { assert.equal(outcome.code, 'paused'); assert.equal(plugin.progress.phase, 'paused'); assert.equal(plugin.progressTimer, undefined); }
+    else if (stop === 'connection') { assert.equal(outcome.code, 'cancelled'); assert.equal(plugin.progress.phase, 'connecting'); assert.equal(plugin.progress.preflight, undefined); }
+    else { assert.equal(outcome.code, 'network'); assert.equal(plugin.progress.phase, 'failed'); assert.equal(plugin.progressTimer, undefined); }
+    plugin.onunload();
+  }
+});
+
+test('starting the connection stage preserves earlier task measurements and labels only actual recorded tasks', async () => {
+  const { plugin } = fixture(); let mode = '';
+  plugin.history = () => ({ begin: (value: string) => { mode = value; }, current: () => ({ mode }), setPerformance: () => {}, finish: async () => {} });
+  await plugin.recorded('automatic', async () => {
+    plugin.performance.retry(1200); plugin.beginTransfer();
+    assert.equal(plugin.performance.snapshot().retryCount, 1); assert.equal(plugin.performanceTaskType, 'automatic');
+    plugin.publishProgress({ ...plugin.progress, phase: 'completed' });
+  });
+  plugin.beginTransfer(); assert.equal(plugin.performanceTaskType, undefined, 'a preview cannot inherit the previous automatic task label');
+  plugin.onunload();
+});

@@ -8,7 +8,7 @@ import { BaiduProvider } from './providers/baidu-provider';
 import { ObsidianCredentials, ObsidianLocalFiles, ObsidianRevisionCache, ObsidianStateStore, deviceIdentity, obsidianTransport } from './platform/obsidian-adapters';
 import { buildHeads, RemoteVaultStore, type RemoteVault } from './sync/remote-vault';
 import { SyncEngine, type SyncPlan, type BlockedFile } from './sync/engine';
-import { scanInventories } from './sync/preflight';
+import { scanInventories, formatPreflight, type PreflightStatus } from './sync/preflight';
 import { CloudVaultSetupModal, PlanModal } from './ui/modals';
 import { CONFIG_EXPORT_DIRECTORY, exportPortableConfig, parsePortableConfig } from './portable-config';
 import { ConfigExportModal, ConfigImportModal } from './ui/config-modals';
@@ -38,6 +38,7 @@ import { DiagnosticLog, attachDiagnosticLog, type LogEnvironment } from './diagn
 import { traceRequest } from './diagnostics/network';
 import { ObsidianDiagnosticStore } from './platform/diagnostic-store';
 import { DiagnosticModal } from './ui/diagnostics';
+import { AcceptanceModal } from './ui/acceptance';
 import { ensureDirectories, storageAdapter, vaultIO } from './platform/local-io';
 declare const VAULTSAIL_BUILD_ID: string;
 
@@ -59,6 +60,7 @@ export default class VaultSailPlugin extends Plugin {
   busy = false;
   progress?: SyncProgress;
   private performance = new TransferPerformance();
+  private performanceTaskType?: HistoryMode;
   private diagnostic?: DiagnosticLog;
   private diagnosticPhase = '';
   private diagnosticUploads = new Map<string, string>();
@@ -73,6 +75,8 @@ export default class VaultSailPlugin extends Plugin {
   private progressTimer?: ReturnType<typeof setInterval>;
   private transferStartedAt?: number;
   private transferPauseRequested = false;
+  private preflightStatus?: PreflightStatus;
+  private preflightToken?: object;
   private generation = 0;
   private connectionRequests = new AbortController();
   private engine?: SyncEngine;
@@ -107,6 +111,13 @@ export default class VaultSailPlugin extends Plugin {
     this.settingTab = new VaultSailSettingTab(this.app, this); this.addSettingTab(this.settingTab);
     this.registerView(TRANSFER_CENTER_VIEW, leaf => new TransferCenterView(leaf, this));
     this.addCommand({ id: 'transfer-center', name: '打开传输中心', callback: () => { void this.openTransferCenter(); } });
+    this.addCommand({ id: 'verify-acceptance', name: '双端测试数据校验（只读）', callback: () => {
+      new AcceptanceModal(this.app, this.manifest.version, Platform.isMobile, report => this.saveDiagnosticReport(report, 'acceptance')).open();
+    } });
+    this.addCommand({ id: 'save-performance-sample', name: '保存专项性能报告（不随任务轮转）', callback: () => {
+      if (this.busy) { new Notice('请等待当前任务结束后保存性能样本。'); return; }
+      void this.performanceReport().then(report => this.saveDiagnosticReport(report, 'performance')).then(() => { new Notice('专项性能报告已保存至插件导出目录。'); }, error => { new Notice(safeMessage(error)); });
+    } });
     this.addRibbonIcon('list-start', 'VaultSail：传输中心', () => { void this.openTransferCenter(); });
 
     this.addCommand({
@@ -156,6 +167,8 @@ export default class VaultSailPlugin extends Plugin {
 
   onunload(): void { this.alive = false; this.automaticToast?.hide(); this.queue?.dispose(); this.performance.finish(); this.connectionRequests.abort(); this.pause(false); this.auth?.cancel(); if (this.progressTimer) clearInterval(this.progressTimer); this.progressTimer = undefined; this.progressListeners.clear(); this.transferListeners.clear(); for (const history of this.histories.values()) history.dispose(); this.diagnostic?.close(); for (const leaf of this.app.workspace?.getLeavesOfType?.(TRANSFER_CENTER_VIEW) ?? []) leaf.detach(); }
   private invalidateConnection(): void {
+    this.preflightStatus = undefined; this.preflightToken = undefined;
+    this.performanceTaskType = undefined;
     this.cloudReader = undefined;
     this.automaticNotifications.reset(); this.automaticToast?.hide(); this.automaticToast = undefined;
     this.queue?.dispose(); this.queue = undefined; this.queueContext = undefined;
@@ -167,6 +180,11 @@ export default class VaultSailPlugin extends Plugin {
   }
   private publishProgress(progress: SyncProgress): void {
     if (!this.alive) return;
+    // File and directory readers share one task lock. A fast file reader must
+    // not end progress/heartbeats while the directory reader is still pending.
+    if (this.preflightStatus) progress = { ...progress, phase: 'scanning-remote', path: undefined,
+      preflight: { ...this.preflightStatus }, message: formatPreflight(this.preflightStatus) };
+    else progress = { ...progress, preflight: undefined };
     const phaseKey = progress.phase + ':' + (progress.scan?.phase ?? '');
     if (phaseKey !== this.diagnosticPhase) {
       this.diagnosticPhase = phaseKey;
@@ -198,12 +216,34 @@ export default class VaultSailPlugin extends Plugin {
     else if (!this.progressTimer) this.progressTimer = setInterval(notify, 500);
   }
   private beginTransfer(): void {
-    this.performance.begin();
+    this.preflightStatus = undefined; this.preflightToken = undefined;
+    this.performanceTaskType = this.activeHistory?.current()?.mode;
+    if (!this.activeHistory) this.performance.begin();
     this.diagnosticUploads.clear();
     this.uploadTelemetry.reset(); this.progressContext = this.context();
     this.transferStartedAt = Date.now(); this.transferPauseRequested = false;
     this.publishProgress({ phase: 'connecting', doneFiles: 0, totalFiles: 0, doneBytes: 0, totalBytes: 0,
       startedAt: this.transferStartedAt, updatedAt: this.transferStartedAt });
+  }
+  private async scanPreflight<A, B>(files: () => Promise<A>, directories: () => Promise<B>): Promise<[A, B]> {
+    const token = {}, generation = this.generation; this.preflightToken = token;
+    try { const result = await scanInventories(files, directories, status => {
+      if (!this.alive || generation !== this.generation || this.preflightToken !== token) return;
+      this.preflightStatus = status;
+      if (this.progress) this.publishProgress({ ...this.progress, updatedAt: Date.now() });
+    });
+      if (!this.alive || generation !== this.generation) throw new VaultSailError('cancelled', '连接已变化，本次检查结果已失效。');
+      if (this.pauseRequested) throw new VaultSailError('paused', '任务已暂停，未开始新的传输。');
+      return result;
+    } catch (error) {
+      if (this.preflightToken === token) {
+        this.preflightStatus = undefined;
+        if (this.alive && generation === this.generation) this.failTransfer(error);
+      }
+      throw error;
+    } finally {
+      if (this.preflightToken === token) { this.preflightStatus = undefined; this.preflightToken = undefined; }
+    }
   }
   private failTransfer(error: unknown): void {
     const id = this.diagnostic?.record('task', 'failure', { phase: this.progress?.phase }, error);
@@ -285,10 +325,11 @@ export default class VaultSailPlugin extends Plugin {
     let outcome: 'success' | 'failure' = 'success';
     this.performance.begin();
     history.begin(mode); this.activeHistory = history;
+    this.performanceTaskType = mode;
     this.diagnostic?.record('task', 'checkpoint', { historyId: history.current()?.id, mode });
     this.notifyTransfers();
-    try { const result = await action(); history.setPerformance(scanSummary(this.performance.snapshot(), this.manifest.version, Platform.isMobile)); await history.finish(); return result; }
-    catch (error) { outcome = 'failure'; if (ownTask) this.diagnostic?.record('task', 'failure', { taskId: ownTask }, error); history.setPerformance(scanSummary(this.performance.snapshot(), this.manifest.version, Platform.isMobile)); await history.finish(error, true); throw error; }
+    try { const result = await action(); history.setPerformance(scanSummary(this.performance.snapshot(), this.manifest.version, Platform.isMobile, mode)); await history.finish(); return result; }
+    catch (error) { outcome = 'failure'; if (ownTask) this.diagnostic?.record('task', 'failure', { taskId: ownTask }, error); history.setPerformance(scanSummary(this.performance.snapshot(), this.manifest.version, Platform.isMobile, mode)); await history.finish(error, true); throw error; }
     finally { if (ownTask) this.diagnostic?.end(ownTask, outcome); this.activeHistory = undefined; this.notifyTransfers(); }
   }
   private recordHistoryFile(context: string, event: FileHistoryEvent): void {
@@ -548,17 +589,19 @@ export default class VaultSailPlugin extends Plugin {
       const context = hash(bytes(b.appKey + '|' + b.root + '|' + accountHash + '|' + b.vaultId));
       const generation = this.generation;
       this.directories = new DirectorySync(new RemoteDirectoryStore(provider, b.vaultId, this.settings.transferConcurrency,
-        new ObsidianRevisionCache(this.app, this.deviceId, context, 'directory'), (step, error) => this.diagnostic?.record('cache', 'warning', { step }, error)), new ObsidianDirectories(this.app),
+        new ObsidianRevisionCache(this.app, this.deviceId, context, 'directory'), (step, error) => this.diagnostic?.record('cache', 'warning', { step }, error), stats => { if (this.alive && generation === this.generation && this.progressContext === context) this.performance.scan(stats, true); }), new ObsidianDirectories(this.app),
         new ObsidianDirectoryState(this.app, b.vaultId, this.deviceId, context), b.vaultId, this.deviceId, this.app.vault.configDir,
         () => { if (!this.alive || generation !== this.generation) throw new VaultSailError('cancelled', '连接已变化，目录任务已停止。'); if (this.pauseRequested) throw new VaultSailError('paused', '目录任务已暂停，可恢复未完成任务。'); },
         event => { this.recordHistoryFile(context, event);
           if (this.alive && generation === this.generation && this.progress) this.publishProgress({ ...this.progress, phase: 'checking', path: event.path, scan: undefined,
             message: `目录 · ${event.path} · ${event.state === 'running' ? '处理中' : event.state === 'succeeded' ? '完成' : event.state === 'skipped' ? '按设置保留' : '需核验'}`, updatedAt: Date.now() }); },
         (error, path, action) => this.diagnostic?.record('engine', 'failure', { step: 'directory-sync', ...this.diagnostic.file(path), action }, error));
-      this.engine = new SyncEngine(new RemoteVaultStore(provider, new ObsidianRevisionCache(this.app, this.deviceId, context), this.settings.transferConcurrency, stats => this.performance.scan(stats), scan => {
-        if (this.alive && this.progress && this.progressContext === context) this.publishProgress({ ...this.progress, phase: this.progress.phase === 'checking-remote' ? 'checking-remote' : 'scanning-remote', scan, updatedAt: Date.now() });
+      this.engine = new SyncEngine(new RemoteVaultStore(provider, new ObsidianRevisionCache(this.app, this.deviceId, context), this.settings.transferConcurrency, stats => {
+        if (this.alive && generation === this.generation && this.progressContext === context) this.performance.scan(stats);
+      }, scan => {
+        if (this.alive && generation === this.generation && this.progress && this.progressContext === context) this.publishProgress({ ...this.progress, phase: this.progress.phase === 'checking-remote' ? 'checking-remote' : 'scanning-remote', scan, updatedAt: Date.now() });
       }, (step, error) => { this.diagnostic?.record('cache', 'warning', { step }, error); }), this.local,
-        new ObsidianStateStore(this.app, this.deviceId, b.vaultId, context), b.vaultId, this.app.vault.configDir, event => this.publishProgress(event), this.settings.transferConcurrency,
+        new ObsidianStateStore(this.app, this.deviceId, b.vaultId, context), b.vaultId, this.app.vault.configDir, event => { if (this.alive && generation === this.generation) this.publishProgress(event); }, this.settings.transferConcurrency,
         event => this.recordHistoryFile(context, event), this.fileLimit(), (error, path, action, phase) => this.diagnostic?.record('engine', 'failure', {
           ...this.diagnostic.file(path), action, phase }, error));
       return this.engine;
@@ -566,9 +609,10 @@ export default class VaultSailPlugin extends Plugin {
   }
   async preview(mode: SyncPlan['mode']): Promise<void> {
     const engine = await this.getEngine(); const directories = this.directories!;
-    const [plan, directoryPlan] = await scanInventories(
+    const [plan, directoryPlan] = await this.scanPreflight(
       () => engine.preview(mode, this.settings.deletionEnabled, { allowRenames: true }),
       () => directories.preview(mode, this.settings.deletionEnabled));
+    if (this.progress) this.publishProgress({ ...this.progress, phase: 'preview-ready', message: '文件与目录预览已就绪，尚未传输。', updatedAt: Date.now() });
     new PlanModal(this.app, plan, async progress => { if (this.busy) throw new VaultSailError('busy', '当前有其他操作。'); this.busy = true;
       this.beginTransfer(); this.refreshUI();
       try {
@@ -601,6 +645,7 @@ export default class VaultSailPlugin extends Plugin {
   }
   private async performSync(batch?: QueueBatch): Promise<SyncNoticeSummary | undefined> {
     if (batch && !batch.manual && !batch.full && !batch.remote && this.engine) {
+      this.performance.phase('scanning-local');
       const paths = await this.engine.changedFromBaseline(batch.paths);
       if (!paths.length) { this.statusText = '文件内容已与基线一致，无需同步。'; return; }
       batch = { ...batch, paths };
@@ -613,7 +658,7 @@ export default class VaultSailPlugin extends Plugin {
     await this.directories!.recover(this.settings.deletionEnabled);
     // Validate directory/file collisions before any file publication or local application.
     if (this.progress) this.publishProgress({ ...this.progress, phase: 'scanning-remote', message: '读取云端目录版本（包含空目录）', updatedAt: Date.now() });
-    const [initialOps, directoryPlan] = await scanInventories(
+    const [initialOps, directoryPlan] = await this.scanPreflight(
       () => engine.prepareRemote(), () => this.directories!.preview('sync', this.settings.deletionEnabled));
     // One extra pass catches concurrent publications without an unbounded background loop.
     for (let pass = 0; pass < 2; pass++) {
@@ -847,7 +892,7 @@ export default class VaultSailPlugin extends Plugin {
         source: checked.source === 'pairing-local-probe' ? 'pairing-local-probe' : 'full-roundtrip', results: checked.results, quota: checked.quota } : null,
       lastTransfer: this.lastSuccess() ?? null,
       performance: this.performance.snapshot() ?? null,
-      performanceNotes: '阶段为实际经过时间；请求耗时及重试等待为并发累计，不能相加当作总耗时。pending 表示原生请求结束尚未确认；failed 仅统计网络或 HTTP 错误。统计仅保留至插件重载。',
+      performanceNotes: '阶段为实际经过时间；请求耗时及重试等待为并发累计，不能相加当作总耗时。pending 表示原生请求结束尚未确认；failed 统计网络、HTTP 及固定 API 错误码。最近 30 次任务的数字摘要持久保存，专项报告可单独导出。',
       requestLabels: REQUEST_LABELS,
       autoSyncEnabled: this.settings.autoSyncEnabled, remotePollSeconds: this.settings.remotePollSeconds, queueStatus: this.queueSummary(), blockedFileCount: this.blockedFiles().length,
       lastPairingStep: this.lastPairingStep ?? null,
@@ -855,15 +900,16 @@ export default class VaultSailPlugin extends Plugin {
       uploadChunkConcurrency: Platform.isMobile ? 1 : this.settings.uploadChunkConcurrency, requestBudget: requestPools(this.app).requests.snapshot(), multipartBudget: requestPools(this.app).bodies.snapshot() }, null, 2);
   }
   networkWaitText(): string {
-    if (!this.busy) return '';
     const pool = requestPools(this.app).requests.snapshot();
-    return pool.retryAt ? `接口繁忙，${Math.max(0, Math.ceil((pool.retryAt - Date.now()) / 1000))} 秒后继续` : pool.waiting ? `等待请求空位 ${pool.waiting} 项 · 正在请求 ${pool.active}/${pool.limit}` : '';
+    if (this.pauseRequested && pool.active) return `正在结束当前请求 · ${pool.active} 项原生请求尚未结束，结果待核验`;
+    if (!this.busy) return '';
+    return pool.retryAt ? `服务端限流，等待重试 · ${Math.max(0, Math.ceil((pool.retryAt - Date.now()) / 1000))} 秒后继续` : pool.waiting ? `等待其他请求结束 · 等待 ${pool.waiting} 项 · 正在请求 ${pool.active}/${pool.limit}` : '';
   }
   showDiagnosticLog(): void { new DiagnosticModal(this.app, () => this.diagnosticReport(), report => this.saveDiagnosticReport(report)).open(); }
-  private async saveDiagnosticReport(report: string): Promise<string> {
+  private async saveDiagnosticReport(report: string, kind: 'diagnostics' | 'performance' | 'acceptance' = 'diagnostics'): Promise<string> {
     const data = bytes(report); if (data.byteLength > 8 * 1024 * 1024) throw new VaultSailError('size', '诊断报告超过导出容量上限。');
     await ensureDirectories(this.app, CONFIG_EXPORT_DIRECTORY);
-    const path = CONFIG_EXPORT_DIRECTORY + '/vaultsail-diagnostics-' + uuid() + '.json';
+    const path = CONFIG_EXPORT_DIRECTORY + '/vaultsail-' + kind + '-' + uuid() + '.json';
     await vaultIO(this.app, 'create-note', path, '保存诊断报告', () => this.app.vault.createBinary(path, data));
     if (hash(await storageAdapter(this.app).readBinary(path)) !== hash(data)) throw new VaultSailError('integrity', '诊断报告保存校验失败。');
     return path;
@@ -874,13 +920,15 @@ export default class VaultSailPlugin extends Plugin {
   }
   private diagnosticEnvironment(): LogEnvironment { return { pluginVersion: this.manifest.version, obsidianVersion: apiVersion ?? 'unknown',
     platform: Platform.isMobile ? 'mobile' : 'desktop', buildId: typeof VAULTSAIL_BUILD_ID === 'string' ? VAULTSAIL_BUILD_ID : 'development' }; }
-  performanceText(): string { const value = this.performance.snapshot(); return [formatPerformance(value), formatScanDetails(value?.versions.details)].filter(Boolean).join('\n'); }
+  performanceText(): string { const value = this.performance.snapshot(); return [formatPerformance(value), '文件记录：' + formatScanDetails(value?.versions.details), '目录记录：' + (formatScanDetails(value?.directories?.details) || '未记录')].filter(Boolean).join('\n'); }
   async performanceReport(): Promise<string> {
-    const current = this.progressContext && this.progressContext === this.context() ? scanSummary(this.performance.snapshot(), this.manifest.version, Platform.isMobile) : undefined;
-    if (current) return JSON.stringify(current, null, 2);
-    const context = this.context(), history = this.history(context), stored = history ? (await history.list())[0]?.performance : undefined;
-    if (context !== this.context()) throw new VaultSailError('changed', '云端库已变化，请重新导出性能报告。');
-    return JSON.stringify(stored ?? { version: 1, pluginVersion: this.manifest.version, platform: Platform.isMobile ? 'mobile' : 'desktop', status: 'no-record' }, null, 2);
+    const generation = this.generation, status = this.busy ? 'running' : this.progress?.phase ?? 'unrecorded';
+    const current = this.progressContext && this.progressContext === this.context() ? scanSummary(this.performance.snapshot(), this.manifest.version, Platform.isMobile, this.performanceTaskType) : undefined;
+    const context = this.context(), history = this.history(context), stored = history ? await history.list() : [];
+    if (generation !== this.generation || context !== this.context()) throw new VaultSailError('changed', '云端库已变化，请重新导出性能报告。');
+    return JSON.stringify({ format: 'vaultsail-performance', version: 1, current: current ?? null,
+      currentStatus: current ? status : stored[0]?.status ?? 'unrecorded',
+      recent: stored.slice(0, 30).flatMap(task => task.performance ? [task.performance] : []) }, null, 2);
   }
 
   async loadSettings(): Promise<void> {

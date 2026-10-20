@@ -64,7 +64,10 @@ test('transfer center keeps file rows, focus drafts and expanded details through
   assert.match(row.textContent!, /回读校验中/); assert.equal(snapshot.task!.files[0].state, 'running'); assert.match(host.querySelector('.vs-transfer-metrics')!.textContent!, /已完成 0 \/ 2/);
   snapshot.task!.files[0].state = 'succeeded'; snapshot.progress!.uploads = []; panel.render();
   assert.equal(host.querySelector('[data-file-id=video]'), row); assert.match(row.textContent!, /已校验并保存版本/);
-  snapshot.pauseRequested = true; listener(); panel.render(); assert.match(host.textContent!, /等待当前请求结束/);
+  snapshot.progress!.preflight = { files: 'completed', directories: 'running' }; panel.render();
+  assert.match(host.textContent!, /文件检查完成，等待目录检查/); assert.equal(host.querySelector('input'), search); assert.equal(search.value, 'video'); assert.equal(details.hasAttribute('open'), true);
+  snapshot.progress!.preflight = undefined;
+  snapshot.pauseRequested = true; listener(); panel.render(); assert.match(host.textContent!, /正在结束当前请求/);
   snapshot.busy = false; snapshot.task!.status = 'completed'; panel.render();
   const sync = [...host.querySelectorAll('button')].find(button => button.textContent === '开始同步')!; sync.click(); assert.equal(started, 1);
   search.value = ''; search.dispatchEvent(new window.Event('input'));

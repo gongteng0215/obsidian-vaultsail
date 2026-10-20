@@ -2,7 +2,7 @@
 
 **English** | [简体中文](LARGE_FILES.zh-CN.md) · [Roadmap](ROADMAP.md) · [Current capabilities](../README.md#feature-inventory)
 
-> Current status (2026-10-19): the sections below preserve the historical 0.2.0 design. The 0.2.9 local preview supports desktop whole-buffer files up to 512 MiB (20–512 configurable), mobile 20 MiB and desktop parallel slices (default 2). Streaming and cross-restart slice checkpoints remain unimplemented. See the README and current release notes for present limits.
+> Current status (2026-10-20): the sections below preserve the historical 0.2.0 design. The 0.2.22 local preview supports desktop whole-buffer files up to 512 MiB (20–512 configurable), mobile 20 MiB and desktop parallel slices (default 2). Streaming and cross-restart slice checkpoints remain unimplemented. See the README and current release notes for present limits.
 
 Date: **2026-10-16**. Design baseline: **0.2.0**. Progress: **0.2.1 preview implements L0 local preflight, blocked-file handling, and on-demand chunk bodies**, with [validation/limits](releases/0.2.1.md). Later stages remain unimplemented design. The cap stays 20 MiB without a cloud format migration; native acceptance is pending. Version assignments below are conditional targets, not dates or supported-size promises.
 

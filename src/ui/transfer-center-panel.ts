@@ -1,7 +1,8 @@
 import type { TransferCenterSnapshot } from '../sync/transfer-center';
 import { HISTORY_ACTIONS, HISTORY_CODES, HISTORY_REASONS, type FileHistoryRow } from '../sync/history';
 import { formatBytes, formatScan, PROGRESS_LABELS, type FileUploadProgress } from '../sync/progress';
-import { formatScanDetails } from '../sync/performance';
+import { formatScanDetails, formatPerformance } from '../sync/performance';
+import { formatPreflight } from '../sync/preflight';
 import { formatScanSummary } from '../sync/scan-summary';
 import { preserveInteraction } from './interaction';
 
@@ -109,7 +110,7 @@ export class TransferCenterPanel {
     }
     for (const upload of progress?.uploads ?? []) this.uploads.set(upload.path, upload);
     text(this.title, snapshot.target);
-    const label = this.holding ? '正在查看先前任务 · 可切换到最新任务' : snapshot.pauseRequested ? '正在暂停，等待当前请求结束' : snapshot.busy && progress ? PROGRESS_LABELS[progress.phase]
+    const label = this.holding ? '正在查看先前任务 · 可切换到最新任务' : snapshot.pauseRequested ? '正在结束当前请求' : snapshot.busy && progress ? formatPreflight(progress.preflight) || PROGRESS_LABELS[progress.phase]
       : task ? TASKS[task.status] : snapshot.context ? '准备就绪' : '请先连接百度网盘并绑定云端库';
     text(this.status, label); this.host.setAttribute('data-running', String(snapshot.busy));
     this.sync.disabled = !latest.context || latest.busy; this.pause.hidden = !latest.busy; this.pause.disabled = latest.pauseRequested;
@@ -139,7 +140,7 @@ export class TransferCenterPanel {
     text(this.paging, `${filtered.length} 项 · ${this.page + 1} / ${Math.max(1, Math.ceil(filtered.length / 50))}`);
     this.previous.disabled = this.page === 0; this.next.disabled = (this.page + 1) * 50 >= filtered.length;
     const perf = snapshot.performance;
-    text(this.performance, perf ? `本轮经过 ${seconds(perf.elapsedMs)}\n连接 ${seconds(perf.stages.connecting)} · 云端扫描 ${seconds(perf.stages.remote)} · 本地扫描 ${seconds(perf.stages.local)} · 传输处理 ${seconds(perf.stages.transfer)}\n网络请求 ${perf.requestCount} 次 · 令牌刷新 ${perf.refreshCount} 次 · 重试 ${perf.retryCount} 次\n${formatScanDetails(perf.versions.details)}\n并发请求耗时不能相加当作本轮经过时间。` : formatScanSummary(task?.performance) || '下一次任务开始后显示。');
+    text(this.performance, perf ? `本轮经过 ${seconds(perf.elapsedMs)}\n${formatPerformance(perf)}\n文件记录：${formatScanDetails(perf.versions.details)}\n目录记录：${formatScanDetails(perf.directories?.details) || '未记录'}` : formatScanSummary(task?.performance) || '下一次任务开始后显示。');
   }
   private updateRow(elements: RowElements, row: FileHistoryRow, snapshot: TransferCenterSnapshot): void {
     const parts = row.path.split('/'), upload = this.uploads.get(row.path), active = row.state === 'running' && snapshot.busy;

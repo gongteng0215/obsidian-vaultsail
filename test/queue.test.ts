@@ -71,3 +71,18 @@ test('foreground resume before a paused request drains does not turn suspension 
   f.queue.suspend(true); f.queue.suspend(false); release(); await running;
   assert.equal(f.saved.paused, false); suspend = false; f.time(3000); await f.queue.pump(); assert.equal(f.saved.full, 0);
 });
+
+test('100 interleaved edit/click bursts preserve the next revision through reload without overlapping workers', async () => {
+  let active = 0, peak = 0, release!: () => void, block = false;
+  const f = fixture(async () => { active++; peak = Math.max(peak, active); try { if (block) await new Promise<void>(r => { release = r; }); } finally { active--; } });
+  await f.queue.pump();
+  for (let i = 0; i < 100; i++) {
+    block = true; f.queue.request('manual'); const running = f.queue.pump();
+    f.queue.request('local', 'same.md'); f.queue.request('manual'); f.queue.request('local', 'same.md');
+    await f.queue.pump(); assert.equal(active, 1); block = false; release(); await running;
+    assert.ok(f.saved.dirty['same.md']); f.restart(); await f.queue.pump();
+    assert.ok(f.batches.at(-1)!.paths.includes('same.md')); assert.equal(Object.keys(f.saved.dirty).length, 0);
+    f.queue.pause(); f.queue.suspend(true); f.queue.suspend(false); f.restart(); await f.queue.pump(); assert.equal(f.saved.paused, true);
+  }
+  assert.equal(peak, 1);
+});

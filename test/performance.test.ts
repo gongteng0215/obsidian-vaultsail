@@ -4,6 +4,22 @@ import { TransferPerformance, formatPerformance } from '../src/sync/performance.
 import { bytes } from '../src/core/safety.ts';
 import type { HttpResponse } from '../src/providers/http.ts';
 import { AuthManager } from '../src/auth/auth-manager.ts';
+import { scanSummary, validateScanSummary, formatScanSummary } from '../src/sync/scan-summary.ts';
+
+test('directory and request summaries remain separate, optional fields fail independently and no arbitrary content survives', async () => {
+  const trace = new TransferPerformance(); trace.begin();
+  trace.scan({ listed: 7, cacheHits: 6, read: 1, missingFingerprints: 0 });
+  trace.scan({ listed: 10, cacheHits: 9, read: 1, missingFingerprints: 1 }, true);
+  await trace.transport(async () => ({ ...response(), json: { errno: -6, errmsg: 'private-secret' } }), { url: 'https://pan.baidu.com/rest/2.0/xpan/file?method=list&access_token=private-secret' });
+  const summary = scanSummary(trace.snapshot(), '0.2.22', false, 'automatic')!;
+  assert.equal(summary.listed, 7); assert.equal(summary.directories!.listed, 10); assert.equal(summary.requests!.list!.failed, 1); assert.equal(summary.taskType, 'automatic');
+  assert.equal(JSON.stringify(summary).includes('private'), false);
+  const bad = validateScanSummary({ ...summary, requests: { list: { ...summary.requests!.list!, path: 'private' }, download: { count: NaN } }, directories: { scans: -1 }, taskType: 'private' })!;
+  assert.equal(bad.directories, undefined); assert.equal(bad.taskType, undefined); assert.equal(bad.requests!.download, undefined); assert.equal(JSON.stringify(bad).includes('private'), false);
+  const legacy = { ...summary }; delete legacy.directories; delete legacy.requests; delete legacy.taskType;
+  assert.ok(validateScanSummary(legacy)); assert.match(formatScanSummary(legacy), /目录记录：未记录/); assert.match(formatScanSummary(legacy), /请求分类：未记录/);
+  const snapshot = trace.snapshot()!; snapshot.directories!.listed = 999; assert.equal(trace.snapshot()!.directories!.listed, 10);
+});
 
 const response = (): HttpResponse => ({ status: 200, headers: {}, bytes: bytes('private-response') });
 test('transfer timing separates wall stages from overlapping requests and counts refreshes without retaining private data', async () => {

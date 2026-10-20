@@ -5,6 +5,7 @@ import { DirectorySync, RemoteDirectoryStore, directoryHeads, directoryPresent, 
 import { RemoteVaultStore } from '../src/sync/remote-vault.ts';
 import type { CloudStorageProvider } from '../src/providers/cloud-storage-provider.ts';
 import type { RemoteObject } from '../src/providers/cloud-storage-provider.ts';
+import type { RevisionScanStats } from '../src/sync/remote-vault.ts';
 import type { FileHistoryEvent } from '../src/sync/history.ts';
 
 class Cloud implements CloudStorageProvider {
@@ -52,6 +53,23 @@ async function setup() {
   const eb = new DirectorySync(rb, b, sb, vault.vaultId, db);
   return { cloud, vault, a, b, sa, sb, ea, eb, ra, rb, events, da, db };
 }
+
+test('directory scan statistics cover cold/warm/reload, missing digests, failed saves and observer failure without extra reads', async () => {
+  const h = await setup(); await h.a.create('验收/空目录'); await h.ea.sync('sync', false);
+  let disk: unknown, fail = true, writes = 0; const samples: RevisionScanStats[] = [];
+  const cache = { load: async () => structuredClone(disk), save: async (value: unknown) => { writes++; if (fail) throw Error('disk'); disk = structuredClone(value); } };
+  const record = (value: RevisionScanStats) => { samples.push(value); value.listed = 999; throw Error('observer'); };
+  const store = new RemoteDirectoryStore(h.cloud, h.vault.vaultId, 4, cache, () => {}, value => { record(structuredClone(value)); });
+  await store.revisions(); assert.equal(samples[0].details!.cacheSaveFailures, 1); assert.equal(samples[0].read, 2);
+  fail = false; await store.revisions(); assert.equal(samples[1].cacheHits, 2); assert.equal(samples[1].details!.cacheWrites, 1);
+  const reads = h.cloud.reads; await store.revisions(); assert.equal(writes, 2); assert.equal(h.cloud.reads, reads); assert.equal(samples[2].details!.cacheWrites, 0);
+  const restored: RevisionScanStats[] = []; await new RemoteDirectoryStore(h.cloud, h.vault.vaultId, 4, cache, () => {}, s => restored.push(s)).revisions();
+  assert.equal(restored[0].listed, 2); assert.equal(restored[0].cacheHits, 2); assert.equal(restored[0].details!.cacheWrites, 0); assert.ok(restored[0].details!.pages >= 3);
+  const list = h.cloud.list.bind(h.cloud); h.cloud.list = async (...args) => { const page = await list(...args); return { ...page, objects: page.objects.map(o => ({ ...o, etag: undefined })) }; };
+  const weak: RevisionScanStats[] = []; await new RemoteDirectoryStore(h.cloud, h.vault.vaultId, 4, undefined, () => {}, s => weak.push(s)).revisions();
+  assert.equal(weak[0].missingFingerprints, 2); assert.equal(weak[0].read, 2); assert.ok(weak[0].details!.readBytes > 0);
+  h.cloud.failList = true; await assert.rejects(store.revisions()); assert.equal(samples.length, 3, 'a failed scan cannot publish successful statistics');
+});
 
 test('empty Chinese nested folders transfer without fake notes, stay idempotent, and older file clients keep working', async () => {
   const h = await setup(); await h.a.create('论文/调研研究'); await h.a.create('论文/学姐指导');

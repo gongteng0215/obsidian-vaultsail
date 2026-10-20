@@ -3,7 +3,7 @@ import { listAll } from '../providers/provider-utils.ts';
 import { mapConcurrent } from '../core/concurrency.ts';
 import type { CloudStorageProvider } from '../providers/cloud-storage-provider';
 import type { FileHistoryEvent } from './history';
-import type { RevisionCache } from './remote-vault';
+import type { RevisionCache, RevisionScanStats, ScanDetails } from './remote-vault';
 
 // A separate namespace is deliberately invisible to older file-only clients.
 export interface DirectoryRevision { version: 1; vaultId: string; opId: string; deviceId: string; path: string; parents: string[]; kind: 'create' | 'delete'; createdAt: number; }
@@ -55,10 +55,11 @@ export class RemoteDirectoryStore {
   private disk?: RevisionCache; private loaded = false;
   private persisted = new Map<string, string>();
   private onCacheError: (step: string, error: unknown) => void;
-  constructor(provider: CloudStorageProvider, vaultId: string, concurrency = 4, cache?: RevisionCache, onCacheError: (step: string, error: unknown) => void = () => {}) {
+  private onScan: (stats: RevisionScanStats) => void;
+  constructor(provider: CloudStorageProvider, vaultId: string, concurrency = 4, cache?: RevisionCache, onCacheError: (step: string, error: unknown) => void = () => {}, onScan: (stats: RevisionScanStats) => void = () => {}) {
     if (!validId(vaultId)) throw new VaultSailError('binding', '云端库标识无效。');
     this.provider = provider; this.vaultId = vaultId; this.concurrency = Math.max(1, Math.min(4, concurrency));
-    this.disk = cache; this.onCacheError = onCacheError;
+    this.disk = cache; this.onCacheError = onCacheError; this.onScan = onScan;
   }
   private root(): string { return 'vaultsail/vaults/' + this.vaultId + '/directories'; }
   private cacheError(step: string, error: unknown): void { try { this.onCacheError(step, error); } catch { /* Advisory. */ } }
@@ -78,55 +79,68 @@ export class RemoteDirectoryStore {
       this.persisted = new Map([...loaded].map(([path, value]) => [path, value.fingerprint]));
     } catch (error) { this.cacheError('load-cache', error); }
   }
-  private async saveCache(active: Set<string>): Promise<void> {
+  private async saveCache(active: Set<string>, details: ScanDetails): Promise<void> {
     if (!this.disk) return;
     const current = new Map([...this.cached].filter(([path, value]) => active.has(path) && value.fingerprint).map(([path, value]) => [path, value.fingerprint]));
     if (current.size === this.persisted.size && [...current].every(([path, fingerprint]) => this.persisted.get(path) === fingerprint)) return;
     const entries = [...this.cached].filter(([path, value]) => current.has(path)).map(([path, value]) => ({ path, fingerprint: value.fingerprint, revision: value.op, digest: hash(jsonBytes(value.op)) }));
     try {
-      if (await this.disk.save({ version: 1, vaultId: this.vaultId, entries }) === false) { this.cacheError('save-cache', new VaultSailError('size', '目录缓存超过保存上限。')); return; }
-      this.persisted = current;
-    } catch (error) { this.cacheError('save-cache', error); }
+      if (await this.disk.save({ version: 1, vaultId: this.vaultId, entries }) === false) { details.cacheSaveFailures++; this.cacheError('save-cache', new VaultSailError('size', '目录缓存超过保存上限。')); return; }
+      details.cacheWrites++; this.persisted = current;
+    } catch (error) { details.cacheSaveFailures++; this.cacheError('save-cache', error); }
   }
   async revisions(): Promise<DirectoryRevision[]> {
-    await this.loadCache();
+    const details: ScanDetails = { devices: 0, pages: 0, readBytes: 0, cacheWrites: 0, cacheSaveFailures: 0, listingMs: 0, metadataMs: 0, readingMs: 0, validatingMs: 0, cacheMs: 0 };
+    const stats: RevisionScanStats = { listed: 0, cacheHits: 0, read: 0, missingFingerprints: 0, details };
+    const report = () => { try { this.onScan(structuredClone(stats)); } catch { /* Statistics cannot affect sync. */ } };
+    let started = Date.now(); await this.loadCache(); details.cacheMs += Date.now() - started;
     // Enumerating the vault root distinguishes an absent optional namespace from a failed listing.
     const root = this.root(), parent = root.slice(0, root.lastIndexOf('/'));
-    const entry = (await listAll(this.provider, parent, undefined, 10000)).find(item => item.path === root);
-    if (!entry) { await this.saveCache(new Set()); return []; }
+    started = Date.now();
+    const page = () => { details.pages++; };
+    const entry = (await listAll(this.provider, parent, page, 10000)).find(item => item.path === root);
+    if (!entry) { details.listingMs += Date.now() - started; started = Date.now(); await this.saveCache(new Set(), details); details.cacheMs += Date.now() - started; report(); return []; }
     if (!entry.isDirectory) throw new VaultSailError('schema', '目录版本位置被文件占用。');
-    const devices = await listAll(this.provider, root, undefined, 10000);
+    const devices = await listAll(this.provider, root, page, 10000); details.devices = devices.length;
     if (devices.some(item => !item.isDirectory || !validId(item.path.slice(root.length + 1)) || item.path !== root + '/' + item.path.split('/').at(-1))) throw new VaultSailError('schema', '目录设备清单不完整。');
     let total = 0;
     const groups = await mapConcurrent(devices, this.concurrency, async device => {
-      const entries = await listAll(this.provider, device.path, undefined, 10000); total += entries.length;
+      const entries = await listAll(this.provider, device.path, page, 10000); total += entries.length;
       if (total > 10000) throw new VaultSailError('size', '目录记录超过一万条，停止扫描。');
       return entries;
     });
+    details.listingMs += Date.now() - started; stats.listed = total;
     const active = new Set<string>(), entries = groups.flat(), result: DirectoryRevision[] = [];
     for (let offset = 0; offset < entries.length; offset += 100) {
       const window = entries.slice(offset, offset + 100);
       const missing = window.filter(item => !item.etag || this.cached.get(item.path)?.fingerprint !== item.size + ':' + item.etag);
       if (missing.length && this.provider.prepareReads) {
+        started = Date.now();
         const prepared = await this.provider.prepareReads(missing);
+        details.metadataMs += Date.now() - started;
         if (prepared.length !== missing.length || prepared.some((item, i) => item.path !== missing[i].path || item.size !== missing[i].size || item.id !== missing[i].id || item.isDirectory
           || missing[i].etag !== undefined && item.etag !== missing[i].etag)) throw new VaultSailError('changed', '目录记录读取信息与清单不一致。');
         const byPath = new Map(prepared.map(item => [item.path, item]));
         window.forEach((item, i) => { window[i] = byPath.get(item.path) ?? item; });
       }
+      started = Date.now();
       result.push(...await mapConcurrent(window, this.concurrency, async item => {
       if (item.isDirectory || item.size > 1024 * 1024 || item.size < 0) throw new VaultSailError('schema', '目录记录大小或类型异常。');
       const fingerprint = item.etag ? item.size + ':' + item.etag : '';
+      if (!fingerprint) stats.missingFingerprints++;
       let op = fingerprint && this.cached.get(item.path)?.fingerprint === fingerprint ? this.cached.get(item.path)!.op : undefined;
-      if (!op) { const data = await this.provider.read(item.path); if (data.byteLength !== item.size || data.byteLength > 1024 * 1024) throw new VaultSailError('integrity', '目录记录大小与清单不一致。'); op = validateDirectoryRevision(parseJson(data), this.vaultId); }
+      if (!op) { const data = await this.provider.read(item.path); stats.read++; details.readBytes += data.byteLength; if (data.byteLength !== item.size || data.byteLength > 1024 * 1024) throw new VaultSailError('integrity', '目录记录大小与清单不一致。'); op = validateDirectoryRevision(parseJson(data), this.vaultId); }
+      else stats.cacheHits++;
       if (item.path !== root + '/' + op.deviceId + '/' + op.opId + '.json') throw new VaultSailError('schema', '目录记录身份与路径不一致。');
       const old = this.cached.get(item.path);
       if (old && hash(jsonBytes(old.op)) !== hash(jsonBytes(op))) throw new VaultSailError('integrity', '已发布的目录记录被修改，停止同步。');
       active.add(item.path); this.cached.set(item.path, { fingerprint, op }); return structuredClone(op);
       }));
+      details.readingMs += Date.now() - started;
     }
     for (const key of this.cached.keys()) if (!active.has(key)) this.cached.delete(key);
-    directoryHeads(result); await this.saveCache(active); return result;
+    started = Date.now(); directoryHeads(result); details.validatingMs += Date.now() - started;
+    started = Date.now(); await this.saveCache(active, details); details.cacheMs += Date.now() - started; report(); return result;
   }
   async publish(op: DirectoryRevision): Promise<void> {
     const valid = validateDirectoryRevision(op, this.vaultId), dir = this.root() + '/' + valid.deviceId;
