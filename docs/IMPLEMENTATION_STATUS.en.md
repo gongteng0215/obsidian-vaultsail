@@ -1,12 +1,12 @@
 # Implementation status — 2026-10-20
 
-Current local preview: **0.2.22**. Last recorded public release: **0.2.18**. Local installation and community publication are independent; this preview is not a community release.
+Current release target: **0.2.22**, authorized for community publication on 2026-10-20. Publication/check results are recorded separately; real-device acceptance remains pending.
 
 | Evidence level | Status |
 | --- | --- |
 | Implemented | Automatic per-vault queue, preserved versions/conflicts/recovery, empty folders, persistent scan caches, transfer center, cloud file tree with deleted paths hidden and files as leaves |
 | Implemented in 0.2.22 | Separate file/directory metrics, persisted request categories/task type, truthful parallel-preflight status, invalidated/paused check guards, deterministic fixtures and marker-gated read-only native verifier, independent special reports |
-| Simulation passed | Automated integrity/queue/lifecycle/privacy regressions and paired 7/100/1000-file benchmarks; see [release evidence](releases/0.2.22.md) |
+| Simulation passed | 282 automated checks and integrity/queue/lifecycle/privacy regressions and paired 7/100/1000-file benchmarks; see [release evidence](releases/0.2.22.md) |
 | Native verified | Only package/installation asset consistency can be checked locally in this delivery; this does not validate native sync |
 | Pending | Real Baidu speed, Windows/iPad bidirectional Hash agreement, two devices/two destinations, 20 lifecycle cycles, 7-day observation and natural authorization renewal |
 

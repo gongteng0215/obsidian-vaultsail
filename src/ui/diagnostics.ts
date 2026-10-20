@@ -12,7 +12,7 @@ export class DiagnosticModal extends Modal {
     this.contentEl.createEl('p', { text: '自动记录任务阶段、错误原因链、调用位置、请求结果和恢复检查点。日志仅在本机滚动保存，最多 7 天、32 段（约 4 MiB）；失败和常规记录各保留 16 段，常规检查不挤掉失败记录。文件名使用匿名标识，不记录正文、账号、密钥、令牌、请求地址或响应正文。' });
     const status = this.contentEl.createEl('p'); status.setAttribute('role', 'status');
     const search = this.contentEl.createEl('input'); search.type = 'search'; search.placeholder = '筛选诊断编号或任务编号'; search.setAttribute('aria-label', '筛选排错记录');
-    const list = this.contentEl.createDiv(); const source = this.contentEl.createEl('textarea'); source.readOnly = true; source.rows = 6; source.style.width = '100%'; source.setAttribute('aria-label', '脱敏排错日志');
+    const list = this.contentEl.createDiv(); const source = this.contentEl.createEl('textarea', { cls: 'vaultsail-report-source' }); source.readOnly = true; source.rows = 6; source.setAttribute('aria-label', '脱敏排错日志');
     let report = '', loading = false;
     let rows: DiagnosticRecord[] = []; let copy!: { setDisabled(value: boolean): unknown }; let save!: { setDisabled(value: boolean): unknown };
     const scopes = { task: '任务', plugin: '插件', network: '百度请求', local: '本机读写', history: '同步记录', cache: '版本缓存', queue: '任务队列', engine: '文件传输', pairing: '设备配对' };
@@ -22,7 +22,7 @@ export class DiagnosticModal extends Modal {
       if (!failures.length) list.createEl('p', { text: query ? '没有匹配的失败记录。' : '保留范围内没有失败事件。旧版发生的错误无法补录原因。' });
       for (const failure of failures) {
         const details = list.createEl('details'); details.createEl('summary', { text: `${new Date(failure.at).toLocaleString()} · ${scopes[failure.scope]} · ${failure.errors?.[0]?.code ?? failure.fields.status ?? '结果异常'} · ${failure.id.slice(0, 8)}` });
-        details.createEl('pre', { text: JSON.stringify(failure, null, 2) }).style.whiteSpace = 'pre-wrap';
+        details.createEl('pre', { text: JSON.stringify(failure, null, 2), cls: 'vaultsail-report-record' });
       }
     };
     search.addEventListener('input', render);

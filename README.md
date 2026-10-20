@@ -4,7 +4,7 @@ Sync Obsidian notes and attachments through your own Baidu Netdisk account, with
 
 **English** | [简体中文](README.zh-CN.md)
 
-**Current local preview 0.2.22:** separate file/directory metrics and persisted request categories/task types; live parallel-check and wait states; pause/invalidation guards; deterministic dual-device fixtures, read-only iPad verification and permanent special reports. [Release evidence](docs/releases/0.2.22.md) · [Windows/iPad acceptance steps](docs/acceptance/0.2.22.md) · [Implementation status](docs/IMPLEMENTATION_STATUS.en.md). Implemented and simulation-tested; real Baidu performance and complete native dual-device acceptance remain pending. Community publication is a separate step.
+**Release 0.2.22:** separate file/directory metrics and persisted request categories/task types; live parallel-check and wait states; pause/invalidation guards; deterministic dual-device fixtures, read-only iPad verification and permanent special reports. [Release evidence](docs/releases/0.2.22.md) · [Windows/iPad acceptance steps](docs/acceptance/0.2.22.md) · [Implementation status](docs/IMPLEMENTATION_STATUS.en.md). Implemented and simulation-tested; real Baidu performance and complete native dual-device acceptance remain pending. Community availability is subject to official checks.
 
 Command palette: **保存专项性能报告（不随任务轮转）** saves permanent performance reports; **双端测试数据校验（只读）** validates dedicated synthetic fixtures on either device. The last 30 task summaries survive restart. New fields remain optional in version-1 summaries; old records display “not recorded”. Existing authorization and bindings need no changes.
 
@@ -14,9 +14,9 @@ Command palette: **保存专项性能报告（不随任务轮转）** saves perm
 
 **Local preview 0.2.20:** hides deleted cloud paths by default, with an optional Show deleted checkbox, consistent search/counts and preserved conflict branches. Includes 0.2.19 performance changes. [Details](docs/releases/0.2.20.md).
 
-**Local preview 0.2.19:** file and directory preflight checks run concurrently, overlapping directory pages share one request, and failed checks drain before the task ends. Includes a numeric-only local performance report tool. Existing authorization, bindings and defaults are preserved. [Evidence and acceptance](docs/releases/0.2.19.md). The public GitHub release remains 0.2.18; this preview has not been submitted for community review.
+**Local preview 0.2.19:** file and directory preflight checks run concurrently, overlapping directory pages share one request, and failed checks drain before the task ends. Includes a numeric-only local performance report tool. Existing authorization, bindings and defaults are preserved. [Evidence and acceptance](docs/releases/0.2.19.md). These changes are included in 0.2.22.
 
-[Community plugin](https://community.obsidian.md/plugins/vaultsail) · [Download 0.2.18](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.18) · [Release notes](docs/releases/0.2.18.md) · [Version roadmap](docs/ROADMAP.md) · [Report an issue](https://github.com/gongteng0215/obsidian-vaultsail/issues)
+[Community plugin](https://community.obsidian.md/plugins/vaultsail) · [Download 0.2.22](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.22) · [Release notes](docs/releases/0.2.22.md) · [Version roadmap](docs/ROADMAP.md) · [Report an issue](https://github.com/gongteng0215/obsidian-vaultsail/issues)
 
 **Contents:** [All features](#feature-inventory) · [Roadmap](#version-roadmap) · [Install](#install-or-update) · [First connection](#connect-your-first-vault) · [Device pairing](#pair-a-computer-ipad-or-another-vault) · [Automatic sync](#automatic-sync-and-the-queue) · [Conflicts](#versions-and-conflict-resolution) · [Cloud location](#where-the-cloud-data-goes) · [Recovery](#file-scope-deletion-and-recovery) · [FAQ](#performance-and-troubleshooting) · [Privacy](#privacy-and-network-access)
 
@@ -30,7 +30,7 @@ Command palette: **保存专项性能报告（不随任务轮转）** saves perm
 - Transfer application configuration and authorization through a password-encrypted code or file, avoiding another browser login while authorization remains valid.
 - View live progress, scan/transfer timings, request counts, and token refresh counts.
 
-**0.2.18 supports Baidu Netdisk.** Requests go directly to Baidu, without a developer-operated authorization or sync server. Current settings and messages are primarily in Chinese; this guide includes their UI labels.
+**0.2.22 supports Baidu Netdisk.** Requests go directly to Baidu, without a developer-operated authorization or sync server. Current settings and messages are primarily in Chinese; this guide includes their UI labels.
 
 **Release 0.2.5** fixes maximized settings layout, improves narrow-window controls, and displays the effective file-size limit. Existing settings and connections are preserved. [Release notes](docs/releases/0.2.5.md).
 
@@ -138,7 +138,7 @@ The **[large-file implementation plan](docs/LARGE_FILES.md)** details metadata-f
 | Deletion propagation | **Off**, with an independent “同步删除” toggle in “传输与恢复” |
 | Mobile background operation | Continuous background sync is **not provided** |
 
-Intervals are scheduling targets, not delivery deadlines. Busy tasks, network errors, rate limits, background suspension, and pauses can delay execution. Automated validation passed for 0.2.18; comprehensive Windows/iPad, Baidu throughput, and long-term multi-device validation remain incomplete.
+Intervals are scheduling targets, not delivery deadlines. Busy tasks, network errors, rate limits, background suspension, and pauses can delay execution. Automated validation passed for 0.2.22; comprehensive Windows/iPad, Baidu throughput, and long-term multi-device validation remain incomplete.
 
 ## Install or update
 
@@ -147,15 +147,15 @@ Intervals are scheduling targets, not delivery deadlines. Busy tasks, network er
 1. Open Obsidian **Settings → Community plugins**, enabling community plugins if necessary.
 2. Browse for **VaultSail**, install it, and enable it.
 3. For an existing installation, click **Check for updates**, then update VaultSail.
-4. Disable and re-enable the plugin, and confirm the displayed version is **0.2.18**.
+4. Disable and re-enable the plugin, and confirm the displayed version is **0.2.22**.
 
 Install VaultSail **in every local vault that should sync, on every participating device**. An Obsidian account login does not install it or connect Baidu automatically. Separate vaults can share one account while binding to different cloud vaults.
 
-Update every device sharing a cloud vault to 0.2.18 before uploading attachments over 20 MiB: readers on 0.2.2 or earlier reject these records. Mobile still skips files over 20 MiB. Ordinary upgrades preserve settings and connections. Valid, unexpired pairing codes do not need re-exporting merely because the plugin was updated.
+Update every device sharing a cloud vault to 0.2.22 before uploading attachments over 20 MiB: readers on 0.2.2 or earlier reject these records. Mobile still skips files over 20 MiB. Ordinary upgrades preserve settings and connections. Valid, unexpired pairing codes do not need re-exporting merely because the plugin was updated.
 
 ### Manual installation and BRAT
 
-Download the ZIP or three files from the [release page](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.18). With VaultSail disabled, place them here, then enable it:
+Download the ZIP or three files from the [release page](https://github.com/gongteng0215/obsidian-vaultsail/releases/tag/0.2.22). With VaultSail disabled, place them here, then enable it:
 
 ```text
 <your-vault>/.obsidian/plugins/vaultsail/
@@ -166,7 +166,7 @@ Download the ZIP or three files from the [release page](https://github.com/gongt
 
 Use your actual configuration directory if it differs from `.obsidian`. Preserve existing `data.json` when replacing plugin files.
 
-On iPad or desktop, another option is [BRAT](https://github.com/TfTHacker/obsidian42-brat): add `gongteng0215/obsidian-vaultsail` and select `0.2.18`.
+On iPad or desktop, another option is [BRAT](https://github.com/TfTHacker/obsidian42-brat): add `gongteng0215/obsidian-vaultsail` and select `0.2.22`.
 
 ## Connect your first vault
 
@@ -297,7 +297,7 @@ After interruption, use **Resume unfinished tasks** (`恢复未完成任务`). I
 | --- | --- |
 | “Application not configured” after typing | Click Save for AppKey and Save secret for SecretKey; check saved-state descriptions |
 | “Account or directory is not bound” | Select a verified cloud vault; authorization and a directory alone are insufficient |
-| No automatic sync | Confirm 0.2.18 is loaded, automatic sync enabled, file checks passed, app foregrounded, and queue not paused or blocked |
+| No automatic sync | Confirm 0.2.22 is loaded, automatic sync enabled, file checks passed, app foregrounded, and queue not paused or blocked |
 | Remote edits are not immediately visible | The other device must publish first; this device discovers them through remote checks or manual sync |
 | Long scan without uploads | Check scan time, request counts, and cache statistics; initial history loading or missing fingerprints can add requests |
 | Slow transfers | Compare scan and transfer time; adjust concurrency from 1–32, default 8. Large files reduce batch concurrency; network/Baidu limits still apply |
@@ -328,9 +328,9 @@ npm run build
 pwsh ./scripts/package-release.ps1
 ```
 
-0.2.18 passed **259 automated tests**, type checking, build, and ZIP validation. Public download checks are recorded in the release report. Coverage includes authorization, pairing, pagination, concurrency, paths, queues, incremental scans, reload serialization, merging, drafts, concurrent renames, and recovery. Tests use simulated providers and a DOM fixture; they do not certify real iPad storage/background execution, Baidu permissions, or long-term shared-token behavior.
+0.2.22 passed **282 automated tests**, type checking, build, and ZIP validation. Public download checks are recorded in the release report. Coverage includes authorization, pairing, pagination, concurrency, paths, queues, incremental scans, reload serialization, merging, drafts, concurrent renames, and recovery. Tests use simulated providers and a DOM fixture; they do not certify real iPad storage/background execution, Baidu permissions, or long-term shared-token behavior.
 
-The ZIP contains only `main.js`, `manifest.json`, and `styles.css`, without tests, user configuration, credentials, or notes. See [release notes](docs/releases/0.2.18.md) for validation limits and [sync design](docs/AUTO_SYNC_PLAN.md) for implementation context.
+The ZIP contains only `main.js`, `manifest.json`, and `styles.css`, without tests, user configuration, credentials, or notes. See [release notes](docs/releases/0.2.22.md) for validation limits and [sync design](docs/AUTO_SYNC_PLAN.md) for implementation context.
 
 ## License and support
 

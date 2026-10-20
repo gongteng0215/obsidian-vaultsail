@@ -12,7 +12,7 @@ export class AcceptanceModal extends Modal {
     this.closed = false; this.titleEl.setText('双端测试数据校验');
     this.contentEl.createEl('p', { text: '仅用于专用测试库。只读取固定验收数据并比较 SHA-256，不生成笔记、不发起同步。缺少测试标记时停止。请在首次互传后校验；编辑、改名及删除场景按验收清单单独记录。' });
     const status = this.contentEl.createEl('p', { text: '尚未开始校验。' }); status.setAttribute('role', 'status');
-    const output = this.contentEl.createEl('textarea'); output.readOnly = true; output.rows = 8; output.style.width = '100%'; output.setAttribute('aria-label', '不含文件名的验收报告');
+    const output = this.contentEl.createEl('textarea', { cls: 'vaultsail-report-source' }); output.readOnly = true; output.rows = 8; output.setAttribute('aria-label', '不含文件名的验收报告');
     let report = '', running = false;
     const actions = new Setting(this.contentEl);
     let copy!: { setDisabled(value: boolean): unknown }, save!: { setDisabled(value: boolean): unknown };

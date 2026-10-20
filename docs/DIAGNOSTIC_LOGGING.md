@@ -107,3 +107,6 @@ node scripts/resolve-diagnostic-stack.mjs report.json dist/debug/<buildId> resol
 ## English summary
 
 Version 0.2.15 adds local structured diagnostics: correlated sessions/tasks/requests/files, numeric settings, native and API failures, bounded cause chains and stack positions, upload milestones and verified recovery checkpoints. Raw messages, paths, credentials, note contents, URLs and request/response bodies are never persisted. Failed and routine segments have independent bounded retention. Logging failures remain advisory, with an explicit bounded in-memory fallback. Reports are exported only on user action; build-matched source maps remain in the developer build archive. Earlier unrecorded failures cannot be reconstructed retroactively.
+
+
+0.2.22 发布起，`buildId` 为规范化源码与锁文件等构建输入的 SHA-256 前 40 位；不再依赖 Git HEAD、工作区脏状态或当前时间。LF/CRLF 规范化，源码归档与检出可复现；旧版 Git 提交标识的日志及独立调试目录继续可用。该标识用于匹配 bundle/map，不应当作 Git 提交号。

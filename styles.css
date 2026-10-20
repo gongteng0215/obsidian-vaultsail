@@ -216,6 +216,8 @@
 .vs-cloud-icon { display: inline-flex; vertical-align: middle; margin-right: 6px; color: var(--text-muted); }
 .vs-cloud-icon svg { width: 16px; height: 16px; }
 .vs-cloud-folder > .vs-cloud-row .vs-cloud-name { font-weight: 600; }
+.vaultsail-report-source { width: 100%; }
+.vaultsail-report-record { white-space: pre-wrap; }
 .vs-cloud-meta { display: inline-block; max-width: calc(100% - 10px); color: var(--text-muted); font-size: var(--font-ui-smaller); margin-left: 10px; }
 .vs-cloud-file[data-state=conflict] > .vs-cloud-row .vs-cloud-meta { color: var(--text-warning); }
 .vs-cloud-file[data-state=deleted] > .vs-cloud-row .vs-cloud-name { color: var(--text-muted); text-decoration: line-through; }

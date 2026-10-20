@@ -1,14 +1,11 @@
 import esbuild from 'esbuild';
 import process from 'node:process';
 import { readFileSync, mkdirSync, copyFileSync, writeFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { buildIdentity, sourceText } from './scripts/build-identity.mjs';
 
 const production = process.argv.includes('production');
-let buildId = 'source';
-try { buildId = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-  if (execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()) buildId += '-dirty-' + Date.now().toString(36);
-} catch { /* Source archives need not include Git metadata. */ }
+const buildId = buildIdentity();
 const context = await esbuild.context({
   entryPoints: ['src/main.ts'],
   bundle: true,
@@ -20,7 +17,7 @@ const context = await esbuild.context({
   sourcemap: production ? 'external' : 'inline',
   define: { VAULTSAIL_BUILD_ID: JSON.stringify(buildId) },
   minify: production,
-  banner: { js: '/*!\n' + readFileSync('LICENSE', 'utf8') + '\n\nThird-party runtime dependency: @noble/hashes\n' + readFileSync('node_modules/@noble/hashes/LICENSE', 'utf8') + '\n*/' },
+  banner: { js: '/*!\n' + sourceText('LICENSE') + '\n\nThird-party runtime dependency: @noble/hashes\n' + sourceText('node_modules/@noble/hashes/LICENSE') + '\n*/' },
   logLevel: 'info',
 });
 if (production) {
